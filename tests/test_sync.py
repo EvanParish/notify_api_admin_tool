@@ -1,0 +1,256 @@
+import pytest
+from unittest.mock import AsyncMock
+from sqlalchemy import select, delete
+
+from app.db import create_all, get_session, init_engine
+from app.models import Service, Template, User
+from app.sync import SyncManager
+from app.api_client import NotificationAPI
+
+import tests.testing_data as testing_data
+
+
+class FakeAPI(NotificationAPI):
+    def __init__(self, services=None, users=None, templates=None):
+        self.services_data = services or testing_data.service_data["data"]
+        self.users_data = users or testing_data.user_data["data"]
+        self.templates_data = templates or testing_data.template_data["data"]
+        self._template_generator = None
+
+    async def get_services(self):
+        return self.services_data
+
+    async def get_users(self):
+        return self.users_data
+
+    async def get_templates(self, service_id: str):
+        # If template_generator is set, use it to generate unique templates per service
+        if self._template_generator:
+            return self._template_generator(service_id)
+        return self.templates_data
+
+    async def get_api_keys(self, service_id: str):
+        return []
+
+    async def send_notification(self, *args, **kwargs):
+        return {}
+
+    async def healthcheck(self):
+        return True
+
+
+@pytest.fixture(scope="function")
+def setup_db(tmp_path):
+    db_file = tmp_path / "test.db"
+    init_engine(str(db_file))
+    yield
+
+
+@pytest.mark.asyncio
+async def test_sync_services_users_templates(setup_db):
+    await create_all()
+    api = FakeAPI()
+    sync = SyncManager(api, max_concurrency=5)
+
+    await sync.sync_services()
+    async with get_session() as session:
+        services = (await session.execute(select(Service))).scalars().all()
+        assert len(services) == 1
+        svc = services[0]
+        assert svc.id == "d6aa2c68-a2d9-4437-ab19-3ae8eb202553"
+        assert svc.name == "VA Notify"
+        assert svc.active is True
+        assert svc.restricted is False
+
+    await sync.sync_users()
+    async with get_session() as session:
+        users = (await session.execute(select(User))).scalars().all()
+        # duplicate ids in payload collapse to a single row via merge
+        assert len(users) == 1
+        user = users[0]
+        assert user.id == "0a02afbc-aa35-4905-9ea9-2a2228e73b63"
+        assert user.email_address == "_archived_2025-01-29_16:57:14__archived_2024-05-03_15:07:30_ASDFASDDSFF@email.com"
+
+    await sync.sync_templates()
+    async with get_session() as session:
+        templates = (await session.execute(select(Template))).scalars().all()
+        assert len(templates) == 2
+        ids = {t.id for t in templates}
+        assert {"e98f2fd4-f307-4092-be15-34a8d903aaaa", "aef3658a-1c78-443a-9c74-688ee96f18be"} == ids
+        email_template = next(t for t in templates if t.template_type == "email")
+        assert email_template.subject == "Test ((title))"
+        assert email_template.service_id == "d6aa2c68-a2d9-4437-ab19-3ae8eb202553"
+
+
+@pytest.mark.asyncio
+async def test_sync_all(setup_db):
+    await create_all()
+    api = FakeAPI()
+    sync = SyncManager(api, max_concurrency=10)
+    
+    await sync.sync_all()
+    
+    async with get_session() as session:
+        services = (await session.execute(select(Service))).scalars().all()
+        users = (await session.execute(select(User))).scalars().all()
+        templates = (await session.execute(select(Template))).scalars().all()
+        
+        assert len(services) >= 1
+        assert len(users) >= 1
+        assert len(templates) >= 2
+
+
+@pytest.mark.asyncio
+async def test_sync_with_progress_callback(setup_db):
+    await create_all()
+    api = FakeAPI()
+    sync = SyncManager(api, max_concurrency=5)
+    
+    messages = []
+    async def progress(msg: str):
+        messages.append(msg)
+    
+    await sync.sync_services(progress=progress)
+    await sync.sync_users(progress=progress)
+    await sync.sync_templates(progress=progress)
+    
+    assert "Syncing services" in messages
+    assert "Syncing users" in messages
+    assert any("Templates for" in msg for msg in messages)
+
+
+@pytest.mark.asyncio
+async def test_sync_empty_data_no_errors(setup_db):
+    """Test that syncing empty data arrays doesn't cause errors."""
+    await create_all()
+    
+    api = FakeAPI(services=[], users=[], templates=[])
+    sync = SyncManager(api)
+    
+    # These should complete without raising exceptions
+    await sync.sync_services()
+    await sync.sync_users()
+    
+    # If we got here without exceptions, test passes
+    assert True
+
+
+@pytest.mark.asyncio
+async def test_sync_services_merge_behavior(setup_db):
+    await create_all()
+    
+    # First sync
+    api1 = FakeAPI(services=[
+        {"id": "svc-1", "name": "Service Original", "active": True, "restricted": False}
+    ])
+    sync1 = SyncManager(api1)
+    await sync1.sync_services()
+    
+    # Second sync with updated data
+    api2 = FakeAPI(services=[
+        {"id": "svc-1", "name": "Service Updated", "active": False, "restricted": True}
+    ])
+    sync2 = SyncManager(api2)
+    await sync2.sync_services()
+    
+    async with get_session() as session:
+        services = (await session.execute(select(Service))).scalars().all()
+        assert len(services) == 1
+        svc = services[0]
+        assert svc.name == "Service Updated"
+        assert svc.active is False
+        assert svc.restricted is True
+
+
+@pytest.mark.asyncio
+async def test_sync_templates_concurrency(setup_db):
+    await create_all()
+    
+    # Add multiple services
+    async with get_session() as session:
+        for i in range(5):
+            session.add(Service(id=f"svc-{i}", name=f"Service {i}", active=True, restricted=False))
+        await session.commit()
+    
+    # Create API with a generator that returns unique templates per service
+    api = FakeAPI()
+    api._template_generator = lambda svc_id: [
+        {"id": f"tmpl-{svc_id}-{i}", "service": svc_id, "name": f"Template {i}", 
+         "type": "email", "content": "Content", "version": 1}
+        for i in range(3)
+    ]
+    sync = SyncManager(api, max_concurrency=2)
+    
+    await sync.sync_templates()
+    
+    async with get_session() as session:
+        templates = (await session.execute(select(Template))).scalars().all()
+        # 5 services * 3 templates each = 15 templates
+        assert len(templates) == 15
+
+
+@pytest.mark.asyncio
+async def test_sync_all_with_progress(setup_db):
+    await create_all()
+    api = FakeAPI()
+    sync = SyncManager(api)
+    
+    messages = []
+    async def track_progress(msg: str):
+        messages.append(msg)
+    
+    await sync.sync_all(progress=track_progress)
+    
+    assert len(messages) > 0
+
+
+@pytest.mark.asyncio
+async def test_sync_templates_for_service_direct(setup_db):
+    await create_all()
+    
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service", active=True, restricted=False))
+        await session.commit()
+    
+    api = FakeAPI(templates=[
+        {"id": "t1", "service_id": "svc-1", "name": "T1", "type": "email", "content": "C", "subject": "S", "version": 1}
+    ])
+    sync = SyncManager(api)
+    
+    messages = []
+    async def progress(msg: str):
+        messages.append(msg)
+    
+    await sync._sync_templates_for_service("svc-1", progress)
+    
+    assert any("Templates for svc-1" in msg for msg in messages)
+    
+    async with get_session() as session:
+        templates = (await session.execute(select(Template))).scalars().all()
+        assert len(templates) == 1
+
+
+@pytest.mark.asyncio
+async def test_sync_templates_handles_different_field_names(setup_db):
+    await create_all()
+    
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service", active=True, restricted=False))
+        await session.commit()
+    
+    # Test template data with different field name variations
+    api = FakeAPI(templates=[
+        {"id": "t1", "service": "svc-1", "name": "T1", "type": "email", "content": "C", "version": 1},
+        {"id": "t2", "service_id": "svc-1", "name": "T2", "template_type": "sms", "content": "C", "version": 1}
+    ])
+    sync = SyncManager(api)
+    
+    await sync.sync_templates()
+    
+    async with get_session() as session:
+        templates = (await session.execute(select(Template))).scalars().all()
+        assert len(templates) == 2
+        email_tmpl = next(t for t in templates if t.id == "t1")
+        sms_tmpl = next(t for t in templates if t.id == "t2")
+        assert email_tmpl.template_type == "email"
+        assert sms_tmpl.template_type == "sms"
