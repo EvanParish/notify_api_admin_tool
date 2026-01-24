@@ -1,5 +1,8 @@
 # my ignore files
 test_output.txt
+data/
+logs/
+*.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

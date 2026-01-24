@@ -11,7 +11,7 @@ from nicegui.elements.input import Input
 from app.api_client import HttpNotificationAPI, MockNotificationAPI, NotificationAPI
 from app.config import AppConfig, load_config
 from app.crypto import EncryptionManager
-from app.db import create_all, init_engine
+from app.db import create_all, init_engine, dispose_engine
 from app.repository import (
     add_local_key,
     get_secure_setting,
@@ -50,6 +50,11 @@ if not os.getenv("PYTEST_CURRENT_TEST"):
 async def startup() -> None:
     await create_all()
     await ensure_default_hosts()
+
+
+@app.on_shutdown
+async def shutdown() -> None:
+    await dispose_engine()
 
 
 async def ensure_default_hosts() -> None:
@@ -94,8 +99,8 @@ async def handle_full_sync(status_badge, sync_label) -> None:
 
 
 async def refresh_tables() -> None:
-    await services_table.refresh()
-    await users_table.refresh()
+    services_table.refresh()
+    users_table.refresh()
 
 
 def build_shell() -> tuple:
@@ -133,9 +138,9 @@ async def dashboard_page() -> None:
     services = await list_services()
     users = await list_users()
     templates = await list_templates()
-    with ui.column().classes("p-4 gap-4"):
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Dashboard").classes("text-lg font-semibold")
-        with ui.row().classes("gap-4"):
+        with ui.row().classes("gap-4 w-full"):
             metric_card("Services", len(services))
             metric_card("Users", len(users))
             metric_card("Templates", len(templates))
@@ -160,7 +165,7 @@ async def services_page() -> None:
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
-    with ui.column().classes("p-4 gap-4"):
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Services").classes("text-lg font-semibold")
         ui.button("Sync Services", on_click=page_refresh)
         await services_table()
@@ -197,7 +202,7 @@ async def services_table() -> None:
         ],
         rows=table_rows,
         pagination={"rowsPerPage": 10},
-    ).props("row-key=id")
+    ).props("row-key=id").classes("w-full")
 
 
 @ui.page("/users")
@@ -210,7 +215,7 @@ async def users_page() -> None:
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
-    with ui.column().classes("p-4 gap-4"):
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Users").classes("text-lg font-semibold")
         ui.button("Sync Users", on_click=page_refresh)
         await users_table()
@@ -241,7 +246,7 @@ async def users_table() -> None:
         ],
         rows=table_rows,
         pagination={"rowsPerPage": 10},
-    ).props("row-key=id")
+    ).props("row-key=id").classes("w-full")
 
 
 @ui.page("/templates")
@@ -254,7 +259,7 @@ async def templates_page() -> None:
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
-    with ui.column().classes("p-4 gap-4"):
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Templates").classes("text-lg font-semibold")
         filter_row = ui.row().classes("gap-2")
         service_options = {svc.id: svc.name for svc in await list_services()}
@@ -264,7 +269,7 @@ async def templates_page() -> None:
 
         async def handle_sync_templates() -> None:
             await page_refresh()
-            await render_table.refresh()
+            render_table.refresh()
 
         @ui.refreshable
         async def render_table() -> None:
@@ -301,7 +306,7 @@ async def templates_page() -> None:
                 ],
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
-            ).props("row-key=id")
+            ).props("row-key=id").classes("w-full")
 
         service_select.on_value_change(lambda _: render_table.refresh())
         type_select.on_value_change(lambda _: render_table.refresh())
@@ -323,11 +328,11 @@ async def send_page() -> None:
     service_options = {svc.id: svc.name for svc in services}
     env_options = list(config.api_hosts.keys())
 
-    with ui.column().classes("p-4 gap-4"):
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Send Notification").classes("text-lg font-semibold")
         env_select = ui.select(env_options, value=state.environment, label="Environment")
         service_select = ui.select(service_options, label="Service", with_input=True).props("clearable")
-        key_select = ui.select({}, label="Authentication Source").props("clearable")
+        key_select = ui.select({}, label="API Key").props("clearable")
         type_toggle = ui.toggle({"email": "Email", "sms": "SMS"}, value="email")
         template_select = ui.select({}, label="Template", with_input=True).props("clearable")
         recipient_input = ui.input(label="Recipient")
@@ -429,10 +434,10 @@ async def settings_page() -> None:
     await refresh_status_badge(status_badge)
 
     env_options = list(config.api_hosts.keys())
-    with ui.column().classes("p-4 gap-6"):
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Settings").classes("text-lg font-semibold")
 
-        with ui.card().classes("p-4 w-full"):
+        with ui.card().classes("p-6 w-full"):
             ui.label("API Configuration").classes("text-md font-semibold")
             rows = []
             for env in env_options:
@@ -449,7 +454,7 @@ async def settings_page() -> None:
                 on_click=handle_save_urls,
             )
 
-        with ui.card().classes("p-4 w-full"):
+        with ui.card().classes("p-6 w-full"):
             ui.label("Global Admin Auth (per environment)").classes("text-md font-semibold")
             auth_inputs: Dict[str, Dict[str, ui.input]] = {}
             for env in env_options:
@@ -467,7 +472,7 @@ async def settings_page() -> None:
                 on_click=handle_save_auth,
             )
 
-        with ui.card().classes("p-4 w-full"):
+        with ui.card().classes("p-6 w-full"):
             ui.label("Local API Keys").classes("text-md font-semibold")
             services = await list_services()
             service_options = {svc.id: svc.name for svc in services}
@@ -509,7 +514,7 @@ async def save_local_key(service_id: Optional[str], name: str, secret: str, key_
         return
     await add_local_key(encryption, service_id, name, secret, key_type)
     ui.notify("Key saved", color="green")
-    await render_local_keys.refresh()
+    render_local_keys.refresh()
 
 
 @ui.refreshable
@@ -528,8 +533,8 @@ async def render_local_keys() -> None:
         ],
         rows=rows,
         pagination={"rowsPerPage": 5},
-    ).props("row-key=id")
+    ).props("row-key=id").classes("w-full")
 
 
-if __name__ == "__main__":
-    ui.run(title="VA Notify Admin", port=8080, reload=False)
+if __name__ in {"__main__", "__mp_main__"}:
+    ui.run(title="VA Notify Admin", port=8080, reload=True)
