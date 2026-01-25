@@ -254,3 +254,80 @@ async def test_sync_templates_handles_different_field_names(setup_db):
         sms_tmpl = next(t for t in templates if t.id == "t2")
         assert email_tmpl.template_type == "email"
         assert sms_tmpl.template_type == "sms"
+
+@pytest.mark.asyncio
+async def test_sync_services_with_empty_permissions_list(initialized_db):
+    """Test that services with empty permissions list are handled correctly."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.repository import list_services
+    
+    # Create a mock API that returns a service with empty permissions list
+    mock_api = MockNotificationAPI()
+    
+    # Override get_services to return service with empty list
+    async def get_services_with_empty_perms():
+        return [
+            {
+                "id": "test-service-1",
+                "name": "Test Service",
+                "permissions": [],  # Empty list should be converted to JSON
+                "active": True,
+                "restricted": False,
+                "research_mode": False,
+                "count_as_live": True,
+            }
+        ]
+    
+    mock_api.get_services = get_services_with_empty_perms
+    
+    manager = SyncManager(mock_api, max_concurrency=5)
+    await manager.sync_services()
+    
+    # Verify the service was stored correctly
+    services = await list_services()
+    assert len(services) == 1
+    assert services[0].id == "test-service-1"
+    assert services[0].permissions == "[]"  # Should be JSON string
+
+
+@pytest.mark.asyncio
+async def test_sync_api_keys_handles_404(initialized_db):
+    """Test that sync handles 404 errors gracefully when service has no API keys."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service
+    from app.db import get_session
+    from sqlalchemy import select
+    import httpx
+    
+    # Create a service
+    async with get_session() as session:
+        service = Service(
+            id="test-service-no-keys",
+            name="Service Without Keys",
+            active=True,
+        )
+        session.add(service)
+        await session.commit()
+    
+    # Create mock API that raises 404 for get_api_keys
+    mock_api = MockNotificationAPI()
+    
+    async def raise_404(service_id: str):
+        raise httpx.HTTPStatusError(
+            "Client error '404 NOT FOUND'",
+            request=None,
+            response=None
+        )
+    
+    mock_api.get_api_keys = raise_404
+    
+    # This should not raise an exception
+    manager = SyncManager(mock_api, max_concurrency=5)
+    await manager.sync_api_keys()  # Should complete without error
+    
+    # Verify no API keys were added (which is expected)
+    from app.repository import list_api_keys
+    keys = await list_api_keys()
+    assert len(keys) == 0

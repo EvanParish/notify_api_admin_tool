@@ -74,6 +74,7 @@ class ApiKey(Base):
     __tablename__ = "api_keys"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    service_id: Mapped[Optional[str]] = mapped_column(ForeignKey("services.id"), nullable=True)
     name: Mapped[str] = mapped_column(String)
     key_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     expiry_date: Mapped[Optional[str]] = mapped_column(String, nullable=True)

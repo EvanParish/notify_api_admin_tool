@@ -55,14 +55,15 @@ def load_config() -> AppConfig:
         json.dumps(
             {
                 "development": "https://dev-notify.va.gov",
+                "perf": "https://sandbox-api.va.gov/vanotify",
                 "staging": "https://staging-notify.va.gov",
                 "production": "https://api.notifications.va.gov",
             }
         ),
     )
-    master_key = os.getenv("master_key")
+    master_key = os.getenv("MASTER_KEY")
     if not master_key:
-        raise RuntimeError("master_key is required in the environment for encryption")
+        raise RuntimeError("MASTER_KEY is required in the environment for encryption")
 
     return AppConfig(
         api_hosts=api_hosts_raw,

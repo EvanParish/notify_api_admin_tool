@@ -77,19 +77,19 @@ def test_app_config_max_concurrency_invalid():
 
 
 def test_load_config_missing_master_key():
-    # Skip test if .env file exists that provides master_key
+    # Skip test if .env file exists that provides MASTER_KEY
     env_file = os.path.join(os.getcwd(), '.env')
     if os.path.exists(env_file):
-        pytest.skip(".env file exists, cannot test missing master_key")
+        pytest.skip(".env file exists, cannot test missing MASTER_KEY")
     
     with patch.dict(os.environ, {}, clear=True):
-        with pytest.raises(RuntimeError, match="master_key is required"):
+        with pytest.raises(RuntimeError, match="MASTER_KEY is required"):
             load_config()
 
 
 def test_load_config_success():
     env = {
-        "master_key": "test-master-key-123",
+        "MASTER_KEY": "test-master-key-123",
         "USE_MOCK_API": "true",
         "DATABASE_PATH": "test/db.db",
         "MAX_CONCURRENCY": "10"
@@ -104,7 +104,7 @@ def test_load_config_success():
 
 def test_load_config_with_custom_api_hosts():
     env = {
-        "master_key": "test-key",
+        "MASTER_KEY": "test-key",
         "API_PUBLIC_HOSTS": json.dumps({"custom": "http://custom.com"})
     }
     with patch.dict(os.environ, env, clear=True):
@@ -113,7 +113,7 @@ def test_load_config_with_custom_api_hosts():
 
 
 def test_load_config_has_api_hosts():
-    env = {"master_key": "test-key"}
+    env = {"MASTER_KEY": "test-key"}
     with patch.dict(os.environ, env, clear=True):
         config = load_config()
         # Default config has development, staging, production OR the .env may have different names

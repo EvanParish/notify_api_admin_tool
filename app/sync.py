@@ -23,6 +23,7 @@ class SyncManager:
         await self.sync_services(progress)
         await self.sync_users(progress)
         await self.sync_templates(progress)
+        await self.sync_api_keys(progress)
 
     async def sync_services(self, progress: ProgressCallback = None) -> None:
         if progress:
@@ -30,9 +31,9 @@ class SyncManager:
         services = await self.api.get_services()
         async with get_session() as session:
             for svc in services:
-                # Convert permissions list to JSON string if present
+                # Convert permissions list to JSON string (including empty lists)
                 permissions = svc.get("permissions")
-                if permissions and isinstance(permissions, list):
+                if isinstance(permissions, list):
                     permissions = json.dumps(permissions)
                 
                 record = models.Service(
@@ -104,6 +105,45 @@ class SyncManager:
                         updated_at=tmpl.get("updated_at"),
                         created_by=tmpl.get("created_by"),
                         reply_to_email=tmpl.get("reply_to_email"),
+                    )
+                    await session.merge(record)
+                await session.commit()
+
+    async def sync_api_keys(self, progress: ProgressCallback = None) -> None:
+        async with get_session() as session:
+            service_rows = (await session.execute(select(models.Service.id))).scalars().all()
+
+        tasks = [self._sync_api_keys_for_service(sid, progress) for sid in service_rows]
+        await asyncio.gather(*tasks)
+
+    async def _sync_api_keys_for_service(self, service_id: str, progress: ProgressCallback) -> None:
+        async with self._semaphore:
+            if progress:
+                await progress(f"API keys for {service_id}")
+            try:
+                api_keys = await self.api.get_api_keys(service_id)
+            except Exception as e:
+                # Some services may not have API keys endpoint or return 404
+                # This is not an error - just skip and continue
+                if "404" in str(e) or "NOT FOUND" in str(e):
+                    if progress:
+                        await progress(f"No API keys for {service_id}")
+                    return
+                # For other errors, re-raise
+                raise
+            
+            async with get_session() as session:
+                for key in api_keys:
+                    record = models.ApiKey(
+                        id=key.get("id"),
+                        service_id=service_id,
+                        name=key.get("name", ""),
+                        key_type=key.get("key_type"),
+                        expiry_date=key.get("expiry_date"),
+                        created_by=key.get("created_by"),
+                        created_at=key.get("created_at"),
+                        revoked=key.get("revoked", False),
+                        version=key.get("version"),
                     )
                     await session.merge(record)
                 await session.commit()

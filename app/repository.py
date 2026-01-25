@@ -94,6 +94,9 @@ async def resolve_local_key(encryption: EncryptionManager, key_id: int) -> str:
         return await encryption.decrypt(record.key_secret)
 
 
-async def list_api_keys() -> List[ApiKey]:
+async def list_api_keys(service_id: Optional[str] = None) -> List[ApiKey]:
     async with get_session() as session:
-        return list((await session.execute(select(ApiKey))).scalars().all())
+        query = select(ApiKey)
+        if service_id:
+            query = query.where(ApiKey.service_id == service_id)
+        return list((await session.execute(query)).scalars().all())

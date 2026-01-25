@@ -16,6 +16,7 @@ from app.repository import (
     add_local_key,
     get_secure_setting,
     get_setting,
+    list_api_keys,
     list_local_keys,
     list_services,
     list_templates,
@@ -33,11 +34,17 @@ class AppState:
     environment: str
     api_status: str = "unknown"
     sync_message: str = ""
+    dev_only_mode: bool = True
+    enabled_sync_environments: set = None
+
+    def __post_init__(self):
+        if self.enabled_sync_environments is None:
+            self.enabled_sync_environments = {"dev"}
 
 
 config: AppConfig = load_config()
 encryption = EncryptionManager(config.master_key)
-state = AppState(environment=next(iter(config.api_hosts.keys()), "development"))
+state = AppState(environment=next(iter(config.api_hosts.keys()), "dev"))
 
 # Only initialize database if not in test mode
 # Tests will call init_engine with their own temporary database
@@ -84,6 +91,12 @@ async def refresh_status_badge(badge) -> None:
 
 
 async def handle_full_sync(status_badge, sync_label) -> None:
+    # Check if current environment is enabled for syncing
+    if state.environment not in state.enabled_sync_environments:
+        sync_label.text = f"Sync disabled for {state.environment}"
+        ui.notify(f"Syncing is not enabled for {state.environment} environment", color="warning")
+        return
+    
     api = await build_api_client(state.environment)
     manager = SyncManager(api, config.max_concurrency)
 
@@ -111,6 +124,7 @@ def build_shell() -> tuple:
         ui.link("Services", "/services")
         ui.link("Users", "/users")
         ui.link("Templates", "/templates")
+        ui.link("API Keys", "/api-keys")
         ui.link("Settings", "/settings")
 
     with ui.header().classes("items-center justify-between bg-gray-100"):
@@ -314,6 +328,66 @@ async def templates_page() -> None:
         await render_table()
 
 
+@ui.page("/api-keys")
+async def api_keys_page() -> None:
+    status_badge, sync_label, refresh_button = build_shell()
+
+    async def page_refresh():
+        await handle_full_sync(status_badge, sync_label)
+
+    refresh_button.on_click(page_refresh)
+    await refresh_status_badge(status_badge)
+
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
+        ui.label("API Keys").classes("text-lg font-semibold")
+        
+        services = await list_services()
+        service_options = {svc.id: svc.name for svc in services}
+        service_select = ui.select(service_options, label="Filter by Service", with_input=True).props("clearable")
+
+        async def handle_sync_keys() -> None:
+            await page_refresh()
+            render_table.refresh()
+
+        @ui.refreshable
+        async def render_table() -> None:
+            selected_service = service_select.value
+            keys = await list_api_keys(selected_service)
+            table_rows: List[Dict[str, Any]] = [
+                {
+                    "id": key.id,
+                    "service_id": key.service_id,
+                    "name": key.name,
+                    "key_type": key.key_type,
+                    "expiry_date": key.expiry_date,
+                    "created_by": key.created_by,
+                    "created_at": key.created_at[:10] if key.created_at else None,
+                    "revoked": key.revoked,
+                    "version": key.version,
+                }
+                for key in keys
+            ]
+            ui.table(
+                columns=[
+                    {"name": "id", "label": "ID", "field": "id"},
+                    {"name": "service_id", "label": "Service ID", "field": "service_id"},
+                    {"name": "name", "label": "Name", "field": "name"},
+                    {"name": "key_type", "label": "Type", "field": "key_type"},
+                    {"name": "expiry_date", "label": "Expires", "field": "expiry_date"},
+                    {"name": "created_by", "label": "Created By", "field": "created_by"},
+                    {"name": "created_at", "label": "Created", "field": "created_at"},
+                    {"name": "revoked", "label": "Revoked", "field": "revoked"},
+                    {"name": "version", "label": "Version", "field": "version"},
+                ],
+                rows=table_rows,
+                pagination={"rowsPerPage": 10},
+            ).props("row-key=id").classes("w-full")
+
+        service_select.on_value_change(lambda _: render_table.refresh())
+        ui.button("Sync API Keys", on_click=handle_sync_keys)
+        await render_table()
+
+
 @ui.page("/send")
 async def send_page() -> None:
     status_badge, sync_label, refresh_button = build_shell()
@@ -436,6 +510,45 @@ async def settings_page() -> None:
     env_options = list(config.api_hosts.keys())
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Settings").classes("text-lg font-semibold")
+
+        with ui.card().classes("p-6 w-full"):
+            ui.label("Environment Settings").classes("text-md font-semibold")
+            ui.label("Select the current active environment:").classes("text-sm text-gray-600 mb-2")
+            
+            env_select = ui.select(
+                options={env: env.title() for env in env_options},
+                value=state.environment,
+                label="Current Environment"
+            ).classes("w-64")
+            
+            async def handle_env_change(e):
+                state.environment = e.value
+                await refresh_status_badge(status_badge)
+                ui.notify(f"Switched to {e.value} environment", color="info")
+            
+            env_select.on_value_change(handle_env_change)
+
+        with ui.card().classes("p-6 w-full"):
+            ui.label("Sync Settings").classes("text-md font-semibold")
+            ui.label("Select which environments are allowed to sync data:").classes("text-sm text-gray-600 mb-2")
+            
+            env_checkboxes: Dict[str, ui.checkbox] = {}
+            for env in env_options:
+                is_enabled = env in state.enabled_sync_environments
+                checkbox = ui.checkbox(env.title(), value=is_enabled)
+                env_checkboxes[env] = checkbox
+                
+                def make_handler(environment):
+                    def handler(e):
+                        if e.value:
+                            state.enabled_sync_environments.add(environment)
+                            ui.notify(f"Syncing enabled for {environment}", color="positive")
+                        else:
+                            state.enabled_sync_environments.discard(environment)
+                            ui.notify(f"Syncing disabled for {environment}", color="info")
+                    return handler
+                
+                checkbox.on_value_change(make_handler(env))
 
         with ui.card().classes("p-6 w-full"):
             ui.label("API Configuration").classes("text-md font-semibold")

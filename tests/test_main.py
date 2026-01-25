@@ -173,6 +173,12 @@ async def test_refresh_status_badge(initialized_db, mock_config):
         environment: str
         api_status: str = "unknown"
         sync_message: str = ""
+        dev_only_mode: bool = True
+        enabled_sync_environments: set = None
+        
+        def __post_init__(self):
+            if self.enabled_sync_environments is None:
+                self.enabled_sync_environments = {"development"}
     
     main.state = TestState(environment="development")
     
@@ -207,6 +213,12 @@ async def test_refresh_status_badge_offline(initialized_db, mock_config):
         environment: str
         api_status: str = "unknown"
         sync_message: str = ""
+        dev_only_mode: bool = True
+        enabled_sync_environments: set = None
+        
+        def __post_init__(self):
+            if self.enabled_sync_environments is None:
+                self.enabled_sync_environments = {"development"}
     
     main.state = TestState(environment="development")
     
@@ -241,6 +253,12 @@ async def test_handle_full_sync(initialized_db, mock_config):
         environment: str
         api_status: str = "unknown"
         sync_message: str = ""
+        dev_only_mode: bool = True
+        enabled_sync_environments: set = None
+        
+        def __post_init__(self):
+            if self.enabled_sync_environments is None:
+                self.enabled_sync_environments = {"development"}
     
     main.state = TestState(environment="development")
     
@@ -560,3 +578,130 @@ async def test_integration_full_workflow(initialized_db, mock_config, mock_encry
     finally:
         main.config = original_config
         main.encryption = original_encryption
+
+
+@pytest.mark.asyncio
+async def test_handle_full_sync_dev_only_mode_blocks_staging(initialized_db, mock_config):
+    """Test that enabled_sync_environments blocks syncing non-enabled environments."""
+    import main
+    original_config = main.config
+    original_state = main.state
+    main.config = mock_config
+    main.config.use_mock_api = True
+    
+    @dataclass
+    class TestState:
+        environment: str
+        api_status: str = "unknown"
+        sync_message: str = ""
+        dev_only_mode: bool = True
+        enabled_sync_environments: set = None
+        
+        def __post_init__(self):
+            if self.enabled_sync_environments is None:
+                self.enabled_sync_environments = {"development"}
+    
+    # Create state with staging environment but only development enabled
+    main.state = TestState(environment="staging")
+    
+    mock_status_badge = MagicMock()
+    mock_sync_label = MagicMock()
+    mock_sync_label.text = ""
+    
+    try:
+        with patch.object(main, 'refresh_tables', new_callable=AsyncMock) as mock_refresh:
+            with patch('main.ui.notify') as mock_notify:
+                await main.handle_full_sync(mock_status_badge, mock_sync_label)
+                
+                # Verify sync was blocked
+                assert mock_sync_label.text == "Sync disabled for staging"
+                mock_notify.assert_called_once()
+                # Refresh should not have been called
+                mock_refresh.assert_not_called()
+    finally:
+        main.config = original_config
+        main.state = original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_full_sync_dev_only_mode_allows_dev(initialized_db, mock_config):
+    """Test that enabled_sync_environments allows syncing enabled environments."""
+    import main
+    original_config = main.config
+    original_state = main.state
+    main.config = mock_config
+    main.config.use_mock_api = True
+    
+    @dataclass
+    class TestState:
+        environment: str
+        api_status: str = "unknown"
+        sync_message: str = ""
+        dev_only_mode: bool = True
+        enabled_sync_environments: set = None
+        
+        def __post_init__(self):
+            if self.enabled_sync_environments is None:
+                self.enabled_sync_environments = {"development"}
+    
+    main.state = TestState(environment="development")
+    
+    mock_status_badge = MagicMock()
+    mock_status_badge.props = MagicMock()
+    mock_sync_label = MagicMock()
+    mock_sync_label.text = ""
+    
+    try:
+        with patch.object(main, 'refresh_tables', new_callable=AsyncMock) as mock_refresh:
+            await main.handle_full_sync(mock_status_badge, mock_sync_label)
+            
+            # Verify sync completed
+            assert mock_sync_label.text == "Sync complete"
+            # Refresh should have been called
+            mock_refresh.assert_called_once()
+    finally:
+        main.config = original_config
+        main.state = original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_full_sync_dev_only_mode_disabled(initialized_db, mock_config):
+    """Test that adding environments to enabled_sync_environments allows syncing them."""
+    import main
+    original_config = main.config
+    original_state = main.state
+    main.config = mock_config
+    main.config.use_mock_api = True
+    
+    @dataclass
+    class TestState:
+        environment: str
+        api_status: str = "unknown"
+        sync_message: str = ""
+        dev_only_mode: bool = False
+        enabled_sync_environments: set = None
+        
+        def __post_init__(self):
+            if self.enabled_sync_environments is None:
+                self.enabled_sync_environments = {"development"}
+    
+    # Create state with staging and add staging to enabled environments
+    main.state = TestState(environment="staging")
+    main.state.enabled_sync_environments.add("staging")
+    
+    mock_status_badge = MagicMock()
+    mock_status_badge.props = MagicMock()
+    mock_sync_label = MagicMock()
+    mock_sync_label.text = ""
+    
+    try:
+        with patch.object(main, 'refresh_tables', new_callable=AsyncMock) as mock_refresh:
+            await main.handle_full_sync(mock_status_badge, mock_sync_label)
+            
+            # Verify sync completed
+            assert mock_sync_label.text == "Sync complete"
+            # Refresh should have been called
+            mock_refresh.assert_called_once()
+    finally:
+        main.config = original_config
+        main.state = original_state
