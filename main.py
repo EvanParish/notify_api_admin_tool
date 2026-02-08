@@ -52,7 +52,6 @@ if not os.getenv("PYTEST_CURRENT_TEST"):
     init_engine(config.database_path)
 
 
-
 @app.on_startup
 async def startup() -> None:
     await create_all()
@@ -79,7 +78,9 @@ async def build_api_client(env: str) -> NotificationAPI:
         raise RuntimeError(f"Base URL missing for environment {env}")
     basic_user = await get_secure_setting(f"basic_username_{env}", encryption)
     basic_pass = await get_secure_setting(f"basic_password_{env}", encryption)
-    return HttpNotificationAPI(base_url=base_url, basic_username=basic_user, basic_password=basic_pass)
+    return HttpNotificationAPI(
+        base_url=base_url, basic_username=basic_user, basic_password=basic_pass
+    )
 
 
 async def refresh_status_badge(badge) -> None:
@@ -90,13 +91,22 @@ async def refresh_status_badge(badge) -> None:
     badge.props(f"color={'green' if ok else 'red'}")
 
 
-async def handle_full_sync(status_badge, sync_label) -> None:
-    # Check if current environment is enabled for syncing
+async def ensure_sync_enabled(sync_label) -> bool:
     if state.environment not in state.enabled_sync_environments:
         sync_label.text = f"Sync disabled for {state.environment}"
-        ui.notify(f"Syncing is not enabled for {state.environment} environment", color="warning")
+        ui.notify(
+            f"Syncing is not enabled for {state.environment} environment",
+            color="warning",
+        )
+        return False
+    return True
+
+
+async def handle_full_sync(status_badge, sync_label) -> None:
+    # Check if current environment is enabled for syncing
+    if not await ensure_sync_enabled(sync_label):
         return
-    
+
     api = await build_api_client(state.environment)
     manager = SyncManager(api, config.max_concurrency)
 
@@ -111,13 +121,91 @@ async def handle_full_sync(status_badge, sync_label) -> None:
     await refresh_status_badge(status_badge)
 
 
+async def handle_services_sync(status_badge, sync_label) -> None:
+    if not await ensure_sync_enabled(sync_label):
+        return
+
+    api = await build_api_client(state.environment)
+    manager = SyncManager(api, config.max_concurrency)
+
+    async def progress(msg: str):
+        state.sync_message = msg
+        sync_label.text = msg
+
+    sync_label.text = "Syncing services..."
+    await manager.sync_services(progress=progress)
+    sync_label.text = "Sync complete"
+    services_table.refresh()
+    await refresh_status_badge(status_badge)
+
+
+async def handle_users_sync(status_badge, sync_label) -> None:
+    if not await ensure_sync_enabled(sync_label):
+        return
+
+    api = await build_api_client(state.environment)
+    manager = SyncManager(api, config.max_concurrency)
+
+    async def progress(msg: str):
+        state.sync_message = msg
+        sync_label.text = msg
+
+    sync_label.text = "Syncing users..."
+    await manager.sync_users(progress=progress)
+    sync_label.text = "Sync complete"
+    users_table.refresh()
+    await refresh_status_badge(status_badge)
+
+
+async def handle_templates_sync(status_badge, sync_label) -> None:
+    if not await ensure_sync_enabled(sync_label):
+        return
+
+    api = await build_api_client(state.environment)
+    manager = SyncManager(api, config.max_concurrency)
+
+    async def progress(msg: str):
+        state.sync_message = msg
+        sync_label.text = msg
+
+    sync_label.text = "Syncing services..."
+    await manager.sync_services(progress=progress)
+    sync_label.text = "Syncing templates..."
+    await manager.sync_templates(progress=progress)
+    sync_label.text = "Sync complete"
+    await refresh_status_badge(status_badge)
+
+
+async def handle_api_keys_sync(status_badge, sync_label) -> None:
+    if not await ensure_sync_enabled(sync_label):
+        return
+
+    api = await build_api_client(state.environment)
+    manager = SyncManager(api, config.max_concurrency)
+
+    async def progress(msg: str):
+        state.sync_message = msg
+        sync_label.text = msg
+
+    sync_label.text = "Syncing services..."
+    await manager.sync_services(progress=progress)
+    sync_label.text = "Syncing API keys..."
+    await manager.sync_api_keys(progress=progress)
+    sync_label.text = "Sync complete"
+    await refresh_status_badge(status_badge)
+
+
 async def refresh_tables() -> None:
     services_table.refresh()
     users_table.refresh()
 
 
 def build_shell() -> tuple:
-    drawer = ui.left_drawer(value=True).props("show-if-above bordered").classes("bg-slate-50")
+    drawer = (
+        ui.left_drawer(value=True)
+        .props("show-if-above bordered")
+        .classes("bg-slate-50")
+    )
     with drawer:
         ui.link("Dashboard", "/")
         ui.link("Send Notification", "/send")
@@ -176,12 +264,15 @@ async def services_page() -> None:
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
 
+    async def page_sync_services():
+        await handle_services_sync(status_badge, sync_label)
+
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Services").classes("text-lg font-semibold")
-        ui.button("Sync Services", on_click=page_refresh)
+        ui.button("Sync Services", on_click=page_sync_services)
         await services_table()
 
 
@@ -198,7 +289,9 @@ async def services_table() -> None:
             "rate_limit": row.rate_limit,
             "research_mode": row.research_mode,
             "count_as_live": row.count_as_live,
-            "permissions": row.permissions[:50] + "..." if row.permissions and len(row.permissions) > 50 else row.permissions,
+            "permissions": row.permissions[:50] + "..."
+            if row.permissions and len(row.permissions) > 50
+            else row.permissions,
         }
         for row in rows
     ]
@@ -226,12 +319,15 @@ async def users_page() -> None:
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
 
+    async def page_sync_users():
+        await handle_users_sync(status_badge, sync_label)
+
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Users").classes("text-lg font-semibold")
-        ui.button("Sync Users", on_click=page_refresh)
+        ui.button("Sync Users", on_click=page_sync_users)
         await users_table()
 
 
@@ -270,6 +366,9 @@ async def templates_page() -> None:
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
 
+    async def page_sync_templates():
+        await handle_templates_sync(status_badge, sync_label)
+
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
@@ -278,11 +377,15 @@ async def templates_page() -> None:
         filter_row = ui.row().classes("gap-2")
         service_options = {svc.id: svc.name for svc in await list_services()}
         type_options = {"email": "Email", "sms": "SMS", "letter": "Letter"}
-        service_select = ui.select(service_options, label="Service", with_input=True).props("clearable")
-        type_select = ui.select(type_options, label="Type", with_input=True).props("clearable")
+        service_select = ui.select(
+            service_options, label="Service", with_input=True
+        ).props("clearable")
+        type_select = ui.select(type_options, label="Type", with_input=True).props(
+            "clearable"
+        )
 
         async def handle_sync_templates() -> None:
-            await page_refresh()
+            await page_sync_templates()
             render_table.refresh()
 
         @ui.refreshable
@@ -299,9 +402,13 @@ async def templates_page() -> None:
                     "version": row.version,
                     "archived": row.archived,
                     "hidden": row.hidden,
-                    "updated_at": row.updated_at[:10] if row.updated_at else None,  # Show date only
+                    "updated_at": row.updated_at[:10]
+                    if row.updated_at
+                    else None,  # Show date only
                     "subject": row.subject,
-                    "content": row.content[:50] + "..." if row.content and len(row.content) > 50 else row.content,
+                    "content": row.content[:50] + "..."
+                    if row.content and len(row.content) > 50
+                    else row.content,
                 }
                 for row in rows
             ]
@@ -310,7 +417,11 @@ async def templates_page() -> None:
                     {"name": "id", "label": "ID", "field": "id"},
                     {"name": "service_id", "label": "Service", "field": "service_id"},
                     {"name": "name", "label": "Name", "field": "name"},
-                    {"name": "template_type", "label": "Type", "field": "template_type"},
+                    {
+                        "name": "template_type",
+                        "label": "Type",
+                        "field": "template_type",
+                    },
                     {"name": "version", "label": "Version", "field": "version"},
                     {"name": "archived", "label": "Archived", "field": "archived"},
                     {"name": "hidden", "label": "Hidden", "field": "hidden"},
@@ -335,18 +446,23 @@ async def api_keys_page() -> None:
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
 
+    async def page_sync_api_keys():
+        await handle_api_keys_sync(status_badge, sync_label)
+
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("API Keys").classes("text-lg font-semibold")
-        
+
         services = await list_services()
         service_options = {svc.id: svc.name for svc in services}
-        service_select = ui.select(service_options, label="Filter by Service", with_input=True).props("clearable")
+        service_select = ui.select(
+            service_options, label="Filter by Service", with_input=True
+        ).props("clearable")
 
         async def handle_sync_keys() -> None:
-            await page_refresh()
+            await page_sync_api_keys()
             render_table.refresh()
 
         @ui.refreshable
@@ -370,11 +486,19 @@ async def api_keys_page() -> None:
             ui.table(
                 columns=[
                     {"name": "id", "label": "ID", "field": "id"},
-                    {"name": "service_id", "label": "Service ID", "field": "service_id"},
+                    {
+                        "name": "service_id",
+                        "label": "Service ID",
+                        "field": "service_id",
+                    },
                     {"name": "name", "label": "Name", "field": "name"},
                     {"name": "key_type", "label": "Type", "field": "key_type"},
                     {"name": "expiry_date", "label": "Expires", "field": "expiry_date"},
-                    {"name": "created_by", "label": "Created By", "field": "created_by"},
+                    {
+                        "name": "created_by",
+                        "label": "Created By",
+                        "field": "created_by",
+                    },
                     {"name": "created_at", "label": "Created", "field": "created_at"},
                     {"name": "revoked", "label": "Revoked", "field": "revoked"},
                     {"name": "version", "label": "Version", "field": "version"},
@@ -404,11 +528,17 @@ async def send_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Send Notification").classes("text-lg font-semibold")
-        env_select = ui.select(env_options, value=state.environment, label="Environment")
-        service_select = ui.select(service_options, label="Service", with_input=True).props("clearable")
+        env_select = ui.select(
+            env_options, value=state.environment, label="Environment"
+        )
+        service_select = ui.select(
+            service_options, label="Service", with_input=True
+        ).props("clearable")
         key_select = ui.select({}, label="API Key").props("clearable")
         type_toggle = ui.toggle({"email": "Email", "sms": "SMS"}, value="email")
-        template_select = ui.select({}, label="Template", with_input=True).props("clearable")
+        template_select = ui.select({}, label="Template", with_input=True).props(
+            "clearable"
+        )
         recipient_input = ui.input(label="Recipient")
         personalisation_area = ui.column()
         response_log = ui.code("", language="json").classes("w-full bg-gray-50")
@@ -431,7 +561,9 @@ async def send_page() -> None:
             tmpl = next((t for t in templates if t.id == selected_id), None)
             if not tmpl:
                 return
-            placeholders = extract_placeholders((tmpl.subject or "") + " " + (tmpl.content or ""))
+            placeholders = extract_placeholders(
+                (tmpl.subject or "") + " " + (tmpl.content or "")
+            )
             for name in placeholders:
                 ui.input(label=name, placeholder=name)
 
@@ -442,14 +574,20 @@ async def send_page() -> None:
             selected_template = template_select.value
             t_type = type_toggle.value
             recipient = recipient_input.value or ""
-            if not (selected_env and selected_service and selected_key and selected_template):
-                ui.notify("Environment, service, key, and template are required", color="red")
+            if not (
+                selected_env and selected_service and selected_key and selected_template
+            ):
+                ui.notify(
+                    "Environment, service, key, and template are required", color="red"
+                )
                 return
             if not validate_recipient(t_type, recipient):
                 ui.notify("Recipient format looks invalid", color="red")
                 return
 
-            personalisation_inputs = [c for c in personalisation_area.children if isinstance(c, Input)]
+            personalisation_inputs = [
+                c for c in personalisation_area.children if isinstance(c, Input)
+            ]
             personalisation: Dict[str, Any] = {}
             for control in personalisation_inputs:
                 personalisation[control.label] = control.value or ""
@@ -513,52 +651,64 @@ async def settings_page() -> None:
 
         with ui.card().classes("p-6 w-full"):
             ui.label("Environment Settings").classes("text-md font-semibold")
-            ui.label("Select the current active environment:").classes("text-sm text-gray-600 mb-2")
-            
+            ui.label("Select the current active environment:").classes(
+                "text-sm text-gray-600 mb-2"
+            )
+
             env_select = ui.select(
                 options={env: env.title() for env in env_options},
                 value=state.environment,
-                label="Current Environment"
+                label="Current Environment",
             ).classes("w-64")
-            
+
             async def handle_env_change(e):
                 state.environment = e.value
                 await refresh_status_badge(status_badge)
                 ui.notify(f"Switched to {e.value} environment", color="info")
-            
+
             env_select.on_value_change(handle_env_change)
 
         with ui.card().classes("p-6 w-full"):
             ui.label("Sync Settings").classes("text-md font-semibold")
-            ui.label("Select which environments are allowed to sync data:").classes("text-sm text-gray-600 mb-2")
-            
+            ui.label("Select which environments are allowed to sync data:").classes(
+                "text-sm text-gray-600 mb-2"
+            )
+
             env_checkboxes: Dict[str, ui.checkbox] = {}
             for env in env_options:
                 is_enabled = env in state.enabled_sync_environments
                 checkbox = ui.checkbox(env.title(), value=is_enabled)
                 env_checkboxes[env] = checkbox
-                
+
                 def make_handler(environment):
                     def handler(e):
                         if e.value:
                             state.enabled_sync_environments.add(environment)
-                            ui.notify(f"Syncing enabled for {environment}", color="positive")
+                            ui.notify(
+                                f"Syncing enabled for {environment}", color="positive"
+                            )
                         else:
                             state.enabled_sync_environments.discard(environment)
-                            ui.notify(f"Syncing disabled for {environment}", color="info")
+                            ui.notify(
+                                f"Syncing disabled for {environment}", color="info"
+                            )
+
                     return handler
-                
+
                 checkbox.on_value_change(make_handler(env))
 
         with ui.card().classes("p-6 w-full"):
             ui.label("API Configuration").classes("text-md font-semibold")
             rows = []
             for env in env_options:
-                current_url = await get_setting(f"base_url_{env}") or config.api_hosts.get(env)
+                current_url = await get_setting(
+                    f"base_url_{env}"
+                ) or config.api_hosts.get(env)
                 rows.append((env, current_url))
             inputs: Dict[str, ui.input] = {}
             for env, url in rows:
                 inputs[env] = ui.input(label=f"{env.title()} Base URL", value=url)
+
             async def handle_save_urls() -> None:
                 await save_base_urls(inputs)
 
@@ -568,15 +718,24 @@ async def settings_page() -> None:
             )
 
         with ui.card().classes("p-6 w-full"):
-            ui.label("Global Admin Auth (per environment)").classes("text-md font-semibold")
+            ui.label("Global Admin Auth (per environment)").classes(
+                "text-md font-semibold"
+            )
             auth_inputs: Dict[str, Dict[str, ui.input]] = {}
             for env in env_options:
-                user_val = await get_secure_setting(f"basic_username_{env}", encryption) or ""
-                pass_val = await get_secure_setting(f"basic_password_{env}", encryption) or ""
+                user_val = (
+                    await get_secure_setting(f"basic_username_{env}", encryption) or ""
+                )
+                pass_val = (
+                    await get_secure_setting(f"basic_password_{env}", encryption) or ""
+                )
                 auth_inputs[env] = {
                     "user": ui.input(label=f"{env.title()} Username", value=user_val),
-                    "pass": ui.input(label=f"{env.title()} Password", value=pass_val, password=True),
+                    "pass": ui.input(
+                        label=f"{env.title()} Password", value=pass_val, password=True
+                    ),
                 }
+
             async def handle_save_auth() -> None:
                 await save_admin_auth(auth_inputs)
 
@@ -592,9 +751,14 @@ async def settings_page() -> None:
             key_service = ui.select(service_options, label="Service", with_input=True)
             key_name = ui.input(label="Key Name")
             key_secret = ui.input(label="Key Secret", password=True)
-            key_type = ui.select({"normal": "Normal", "team": "Team", "test": "Test"}, value="normal")
+            key_type = ui.select(
+                {"normal": "Normal", "team": "Team", "test": "Test"}, value="normal"
+            )
+
             async def handle_add_key() -> None:
-                await save_local_key(key_service.value, key_name.value, key_secret.value, key_type.value)
+                await save_local_key(
+                    key_service.value, key_name.value, key_secret.value, key_type.value
+                )
 
             ui.button(
                 "Add Key",
@@ -621,7 +785,9 @@ async def save_admin_auth(auth_inputs: Dict[str, Dict[str, ui.input]]) -> None:
     ui.notify("Admin credentials saved", color="green")
 
 
-async def save_local_key(service_id: Optional[str], name: str, secret: str, key_type: str) -> None:
+async def save_local_key(
+    service_id: Optional[str], name: str, secret: str, key_type: str
+) -> None:
     if not (service_id and name and secret):
         ui.notify("Service, name, and secret are required", color="red")
         return
@@ -634,7 +800,12 @@ async def save_local_key(service_id: Optional[str], name: str, secret: str, key_
 async def render_local_keys() -> None:
     keys = await list_local_keys()
     rows: List[Dict[str, Any]] = [
-        {"id": k.id, "service_id": k.service_id, "key_name": k.key_name, "key_type": k.key_type}
+        {
+            "id": k.id,
+            "service_id": k.service_id,
+            "key_name": k.key_name,
+            "key_type": k.key_type,
+        }
         for k in keys
     ]
     ui.table(
