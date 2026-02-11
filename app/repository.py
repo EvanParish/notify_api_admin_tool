@@ -9,6 +9,14 @@ from .db import get_session
 from .models import ApiKey, LocalApiKey, Service, Setting, SmsSender, Template
 
 
+def _is_archived_value(value: Optional[str]) -> bool:
+    return bool(value) and value.lower().startswith("_archive")
+
+
+def _is_archived(*values: Optional[str]) -> bool:
+    return any(_is_archived_value(value) for value in values)
+
+
 async def get_setting(key: str) -> Optional[str]:
     async with get_session() as session:
         result = await session.execute(select(Setting).where(Setting.key == key))
@@ -45,7 +53,8 @@ async def list_services(environment: Optional[str] = None) -> List[Service]:
         query = select(Service)
         if environment:
             query = query.where(or_(Service.environment == environment, Service.environment.is_(None)))
-        return list((await session.execute(query)).scalars().all())
+        rows = list((await session.execute(query)).scalars().all())
+        return [row for row in rows if not _is_archived(row.id, row.name)]
 
 
 async def list_templates(
@@ -63,7 +72,8 @@ async def list_templates(
             query = query.where(
                 or_(Template.environment == environment, Template.environment.is_(None))
             )
-        return list((await session.execute(query)).scalars().all())
+        rows = list((await session.execute(query)).scalars().all())
+        return [row for row in rows if not _is_archived(row.id, row.name)]
 
 
 async def list_local_keys(service_id: Optional[str] = None) -> List[LocalApiKey]:
@@ -71,7 +81,8 @@ async def list_local_keys(service_id: Optional[str] = None) -> List[LocalApiKey]
         query = select(LocalApiKey)
         if service_id:
             query = query.where(LocalApiKey.service_id == service_id)
-        return list((await session.execute(query)).scalars().all())
+        rows = list((await session.execute(query)).scalars().all())
+        return [row for row in rows if not _is_archived(str(row.id), row.key_name)]
 
 
 async def add_local_key(
@@ -109,7 +120,8 @@ async def list_api_keys(
             query = query.where(ApiKey.service_id == service_id)
         if environment:
             query = query.where(or_(ApiKey.environment == environment, ApiKey.environment.is_(None)))
-        return list((await session.execute(query)).scalars().all())
+        rows = list((await session.execute(query)).scalars().all())
+        return [row for row in rows if not _is_archived(row.id, row.name)]
 
 
 async def list_sms_senders(
@@ -123,4 +135,9 @@ async def list_sms_senders(
             query = query.where(
                 or_(SmsSender.environment == environment, SmsSender.environment.is_(None))
             )
-        return list((await session.execute(query)).scalars().all())
+        rows = list((await session.execute(query)).scalars().all())
+        return [
+            row
+            for row in rows
+            if not _is_archived(row.id, row.sms_sender, row.description)
+        ]

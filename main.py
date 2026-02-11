@@ -67,6 +67,7 @@ class AppState:
 config: AppConfig = load_config()
 encryption = EncryptionManager(config.master_key)
 state = AppState(environment=next(iter(config.api_hosts.keys()), "dev"))
+service_search_query = ""
 
 ui.add_head_html(
         """
@@ -457,6 +458,12 @@ def format_service_label(service) -> str:
     return f"{service.name} ({format_environment(service.environment)})"
 
 
+def truncate_text(value: Optional[str], limit: int = 50) -> Optional[str]:
+    if not value:
+        return value
+    return value[:limit] + "..." if len(value) > limit else value
+
+
 def get_view_environment() -> Optional[str]:
     return None if state.view_environment in {"all", None, ""} else state.view_environment
 
@@ -518,6 +525,16 @@ def _matches_expiry_range(
     return True
 
 
+async def handle_service_search(value: Optional[str]) -> None:
+    global service_search_query
+    service_search_query = (value or "").strip().lower()
+    await refresh_if_needed(services_table)
+
+
+async def handle_service_search_event(e) -> None:
+    await handle_service_search(getattr(e, "value", None))
+
+
 @ui.page("/services")
 async def services_page() -> None:
     status_badge, sync_label, refresh_button, dark_mode = build_shell(
@@ -536,6 +553,10 @@ async def services_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Services").classes("text-lg font-semibold")
+        service_search = ui.input(
+            label="Search by Service ID or Name"
+        ).classes("w-full md:w-1/2")
+        service_search.on_value_change(handle_service_search_event)
         ui.button("Sync Services", on_click=page_sync_services)
         await services_table()
 
@@ -543,6 +564,13 @@ async def services_page() -> None:
 @ui.refreshable
 async def services_table() -> None:
     rows = await list_services(get_view_environment())
+    if service_search_query:
+        rows = [
+            row
+            for row in rows
+            if service_search_query in (row.id or "").lower()
+            or service_search_query in (row.name or "").lower()
+        ]
     table_rows: List[Dict[str, Any]] = [
         {
             "id": row.id,
@@ -640,7 +668,7 @@ async def templates_page() -> None:
                     "id": row.id,
                     "environment": format_environment(row.environment),
                     "service_id": row.service_id,
-                    "name": row.name,
+                    "name": truncate_text(row.name),
                     "template_type": row.template_type,
                     "version": row.version,
                     "archived": row.archived,
@@ -648,10 +676,8 @@ async def templates_page() -> None:
                     "updated_at": row.updated_at[:10]
                     if row.updated_at
                     else None,  # Show date only
-                    "subject": row.subject,
-                    "content": row.content[:50] + "..."
-                    if row.content and len(row.content) > 50
-                    else row.content,
+                    "subject": truncate_text(row.subject),
+                    "content": truncate_text(row.content),
                 }
                 for row in rows
             ]
