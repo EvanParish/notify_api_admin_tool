@@ -22,13 +22,14 @@ class SyncManager:
     ) -> None:
         self.api = api
         self.max_concurrency = max_concurrency
-        self.environment = environment
+        self.environment = environment or "unknown"
         self._semaphore = asyncio.Semaphore(max_concurrency)
 
     async def sync_all(self, progress: ProgressCallback = None) -> None:
         await self.sync_services(progress)
         await self.sync_templates(progress)
         await self.sync_api_keys(progress)
+        await self.sync_sms_senders(progress)
 
     async def sync_services(self, progress: ProgressCallback = None) -> None:
         if progress:
@@ -138,6 +139,45 @@ class SyncManager:
                         created_at=key.get("created_at"),
                         revoked=key.get("revoked", False),
                         version=key.get("version"),
+                    )
+                    await session.merge(record)
+                await session.commit()
+
+    async def sync_sms_senders(self, progress: ProgressCallback = None) -> None:
+        async with get_session() as session:
+            query = select(models.Service.id)
+            if self.environment:
+                query = query.where(models.Service.environment == self.environment)
+            service_rows = (await session.execute(query)).scalars().all()
+
+        tasks = [self._sync_sms_senders_for_service(sid, progress) for sid in service_rows]
+        await asyncio.gather(*tasks)
+
+    async def _sync_sms_senders_for_service(
+        self, service_id: str, progress: ProgressCallback
+    ) -> None:
+        async with self._semaphore:
+            if progress:
+                await progress(f"SMS senders for {service_id}")
+            sms_senders = await self.api.get_sms_senders(service_id)
+            async with get_session() as session:
+                for sender in sms_senders:
+                    record = models.SmsSender(
+                        id=sender.get("id"),
+                        environment=self.environment,
+                        service_id=sender.get("service_id") or service_id,
+                        sms_sender=sender.get("sms_sender", ""),
+                        is_default=sender.get("is_default", False),
+                        archived=sender.get("archived", False),
+                        description=sender.get("description"),
+                        provider_id=sender.get("provider_id"),
+                        provider_name=sender.get("provider_name"),
+                        inbound_number_id=sender.get("inbound_number_id"),
+                        rate_limit=sender.get("rate_limit"),
+                        rate_limit_interval=sender.get("rate_limit_interval"),
+                        sms_sender_specifics=sender.get("sms_sender_specifics"),
+                        created_at=sender.get("created_at"),
+                        updated_at=sender.get("updated_at"),
                     )
                     await session.merge(record)
                 await session.commit()

@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 
 from .crypto import EncryptionManager
 from .db import get_session
-from .models import ApiKey, LocalApiKey, Service, Setting, Template
+from .models import ApiKey, LocalApiKey, Service, Setting, SmsSender, Template
 
 
 async def get_setting(key: str) -> Optional[str]:
@@ -109,4 +109,18 @@ async def list_api_keys(
             query = query.where(ApiKey.service_id == service_id)
         if environment:
             query = query.where(or_(ApiKey.environment == environment, ApiKey.environment.is_(None)))
+        return list((await session.execute(query)).scalars().all())
+
+
+async def list_sms_senders(
+    service_id: Optional[str] = None, environment: Optional[str] = None
+) -> List[SmsSender]:
+    async with get_session() as session:
+        query = select(SmsSender)
+        if service_id:
+            query = query.where(SmsSender.service_id == service_id)
+        if environment:
+            query = query.where(
+                or_(SmsSender.environment == environment, SmsSender.environment.is_(None))
+            )
         return list((await session.execute(query)).scalars().all())

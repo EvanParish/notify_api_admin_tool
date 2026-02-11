@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Dict, List, Optional
 
+import httpx
 from nicegui import app, ui
 from nicegui.client import Client
 from nicegui.elements.input import Input
@@ -22,6 +23,7 @@ from app.repository import (
     get_setting,
     list_api_keys,
     list_local_keys,
+    list_sms_senders,
     list_services,
     list_templates,
     resolve_local_key,
@@ -137,6 +139,11 @@ async def build_api_client(env: str) -> NotificationAPI:
 
 
 async def refresh_status_badge(badge) -> None:
+    if not await has_admin_auth(state.environment):
+        state.api_status = "auth missing"
+        badge.text = "API Status: Auth Missing"
+        badge.props("color=pink")
+        return
     api = await build_api_client(state.environment)
     ok = await api.healthcheck()
     state.api_status = "online" if ok else "offline"
@@ -160,6 +167,9 @@ async def handle_full_sync(status_badge, sync_label) -> None:
     if not await ensure_sync_enabled(sync_label):
         return
 
+    if not await ensure_admin_auth(state.environment, sync_label):
+        return
+
     api = await build_api_client(state.environment)
     manager = SyncManager(api, config.max_concurrency, environment=state.environment)
 
@@ -168,7 +178,13 @@ async def handle_full_sync(status_badge, sync_label) -> None:
         sync_label.text = msg
 
     sync_label.text = "Starting sync..."
-    await manager.sync_all(progress=progress)
+    try:
+        await manager.sync_all(progress=progress)
+    except httpx.HTTPStatusError as exc:
+        if exc.response and exc.response.status_code == 401:
+            handle_unauthorized(sync_label, state.environment)
+            return
+        raise
     sync_label.text = "Sync complete"
     await refresh_tables()
     await refresh_status_badge(status_badge)
@@ -178,6 +194,9 @@ async def handle_services_sync(status_badge, sync_label) -> None:
     if not await ensure_sync_enabled(sync_label):
         return
 
+    if not await ensure_admin_auth(state.environment, sync_label):
+        return
+
     api = await build_api_client(state.environment)
     manager = SyncManager(api, config.max_concurrency, environment=state.environment)
 
@@ -186,7 +205,13 @@ async def handle_services_sync(status_badge, sync_label) -> None:
         sync_label.text = msg
 
     sync_label.text = "Syncing services..."
-    await manager.sync_services(progress=progress)
+    try:
+        await manager.sync_services(progress=progress)
+    except httpx.HTTPStatusError as exc:
+        if exc.response and exc.response.status_code == 401:
+            handle_unauthorized(sync_label, state.environment)
+            return
+        raise
     sync_label.text = "Sync complete"
     await refresh_if_needed(services_table)
     await refresh_status_badge(status_badge)
@@ -196,23 +221,7 @@ async def handle_templates_sync(status_badge, sync_label) -> None:
     if not await ensure_sync_enabled(sync_label):
         return
 
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing services..."
-    await manager.sync_services(progress=progress)
-    sync_label.text = "Syncing templates..."
-    await manager.sync_templates(progress=progress)
-    sync_label.text = "Sync complete"
-    await refresh_status_badge(status_badge)
-
-
-async def handle_api_keys_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
+    if not await ensure_admin_auth(state.environment, sync_label):
         return
 
     api = await build_api_client(state.environment)
@@ -223,9 +232,71 @@ async def handle_api_keys_sync(status_badge, sync_label) -> None:
         sync_label.text = msg
 
     sync_label.text = "Syncing services..."
-    await manager.sync_services(progress=progress)
-    sync_label.text = "Syncing API keys..."
-    await manager.sync_api_keys(progress=progress)
+    try:
+        await manager.sync_services(progress=progress)
+        sync_label.text = "Syncing templates..."
+        await manager.sync_templates(progress=progress)
+    except httpx.HTTPStatusError as exc:
+        if exc.response and exc.response.status_code == 401:
+            handle_unauthorized(sync_label, state.environment)
+            return
+        raise
+    sync_label.text = "Sync complete"
+    await refresh_status_badge(status_badge)
+
+
+async def handle_api_keys_sync(status_badge, sync_label) -> None:
+    if not await ensure_sync_enabled(sync_label):
+        return
+
+    if not await ensure_admin_auth(state.environment, sync_label):
+        return
+
+    api = await build_api_client(state.environment)
+    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
+
+    async def progress(msg: str):
+        state.sync_message = msg
+        sync_label.text = msg
+
+    sync_label.text = "Syncing services..."
+    try:
+        await manager.sync_services(progress=progress)
+        sync_label.text = "Syncing API keys..."
+        await manager.sync_api_keys(progress=progress)
+    except httpx.HTTPStatusError as exc:
+        if exc.response and exc.response.status_code == 401:
+            handle_unauthorized(sync_label, state.environment)
+            return
+        raise
+    sync_label.text = "Sync complete"
+    await refresh_status_badge(status_badge)
+
+
+async def handle_sms_senders_sync(status_badge, sync_label) -> None:
+    if not await ensure_sync_enabled(sync_label):
+        return
+
+    if not await ensure_admin_auth(state.environment, sync_label):
+        return
+
+    api = await build_api_client(state.environment)
+    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
+
+    async def progress(msg: str):
+        state.sync_message = msg
+        sync_label.text = msg
+
+    sync_label.text = "Syncing services..."
+    try:
+        await manager.sync_services(progress=progress)
+        sync_label.text = "Syncing SMS senders..."
+        await manager.sync_sms_senders(progress=progress)
+    except httpx.HTTPStatusError as exc:
+        if exc.response and exc.response.status_code == 401:
+            handle_unauthorized(sync_label, state.environment)
+            return
+        raise
     sync_label.text = "Sync complete"
     await refresh_status_badge(status_badge)
 
@@ -263,6 +334,7 @@ def build_shell(on_view_env_change=None) -> tuple:
         ui.link("Services", "/services")
         ui.link("Templates", "/templates")
         ui.link("API Keys", "/api-keys")
+        ui.link("SMS Senders", "/sms-senders")
         ui.link("Settings", "/settings")
 
     dark_mode = ui.dark_mode()
@@ -387,6 +459,39 @@ def format_service_label(service) -> str:
 
 def get_view_environment() -> Optional[str]:
     return None if state.view_environment in {"all", None, ""} else state.view_environment
+
+
+def safe_notify(message: str, color: str = "warning") -> None:
+    try:
+        ui.notify(message, color=color)
+    except RuntimeError:
+        logger.warning("UI notify skipped: %s", message)
+
+
+async def has_admin_auth(env: str) -> bool:
+    if config.use_mock_api or os.getenv("PYTEST_CURRENT_TEST"):
+        return True
+    basic_user = await get_secure_setting(f"basic_username_{env}", encryption)
+    basic_pass = await get_secure_setting(f"basic_password_{env}", encryption)
+    return bool(basic_user and basic_pass)
+
+
+async def ensure_admin_auth(env: str, sync_label) -> bool:
+    if await has_admin_auth(env):
+        return True
+    message = (
+        f"Missing admin auth for {env}. "
+        "Set credentials in Settings > Global Admin Auth."
+    )
+    sync_label.text = message
+    safe_notify(message, color="warning")
+    return False
+
+
+def handle_unauthorized(sync_label, env: str) -> None:
+    message = f"Unauthorized for {env}. Check Global Admin Auth settings."
+    sync_label.text = message
+    safe_notify(message, color="warning")
 
 
 def _parse_filter_date(value: Optional[str]) -> Optional[date]:
@@ -679,6 +784,123 @@ async def api_keys_page() -> None:
         expires_from.on_value_change(lambda _: render_table.refresh())
         expires_to.on_value_change(lambda _: render_table.refresh())
         ui.button("Sync API Keys", on_click=handle_sync_keys)
+        await render_table()
+
+
+@ui.page("/sms-senders")
+async def sms_senders_page() -> None:
+    async def refresh_service_options() -> None:
+        options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
+        service_select.set_options(options)
+        if service_select.value not in options:
+            service_select.value = None
+
+    async def handle_view_env_change() -> None:
+        await refresh_service_options()
+        await refresh_if_needed(render_table)
+
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=handle_view_env_change
+    )
+    await ensure_theme_preference(dark_mode)
+
+    async def page_refresh():
+        await handle_full_sync(status_badge, sync_label)
+
+    async def page_sync_sms_senders():
+        await handle_sms_senders_sync(status_badge, sync_label)
+
+    refresh_button.on_click(page_refresh)
+    await refresh_status_badge(status_badge)
+
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
+        ui.label("SMS Senders").classes("text-lg font-semibold")
+
+        service_options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
+        service_select = ui.select(
+            service_options, label="Filter by Service", with_input=True
+        ).props("clearable")
+
+        async def handle_sync_senders() -> None:
+            await page_sync_sms_senders()
+            render_table.refresh()
+
+        @ui.refreshable
+        async def render_table() -> None:
+            selected_service = service_select.value
+            senders = await list_sms_senders(
+                selected_service, environment=get_view_environment()
+            )
+            table_rows: List[Dict[str, Any]] = [
+                {
+                    "id": sender.id,
+                    "environment": format_environment(sender.environment),
+                    "service_id": sender.service_id,
+                    "sms_sender": sender.sms_sender,
+                    "is_default": sender.is_default,
+                    "archived": sender.archived,
+                    "description": sender.description,
+                    "provider_name": sender.provider_name,
+                    "rate_limit": sender.rate_limit,
+                    "rate_limit_interval": sender.rate_limit_interval,
+                    "created_at": sender.created_at[:10] if sender.created_at else None,
+                    "updated_at": sender.updated_at[:10] if sender.updated_at else None,
+                }
+                for sender in senders
+            ]
+            ui.table(
+                columns=make_sortable(
+                    [
+                        {"name": "id", "label": "ID", "field": "id"},
+                        {
+                            "name": "environment",
+                            "label": "Environment",
+                            "field": "environment",
+                        },
+                        {"name": "service_id", "label": "Service", "field": "service_id"},
+                        {
+                            "name": "sms_sender",
+                            "label": "SMS Sender",
+                            "field": "sms_sender",
+                        },
+                        {"name": "is_default", "label": "Default", "field": "is_default"},
+                        {"name": "archived", "label": "Archived", "field": "archived"},
+                        {
+                            "name": "description",
+                            "label": "Description",
+                            "field": "description",
+                        },
+                        {
+                            "name": "provider_name",
+                            "label": "Provider",
+                            "field": "provider_name",
+                        },
+                        {
+                            "name": "rate_limit",
+                            "label": "Rate Limit",
+                            "field": "rate_limit",
+                        },
+                        {
+                            "name": "rate_limit_interval",
+                            "label": "Rate Interval",
+                            "field": "rate_limit_interval",
+                        },
+                        {"name": "created_at", "label": "Created", "field": "created_at"},
+                        {"name": "updated_at", "label": "Updated", "field": "updated_at"},
+                    ]
+                ),
+                rows=table_rows,
+                pagination={"rowsPerPage": 10},
+            ).props("row-key=id").classes("w-full")
+
+        service_select.on_value_change(lambda _: render_table.refresh())
+        ui.button("Sync SMS Senders", on_click=handle_sync_senders)
         await render_table()
 
 

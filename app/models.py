@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, JSON
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, JSON, and_
+from sqlalchemy.orm import Mapped, mapped_column, relationship, foreign
 
 from .db import Base
 
@@ -11,7 +11,9 @@ class Service(Base):
     __tablename__ = "services"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    environment: Mapped[str] = mapped_column(
+        String, primary_key=True, default="unknown", index=True
+    )
     name: Mapped[str] = mapped_column(String, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     restricted: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -29,15 +31,23 @@ class Service(Base):
     go_live_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    templates: Mapped[list["Template"]] = relationship(back_populates="service")
+    templates: Mapped[list["Template"]] = relationship(
+        back_populates="service",
+        primaryjoin=lambda: and_(
+            Service.id == foreign(Template.service_id),
+            Service.environment == foreign(Template.environment),
+        ),
+    )
 
 
 class Template(Base):
     __tablename__ = "templates"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
-    service_id: Mapped[str] = mapped_column(ForeignKey("services.id"))
+    environment: Mapped[str] = mapped_column(
+        String, default="unknown", index=True
+    )
+    service_id: Mapped[str] = mapped_column(String)
     name: Mapped[str] = mapped_column(String)
     template_type: Mapped[str] = mapped_column(Enum("email", "sms", name="template_type"))
     content: Mapped[str] = mapped_column(Text)
@@ -53,7 +63,13 @@ class Template(Base):
     created_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reply_to_email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    service: Mapped[Service] = relationship(back_populates="templates")
+    service: Mapped[Service] = relationship(
+        back_populates="templates",
+        primaryjoin=lambda: and_(
+            Service.id == foreign(Template.service_id),
+            Service.environment == foreign(Template.environment),
+        ),
+    )
 
 
 class ApiKey(Base):
@@ -61,7 +77,7 @@ class ApiKey(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
-    service_id: Mapped[Optional[str]] = mapped_column(ForeignKey("services.id"), nullable=True)
+    service_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String)
     key_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     expiry_date: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -69,6 +85,26 @@ class ApiKey(Base):
     created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class SmsSender(Base):
+    __tablename__ = "sms_senders"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    service_id: Mapped[str] = mapped_column(ForeignKey("services.id"))
+    sms_sender: Mapped[str] = mapped_column(String)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    provider_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    provider_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    inbound_number_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    rate_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    rate_limit_interval: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    sms_sender_specifics: Mapped[Optional[str]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class LocalApiKey(Base):
