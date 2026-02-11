@@ -266,13 +266,15 @@ def build_shell(on_view_env_change=None) -> tuple:
         ui.link("Settings", "/settings")
 
     dark_mode = ui.dark_mode()
-    with ui.header().classes("items-center justify-between bg-gray-300 dark:bg-slate-800"):
+    with ui.header().classes("items-center justify-between bg-gray-200 dark:bg-slate-800"):
         with ui.row().classes("items-center gap-3"):
             ui.button(icon="menu", on_click=drawer.toggle).props("flat round dense")
-            ui.label("Notification Admin Dashboard").classes("text-xl font-medium")
+            ui.label("Notification Admin Dashboard").classes(
+                "text-xl font-medium text-slate-900 dark:text-white"
+            )
         with ui.row().classes("items-center gap-4"):
             status_badge = ui.badge("API Status: Unknown", color="gray")
-            sync_label = ui.label("")
+            sync_label = ui.label("").classes("text-slate-900 dark:text-white")
             env_options = {"all": "All"}
             env_options.update({env: env.title() for env in config.api_hosts})
             env_select = ui.select(
