@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from nicegui import app, ui
+from nicegui.client import Client
 from nicegui.elements.input import Input
 
 from app.api_client import HttpNotificationAPI, MockNotificationAPI, NotificationAPI
@@ -27,6 +29,20 @@ from app.repository import (
 from app.sync import SyncManager
 from app.utils import extract_placeholders, validate_recipient
 
+logger = logging.getLogger(__name__)
+_original_client_delete = Client.delete
+
+
+def _safe_client_delete(self) -> None:
+    try:
+        _original_client_delete(self)
+    except KeyError:
+        logger.warning("NiceGUI client already deleted: %s", self.id)
+        self._deleted = True
+
+
+Client.delete = _safe_client_delete
+
 
 @dataclass
 class AppState:
@@ -44,6 +60,39 @@ class AppState:
 config: AppConfig = load_config()
 encryption = EncryptionManager(config.master_key)
 state = AppState(environment=next(iter(config.api_hosts.keys()), "dev"))
+
+ui.add_head_html(
+        """
+        <meta name="color-scheme" content="dark light">
+        <style>
+            html, body, #q-app, .q-layout, .q-page-container {
+                background-color: #0b0f14 !important;
+                color-scheme: dark;
+            }
+            body.body--light, body.body--light #q-app, body.body--light .q-layout, body.body--light .q-page-container {
+                background-color: #f8fafc !important;
+                color-scheme: light;
+            }
+            body.body--dark, body.body--dark #q-app, body.body--dark .q-layout, body.body--dark .q-page-container {
+                background-color: #0b0f14 !important;
+                color-scheme: dark;
+            }
+        </style>
+        <script>
+            document.documentElement.style.backgroundColor = '#0b0f14';
+            document.documentElement.classList.add('body--dark');
+            if (document.body) {
+                document.body.style.backgroundColor = '#0b0f14';
+                document.body.classList.add('body--dark');
+            } else {
+                document.addEventListener('DOMContentLoaded', () => {
+                    document.body.style.backgroundColor = '#0b0f14';
+                    document.body.classList.add('body--dark');
+                });
+            }
+        </script>
+        """
+)
 
 # Only initialize database if not in test mode
 # Tests will call init_engine with their own temporary database
@@ -180,11 +229,28 @@ async def refresh_tables() -> None:
     services_table.refresh()
 
 
+def set_theme_preference(is_dark: bool) -> None:
+    app.storage.user["theme"] = "dark" if is_dark else "light"
+
+
+def toggle_theme(dark_mode) -> None:
+    dark_mode.toggle()
+    set_theme_preference(dark_mode.value)
+
+
+async def ensure_theme_preference(dark_mode) -> None:
+    stored_theme = app.storage.user.get("theme")
+    if stored_theme not in {"light", "dark"}:
+        stored_theme = "light"
+        app.storage.user["theme"] = stored_theme
+    dark_mode.value = stored_theme == "dark"
+
+
 def build_shell() -> tuple:
     drawer = (
         ui.left_drawer(value=True)
         .props("show-if-above bordered")
-        .classes("bg-slate-50")
+        .classes("bg-slate-50 dark:bg-slate-900")
     )
     with drawer:
         ui.link("Dashboard", "/")
@@ -194,7 +260,8 @@ def build_shell() -> tuple:
         ui.link("API Keys", "/api-keys")
         ui.link("Settings", "/settings")
 
-    with ui.header().classes("items-center justify-between bg-gray-100"):
+    dark_mode = ui.dark_mode()
+    with ui.header().classes("items-center justify-between bg-gray-100 dark:bg-slate-800"):
         with ui.row().classes("items-center gap-3"):
             ui.button(icon="menu", on_click=drawer.toggle).props("flat round dense")
             ui.label("Notification Admin Dashboard").classes("text-xl font-medium")
@@ -202,13 +269,16 @@ def build_shell() -> tuple:
             status_badge = ui.badge("API Status: Unknown", color="gray")
             sync_label = ui.label("")
             refresh_button = ui.button("Refresh All Data")
-    return status_badge, sync_label, refresh_button
+            theme_button = ui.button(icon="dark_mode").props("flat round dense")
+            theme_button.on_click(lambda: toggle_theme(dark_mode))
+    return status_badge, sync_label, refresh_button, dark_mode
 
 
 # Pages
 @ui.page("/")
 async def dashboard_page() -> None:
-    status_badge, sync_label, refresh_button = build_shell()
+    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
@@ -230,13 +300,14 @@ async def dashboard_page() -> None:
 
 def metric_card(title: str, value: int) -> None:
     with ui.card().classes("flex-1 min-w-[240px]"):
-        ui.label(title).classes("text-sm text-gray-600")
+        ui.label(title).classes("text-sm text-gray-600 dark:text-slate-300")
         ui.label(str(value)).classes("text-3xl font-bold")
 
 
 @ui.page("/services")
 async def services_page() -> None:
-    status_badge, sync_label, refresh_button = build_shell()
+    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
@@ -291,7 +362,8 @@ async def services_table() -> None:
 
 @ui.page("/templates")
 async def templates_page() -> None:
-    status_badge, sync_label, refresh_button = build_shell()
+    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
@@ -371,7 +443,8 @@ async def templates_page() -> None:
 
 @ui.page("/api-keys")
 async def api_keys_page() -> None:
-    status_badge, sync_label, refresh_button = build_shell()
+    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
@@ -444,7 +517,8 @@ async def api_keys_page() -> None:
 
 @ui.page("/send")
 async def send_page() -> None:
-    status_badge, sync_label, refresh_button = build_shell()
+    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
@@ -471,7 +545,7 @@ async def send_page() -> None:
         )
         recipient_input = ui.input(label="Recipient")
         personalisation_area = ui.column()
-        response_log = ui.code("", language="json").classes("w-full bg-gray-50")
+        response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
 
         async def load_keys() -> None:
             selected_service = service_select.value
@@ -567,7 +641,8 @@ async def send_page() -> None:
 
 @ui.page("/settings")
 async def settings_page() -> None:
-    status_badge, sync_label, refresh_button = build_shell()
+    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
@@ -582,7 +657,7 @@ async def settings_page() -> None:
         with ui.card().classes("p-6 w-full"):
             ui.label("Environment Settings").classes("text-md font-semibold")
             ui.label("Select the current active environment:").classes(
-                "text-sm text-gray-600 mb-2"
+                "text-sm text-gray-600 dark:text-slate-300 mb-2"
             )
 
             env_select = ui.select(
@@ -601,7 +676,7 @@ async def settings_page() -> None:
         with ui.card().classes("p-6 w-full"):
             ui.label("Sync Settings").classes("text-md font-semibold")
             ui.label("Select which environments are allowed to sync data:").classes(
-                "text-sm text-gray-600 mb-2"
+                "text-sm text-gray-600 dark:text-slate-300 mb-2"
             )
 
             env_checkboxes: Dict[str, ui.checkbox] = {}
@@ -751,4 +826,4 @@ async def render_local_keys() -> None:
 
 
 if __name__ in {"__main__", "__mp_main__"}:
-    ui.run(title="VA Notify Admin", port=8080, reload=True)
+    ui.run(title="VA Notify Admin", port=8080, reload=True, storage_secret=config.master_key)

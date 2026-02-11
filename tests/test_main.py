@@ -468,6 +468,7 @@ def test_build_shell():
          patch('main.ui.badge') as mock_badge, \
          patch('main.ui.label') as mock_label, \
          patch('main.ui.button') as mock_button, \
+            patch('main.ui.dark_mode') as mock_dark_mode, \
          patch('main.ui.link'):
         
         # Set up the mock context managers
@@ -501,13 +502,15 @@ def test_build_shell():
         mock_button_obj = MagicMock()
         mock_button_obj.props = MagicMock(return_value=mock_button_obj)
         mock_button.return_value = mock_button_obj
+
+        mock_dark_mode.return_value = MagicMock()
         
         # Call build_shell
         result = main.build_shell()
         
         # Verify it returns a tuple
         assert isinstance(result, tuple)
-        assert len(result) == 3  # status_badge, sync_label, refresh_button
+        assert len(result) == 4  # status_badge, sync_label, refresh_button, dark_mode
 
 
 @pytest.mark.asyncio  

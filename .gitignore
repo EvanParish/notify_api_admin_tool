@@ -3,6 +3,7 @@ test_output.txt
 data/
 logs/
 *.log
+.nicegui/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

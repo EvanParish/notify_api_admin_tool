@@ -123,7 +123,7 @@ async def test_http_api_get_api_keys():
     api = HttpNotificationAPI("https://api.example.com")
     
     mock_response = MagicMock()
-    mock_response.json.return_value = {"data": [{"id": "key-1"}]}
+    mock_response.json.return_value = {"apiKeys": [{"id": "key-1"}]}
     mock_response.raise_for_status = MagicMock()
     
     with patch.object(api.client, "get", return_value=mock_response) as mock_get:
