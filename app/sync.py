@@ -14,9 +14,15 @@ ProgressCallback = Optional[Callable[[str], Awaitable[None]]]
 
 
 class SyncManager:
-    def __init__(self, api: NotificationAPI, max_concurrency: int = 25) -> None:
+    def __init__(
+        self,
+        api: NotificationAPI,
+        max_concurrency: int = 25,
+        environment: Optional[str] = None,
+    ) -> None:
         self.api = api
         self.max_concurrency = max_concurrency
+        self.environment = environment
         self._semaphore = asyncio.Semaphore(max_concurrency)
 
     async def sync_all(self, progress: ProgressCallback = None) -> None:
@@ -37,6 +43,7 @@ class SyncManager:
                 
                 record = models.Service(
                     id=svc.get("id"),
+                    environment=self.environment,
                     name=svc.get("name", ""),
                     active=svc.get("active", True),
                     restricted=svc.get("restricted", False),
@@ -57,7 +64,10 @@ class SyncManager:
 
     async def sync_templates(self, progress: ProgressCallback = None) -> None:
         async with get_session() as session:
-            service_rows = (await session.execute(select(models.Service.id))).scalars().all()
+            query = select(models.Service.id)
+            if self.environment:
+                query = query.where(models.Service.environment == self.environment)
+            service_rows = (await session.execute(query)).scalars().all()
 
         tasks = [self._sync_templates_for_service(sid, progress) for sid in service_rows]
         await asyncio.gather(*tasks)
@@ -71,6 +81,7 @@ class SyncManager:
                 for tmpl in templates:
                     record = models.Template(
                         id=tmpl.get("id"),
+                        environment=self.environment,
                         service_id=tmpl.get("service") or tmpl.get("service_id") or service_id,
                         name=tmpl.get("name", ""),
                         template_type=tmpl.get("type") or tmpl.get("template_type"),
@@ -90,7 +101,10 @@ class SyncManager:
 
     async def sync_api_keys(self, progress: ProgressCallback = None) -> None:
         async with get_session() as session:
-            service_rows = (await session.execute(select(models.Service.id))).scalars().all()
+            query = select(models.Service.id)
+            if self.environment:
+                query = query.where(models.Service.environment == self.environment)
+            service_rows = (await session.execute(query)).scalars().all()
 
         tasks = [self._sync_api_keys_for_service(sid, progress) for sid in service_rows]
         await asyncio.gather(*tasks)
@@ -115,6 +129,7 @@ class SyncManager:
                 for key in api_keys:
                     record = models.ApiKey(
                         id=key.get("id"),
+                        environment=self.environment,
                         service_id=service_id,
                         name=key.get("name", ""),
                         key_type=key.get("key_type"),

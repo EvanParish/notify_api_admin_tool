@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from .crypto import EncryptionManager
 from .db import get_session
@@ -40,18 +40,29 @@ async def set_secure_setting(key: str, value: str, encryption: EncryptionManager
     await set_setting(key, encrypted)
 
 
-async def list_services() -> List[Service]:
+async def list_services(environment: Optional[str] = None) -> List[Service]:
     async with get_session() as session:
-        return list((await session.execute(select(Service))).scalars().all())
+        query = select(Service)
+        if environment:
+            query = query.where(or_(Service.environment == environment, Service.environment.is_(None)))
+        return list((await session.execute(query)).scalars().all())
 
 
-async def list_templates(service_id: Optional[str] = None, template_type: Optional[str] = None) -> List[Template]:
+async def list_templates(
+    service_id: Optional[str] = None,
+    template_type: Optional[str] = None,
+    environment: Optional[str] = None,
+) -> List[Template]:
     async with get_session() as session:
         query = select(Template)
         if service_id:
             query = query.where(Template.service_id == service_id)
         if template_type:
             query = query.where(Template.template_type == template_type)
+        if environment:
+            query = query.where(
+                or_(Template.environment == environment, Template.environment.is_(None))
+            )
         return list((await session.execute(query)).scalars().all())
 
 
@@ -89,9 +100,13 @@ async def resolve_local_key(encryption: EncryptionManager, key_id: int) -> str:
         return await encryption.decrypt(record.key_secret)
 
 
-async def list_api_keys(service_id: Optional[str] = None) -> List[ApiKey]:
+async def list_api_keys(
+    service_id: Optional[str] = None, environment: Optional[str] = None
+) -> List[ApiKey]:
     async with get_session() as session:
         query = select(ApiKey)
         if service_id:
             query = query.where(ApiKey.service_id == service_id)
+        if environment:
+            query = query.where(or_(ApiKey.environment == environment, ApiKey.environment.is_(None)))
         return list((await session.execute(query)).scalars().all())

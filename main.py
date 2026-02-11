@@ -49,6 +49,7 @@ Client.delete = _safe_client_delete
 @dataclass
 class AppState:
     environment: str
+    view_environment: str = "all"
     api_status: str = "unknown"
     sync_message: str = ""
     dev_only_mode: bool = True
@@ -57,6 +58,8 @@ class AppState:
     def __post_init__(self):
         if self.enabled_sync_environments is None:
             self.enabled_sync_environments = {"dev"}
+        if not self.view_environment:
+            self.view_environment = "all"
 
 
 config: AppConfig = load_config()
@@ -158,7 +161,7 @@ async def handle_full_sync(status_badge, sync_label) -> None:
         return
 
     api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency)
+    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
 
     async def progress(msg: str):
         state.sync_message = msg
@@ -176,7 +179,7 @@ async def handle_services_sync(status_badge, sync_label) -> None:
         return
 
     api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency)
+    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
 
     async def progress(msg: str):
         state.sync_message = msg
@@ -194,7 +197,7 @@ async def handle_templates_sync(status_badge, sync_label) -> None:
         return
 
     api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency)
+    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
 
     async def progress(msg: str):
         state.sync_message = msg
@@ -213,7 +216,7 @@ async def handle_api_keys_sync(status_badge, sync_label) -> None:
         return
 
     api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency)
+    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
 
     async def progress(msg: str):
         state.sync_message = msg
@@ -248,7 +251,7 @@ async def ensure_theme_preference(dark_mode) -> None:
     dark_mode.value = stored_theme == "dark"
 
 
-def build_shell() -> tuple:
+def build_shell(on_view_env_change=None) -> tuple:
     drawer = (
         ui.left_drawer(value=True)
         .props("show-if-above bordered")
@@ -263,23 +266,89 @@ def build_shell() -> tuple:
         ui.link("Settings", "/settings")
 
     dark_mode = ui.dark_mode()
-    with ui.header().classes("items-center justify-between bg-gray-600 dark:bg-slate-800"):
+    with ui.header().classes("items-center justify-between bg-gray-300 dark:bg-slate-800"):
         with ui.row().classes("items-center gap-3"):
             ui.button(icon="menu", on_click=drawer.toggle).props("flat round dense")
             ui.label("Notification Admin Dashboard").classes("text-xl font-medium")
         with ui.row().classes("items-center gap-4"):
             status_badge = ui.badge("API Status: Unknown", color="gray")
             sync_label = ui.label("")
+            env_options = {"all": "All"}
+            env_options.update({env: env.title() for env in config.api_hosts})
+            env_select = ui.select(
+                env_options, value=state.view_environment, label="View Env"
+            ).classes("w-36")
+            sync_env_select = ui.select(
+                {env: env.title() for env in config.api_hosts},
+                value=state.environment,
+                label="Sync Env",
+            ).classes("w-32")
             refresh_button = ui.button("Refresh All Data")
             theme_button = ui.button(icon="dark_mode").props("flat round dense")
             theme_button.on_click(lambda: toggle_theme(dark_mode))
+            if on_view_env_change:
+                async def handle_env_change(e):
+                    state.view_environment = e.value
+                    result = on_view_env_change()
+                    if inspect.isawaitable(result):
+                        await result
+
+                env_select.on_value_change(handle_env_change)
+            else:
+                env_select.on_value_change(lambda e: setattr(state, "view_environment", e.value))
+            async def handle_sync_env_change(e):
+                state.environment = e.value
+                await refresh_status_badge(status_badge)
+                ui.notify(f"Switched to {e.value} environment", color="info")
+
+            sync_env_select.on_value_change(handle_sync_env_change)
+
+            with ui.dropdown_button("Sync Settings", auto_close=False).props("flat"):
+                ui.label("Allowed sync environments").classes("text-sm mb-2")
+                env_checkboxes: Dict[str, ui.checkbox] = {}
+                for env in config.api_hosts:
+                    is_enabled = env in state.enabled_sync_environments
+                    checkbox = ui.checkbox(env.title(), value=is_enabled)
+                    env_checkboxes[env] = checkbox
+
+                    def make_handler(environment):
+                        def handler(e):
+                            if e.value:
+                                state.enabled_sync_environments.add(environment)
+                                ui.notify(
+                                    f"Syncing enabled for {environment}", color="positive"
+                                )
+                            else:
+                                state.enabled_sync_environments.discard(environment)
+                                ui.notify(
+                                    f"Syncing disabled for {environment}", color="info"
+                                )
+
+                        return handler
+
+                    checkbox.on_value_change(make_handler(env))
     return status_badge, sync_label, refresh_button, dark_mode
 
 
 # Pages
 @ui.page("/")
 async def dashboard_page() -> None:
-    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    @ui.refreshable
+    async def render_dashboard() -> None:
+        services = await list_services(get_view_environment())
+        templates = await list_templates(environment=get_view_environment())
+        with ui.column().classes("p-8 gap-6 w-full max-w-none"):
+            ui.label("Dashboard").classes("text-lg font-semibold")
+            with ui.row().classes("gap-4 w-full"):
+                metric_card("Services", len(services))
+                metric_card("Templates", len(templates))
+            ui.markdown(
+                "This dashboard caches services, templates, and local API keys. Use the left navigation to manage data and send notifications."
+            )
+
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=lambda: refresh_if_needed(render_dashboard)
+    )
     await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
@@ -287,17 +356,7 @@ async def dashboard_page() -> None:
 
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
-
-    services = await list_services()
-    templates = await list_templates()
-    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
-        ui.label("Dashboard").classes("text-lg font-semibold")
-        with ui.row().classes("gap-4 w-full"):
-            metric_card("Services", len(services))
-            metric_card("Templates", len(templates))
-        ui.markdown(
-            "This dashboard caches services, templates, and local API keys. Use the left navigation to manage data and send notifications."
-        )
+    await render_dashboard()
 
 
 def metric_card(title: str, value: int) -> None:
@@ -314,6 +373,18 @@ async def refresh_if_needed(refreshable) -> None:
 
 def make_sortable(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [{**column, "sortable": True} for column in columns]
+
+
+def format_environment(value: Optional[str]) -> str:
+    return value or "unknown"
+
+
+def format_service_label(service) -> str:
+    return f"{service.name} ({format_environment(service.environment)})"
+
+
+def get_view_environment() -> Optional[str]:
+    return None if state.view_environment in {"all", None, ""} else state.view_environment
 
 
 def _parse_filter_date(value: Optional[str]) -> Optional[date]:
@@ -342,7 +413,9 @@ def _matches_expiry_range(
 
 @ui.page("/services")
 async def services_page() -> None:
-    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=lambda: refresh_if_needed(services_table)
+    )
     await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
@@ -362,10 +435,11 @@ async def services_page() -> None:
 
 @ui.refreshable
 async def services_table() -> None:
-    rows = await list_services()
+    rows = await list_services(get_view_environment())
     table_rows: List[Dict[str, Any]] = [
         {
             "id": row.id,
+            "environment": format_environment(row.environment),
             "name": row.name,
             "active": row.active,
             "restricted": row.restricted,
@@ -383,6 +457,7 @@ async def services_table() -> None:
         columns=make_sortable(
             [
             {"name": "id", "label": "ID", "field": "id"},
+            {"name": "environment", "label": "Environment", "field": "environment"},
             {"name": "name", "label": "Name", "field": "name"},
             {"name": "active", "label": "Active", "field": "active"},
             {"name": "restricted", "label": "Restricted", "field": "restricted"},
@@ -400,7 +475,22 @@ async def services_table() -> None:
 
 @ui.page("/templates")
 async def templates_page() -> None:
-    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    async def refresh_service_options() -> None:
+        options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
+        service_select.set_options(options)
+        if service_select.value not in options:
+            service_select.value = None
+
+    async def handle_view_env_change() -> None:
+        await refresh_service_options()
+        await refresh_if_needed(render_table)
+
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=handle_view_env_change
+    )
     await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
@@ -415,7 +505,10 @@ async def templates_page() -> None:
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Templates").classes("text-lg font-semibold")
         filter_row = ui.row().classes("gap-2")
-        service_options = {svc.id: svc.name for svc in await list_services()}
+        service_options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
         type_options = {"email": "Email", "sms": "SMS"}
         service_select = ui.select(
             service_options, label="Service", with_input=True
@@ -432,10 +525,13 @@ async def templates_page() -> None:
         async def render_table() -> None:
             selected_service = service_select.value
             selected_type = type_select.value
-            rows = await list_templates(selected_service, selected_type)
+            rows = await list_templates(
+                selected_service, selected_type, environment=get_view_environment()
+            )
             table_rows: List[Dict[str, Any]] = [
                 {
                     "id": row.id,
+                    "environment": format_environment(row.environment),
                     "service_id": row.service_id,
                     "name": row.name,
                     "template_type": row.template_type,
@@ -456,6 +552,7 @@ async def templates_page() -> None:
                 columns=make_sortable(
                     [
                     {"name": "id", "label": "ID", "field": "id"},
+                    {"name": "environment", "label": "Environment", "field": "environment"},
                     {"name": "service_id", "label": "Service", "field": "service_id"},
                     {"name": "name", "label": "Name", "field": "name"},
                     {
@@ -483,7 +580,22 @@ async def templates_page() -> None:
 
 @ui.page("/api-keys")
 async def api_keys_page() -> None:
-    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    async def refresh_service_options() -> None:
+        options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
+        service_select.set_options(options)
+        if service_select.value not in options:
+            service_select.value = None
+
+    async def handle_view_env_change() -> None:
+        await refresh_service_options()
+        await refresh_if_needed(render_table)
+
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=handle_view_env_change
+    )
     await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
@@ -498,8 +610,10 @@ async def api_keys_page() -> None:
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("API Keys").classes("text-lg font-semibold")
 
-        services = await list_services()
-        service_options = {svc.id: svc.name for svc in services}
+        service_options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
         service_select = ui.select(
             service_options, label="Filter by Service", with_input=True
         ).props("clearable")
@@ -515,10 +629,11 @@ async def api_keys_page() -> None:
             selected_service = service_select.value
             start_date = _parse_filter_date(expires_from.value)
             end_date = _parse_filter_date(expires_to.value)
-            keys = await list_api_keys(selected_service)
+            keys = await list_api_keys(selected_service, environment=get_view_environment())
             table_rows: List[Dict[str, Any]] = [
                 {
                     "id": key.id,
+                    "environment": format_environment(key.environment),
                     "service_id": key.service_id,
                     "name": key.name,
                     "key_type": key.key_type,
@@ -535,6 +650,7 @@ async def api_keys_page() -> None:
                 columns=make_sortable(
                     [
                     {"name": "id", "label": "ID", "field": "id"},
+                    {"name": "environment", "label": "Environment", "field": "environment"},
                     {
                         "name": "service_id",
                         "label": "Service ID",
@@ -566,7 +682,19 @@ async def api_keys_page() -> None:
 
 @ui.page("/send")
 async def send_page() -> None:
-    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    async def refresh_service_options() -> None:
+        options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
+        service_select.set_options(options)
+        if service_select.value not in options:
+            service_select.value = None
+        await handle_service_change()
+
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=refresh_service_options
+    )
     await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
@@ -575,25 +703,27 @@ async def send_page() -> None:
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
-    services = await list_services()
-    service_options = {svc.id: svc.name for svc in services}
+    service_options = {
+        svc.id: format_service_label(svc)
+        for svc in await list_services(get_view_environment())
+    }
     env_options = list(config.api_hosts.keys())
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Send Notification").classes("text-lg font-semibold")
         env_select = ui.select(
             env_options, value=state.environment, label="Environment"
-        )
+        ).classes("w-full md:w-1/2")
         service_select = ui.select(
             service_options, label="Service", with_input=True
-        ).props("clearable")
-        key_select = ui.select({}, label="API Key").props("clearable")
+        ).props("clearable").classes("w-full md:w-1/2")
+        key_select = ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
         type_toggle = ui.toggle({"email": "Email", "sms": "SMS"}, value="email")
         template_select = ui.select({}, label="Template", with_input=True).props(
             "clearable"
-        )
-        recipient_input = ui.input(label="Recipient")
-        personalisation_area = ui.column()
+        ).classes("w-full md:w-1/2")
+        recipient_input = ui.input(label="Recipient").classes("w-full md:w-1/2")
+        personalisation_area = ui.column().classes("w-full md:w-1/2")
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
         personalisation_controls: Dict[str, Input] = {}
 
@@ -605,14 +735,18 @@ async def send_page() -> None:
         async def load_templates() -> None:
             selected_service = service_select.value
             t_type = type_toggle.value
-            templates = await list_templates(selected_service, t_type)
+            templates = await list_templates(
+                selected_service, t_type, environment=get_view_environment()
+            )
             template_select.set_options({t.id: t.name for t in templates})
 
         async def handle_template_change() -> None:
             personalisation_area.clear()
             personalisation_controls.clear()
             selected_id = template_select.value
-            templates = await list_templates(service_select.value, type_toggle.value)
+            templates = await list_templates(
+                service_select.value, type_toggle.value, environment=get_view_environment()
+            )
             tmpl = next((t for t in templates if t.id == selected_id), None)
             if not tmpl:
                 return
@@ -623,7 +757,7 @@ async def send_page() -> None:
                 for name in placeholders:
                     personalisation_controls[name] = ui.input(
                         label=name, placeholder=name
-                    )
+                    ).classes("w-full md:w-1/2")
 
         async def handle_send() -> None:
             selected_env = env_select.value
@@ -692,7 +826,18 @@ async def send_page() -> None:
 
 @ui.page("/settings")
 async def settings_page() -> None:
-    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    async def refresh_service_options() -> None:
+        options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
+        key_service.set_options(options)
+        if key_service.value not in options:
+            key_service.value = None
+
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=refresh_service_options
+    )
     await ensure_theme_preference(dark_mode)
 
     async def page_refresh():
@@ -701,69 +846,22 @@ async def settings_page() -> None:
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
-    env_options = list(config.api_hosts.keys())
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Settings").classes("text-lg font-semibold")
 
         with ui.card().classes("p-6 w-full"):
-            ui.label("Environment Settings").classes("text-md font-semibold")
-            ui.label("Select the current active environment:").classes(
-                "text-sm text-gray-600 dark:text-slate-300 mb-2"
-            )
-
-            env_select = ui.select(
-                options={env: env.title() for env in env_options},
-                value=state.environment,
-                label="Current Environment",
-            ).classes("w-64")
-
-            async def handle_env_change(e):
-                state.environment = e.value
-                await refresh_status_badge(status_badge)
-                ui.notify(f"Switched to {e.value} environment", color="info")
-
-            env_select.on_value_change(handle_env_change)
-
-        with ui.card().classes("p-6 w-full"):
-            ui.label("Sync Settings").classes("text-md font-semibold")
-            ui.label("Select which environments are allowed to sync data:").classes(
-                "text-sm text-gray-600 dark:text-slate-300 mb-2"
-            )
-
-            env_checkboxes: Dict[str, ui.checkbox] = {}
-            for env in env_options:
-                is_enabled = env in state.enabled_sync_environments
-                checkbox = ui.checkbox(env.title(), value=is_enabled)
-                env_checkboxes[env] = checkbox
-
-                def make_handler(environment):
-                    def handler(e):
-                        if e.value:
-                            state.enabled_sync_environments.add(environment)
-                            ui.notify(
-                                f"Syncing enabled for {environment}", color="positive"
-                            )
-                        else:
-                            state.enabled_sync_environments.discard(environment)
-                            ui.notify(
-                                f"Syncing disabled for {environment}", color="info"
-                            )
-
-                    return handler
-
-                checkbox.on_value_change(make_handler(env))
-
-        with ui.card().classes("p-6 w-full"):
             ui.label("API Configuration").classes("text-md font-semibold")
             rows = []
-            for env in env_options:
+            for env in config.api_hosts:
                 current_url = await get_setting(
                     f"base_url_{env}"
                 ) or config.api_hosts.get(env)
                 rows.append((env, current_url))
             inputs: Dict[str, ui.input] = {}
             for env, url in rows:
-                inputs[env] = ui.input(label=f"{env.title()} Base URL", value=url)
+                inputs[env] = ui.input(
+                    label=f"{env.title()} Base URL", value=url
+                ).classes("w-full md:w-1/2")
 
             async def handle_save_urls() -> None:
                 await save_base_urls(inputs)
@@ -778,7 +876,7 @@ async def settings_page() -> None:
                 "text-md font-semibold"
             )
             auth_inputs: Dict[str, Dict[str, ui.input]] = {}
-            for env in env_options:
+            for env in config.api_hosts:
                 user_val = (
                     await get_secure_setting(f"basic_username_{env}", encryption) or ""
                 )
@@ -786,10 +884,12 @@ async def settings_page() -> None:
                     await get_secure_setting(f"basic_password_{env}", encryption) or ""
                 )
                 auth_inputs[env] = {
-                    "user": ui.input(label=f"{env.title()} Username", value=user_val),
+                    "user": ui.input(
+                        label=f"{env.title()} Username", value=user_val
+                    ).classes("w-full md:w-1/2"),
                     "pass": ui.input(
                         label=f"{env.title()} Password", value=pass_val, password=True
-                    ),
+                    ).classes("w-full md:w-1/2"),
                 }
 
             async def handle_save_auth() -> None:
@@ -802,14 +902,18 @@ async def settings_page() -> None:
 
         with ui.card().classes("p-6 w-full"):
             ui.label("Local API Keys").classes("text-md font-semibold")
-            services = await list_services()
-            service_options = {svc.id: svc.name for svc in services}
-            key_service = ui.select(service_options, label="Service", with_input=True)
-            key_name = ui.input(label="Key Name")
-            key_secret = ui.input(label="Key Secret", password=True)
+            service_options = {
+                svc.id: format_service_label(svc)
+                for svc in await list_services(get_view_environment())
+            }
+            key_service = ui.select(
+                service_options, label="Service", with_input=True
+            ).classes("w-full md:w-1/2")
+            key_name = ui.input(label="Key Name").classes("w-full md:w-1/2")
+            key_secret = ui.input(label="Key Secret", password=True).classes("w-full md:w-1/2")
             key_type = ui.select(
                 {"normal": "Normal", "team": "Team", "test": "Test"}, value="normal"
-            )
+            ).classes("w-full md:w-1/2")
 
             async def handle_add_key() -> None:
                 await save_local_key(

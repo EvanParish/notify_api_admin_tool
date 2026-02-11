@@ -11,6 +11,7 @@ class Service(Base):
     __tablename__ = "services"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     restricted: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -35,6 +36,7 @@ class Template(Base):
     __tablename__ = "templates"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     service_id: Mapped[str] = mapped_column(ForeignKey("services.id"))
     name: Mapped[str] = mapped_column(String)
     template_type: Mapped[str] = mapped_column(Enum("email", "sms", name="template_type"))
@@ -58,6 +60,7 @@ class ApiKey(Base):
     __tablename__ = "api_keys"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     service_id: Mapped[Optional[str]] = mapped_column(ForeignKey("services.id"), nullable=True)
     name: Mapped[str] = mapped_column(String)
     key_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
