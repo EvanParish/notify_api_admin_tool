@@ -21,7 +21,6 @@ class SyncManager:
 
     async def sync_all(self, progress: ProgressCallback = None) -> None:
         await self.sync_services(progress)
-        await self.sync_users(progress)
         await self.sync_templates(progress)
         await self.sync_api_keys(progress)
 
@@ -52,26 +51,6 @@ class SyncManager:
                     crown=svc.get("crown"),
                     go_live_at=svc.get("go_live_at"),
                     created_by=svc.get("created_by"),
-                )
-                await session.merge(record)
-            await session.commit()
-
-    async def sync_users(self, progress: ProgressCallback = None) -> None:
-        if progress:
-            await progress("Syncing users")
-        users = await self.api.get_users()
-        async with get_session() as session:
-            for user in users:
-                record = models.User(
-                    id=user.get("id"),
-                    name=user.get("name", ""),
-                    email_address=user.get("email_address", ""),
-                    auth_type=user.get("auth_type"),
-                    mobile_number=user.get("mobile_number"),
-                    state=user.get("state"),
-                    platform_admin=user.get("platform_admin", False),
-                    blocked=user.get("blocked", False),
-                    failed_login_count=user.get("failed_login_count", 0),
                 )
                 await session.merge(record)
             await session.commit()

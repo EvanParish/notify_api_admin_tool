@@ -1,18 +1,20 @@
 # Test Coverage Summary for VA NAPI Admin Dashboard
 
-## Test Coverage Achievement: 98% (app modules), 71% (overall with main.py)
+## Test Coverage Achievement: run coverage to confirm current numbers
 
 ### Test Suite Statistics
-- **Total Tests:** 120 tests
-- **Passing Tests:** 120
-- **Skipped Tests:** 1 (environment-dependent)
-- **Failed Tests:** 0
-- **App Module Coverage:** 98%
-- **Overall Coverage (including main.py):** 71%
+- **Total Tests:** Updated after user cache removal
+- **Passing Tests:** Run tests to confirm
+- **Skipped Tests:** Run tests to confirm
+- **Failed Tests:** Run tests to confirm
+- **App Module Coverage:** Run coverage to confirm
+- **Overall Coverage (including main.py):** Run coverage to confirm
 
-## ✅ All Tests Passing!
+## ✅ Run Tests to Confirm
 
 All test failures have been resolved. The test suite now runs successfully with complete database isolation.
+
+**Note:** Coverage and test-count numbers below are historical and should be refreshed after changes.
 
 ## Test Files Created
 
@@ -53,32 +55,29 @@ All test failures have been resolved. The test suite now runs successfully with 
 - Invalid token handling
 - **Coverage:** crypto.py - 100%
 
-### 6. `tests/test_db.py` (10 tests)
+### 6. `tests/test_db.py` (updated)
 - Database engine initialization
 - Table creation
 - All model CRUD operations
 - Service model
 - Template model  
-- User model
 - ApiKey model
 - LocalApiKey model
 - Setting model
 - Model relationships
 - **Coverage:** db.py - 96%, models.py - 100%
 
-### 7. `tests/test_repository.py` (20 tests)
+### 7. `tests/test_repository.py` (updated)
 - Settings CRUD operations
 - Secure settings with encryption
 - Service listing
-- User listing
 - Template filtering (by service, by type, combined)
 - Local API key management
 - API key resolution with decryption
 - **Coverage:** repository.py - 100%
 
-### 8. `tests/test_sync.py` (12 tests)
+### 8. `tests/test_sync.py` (updated)
 - Service synchronization
-- User synchronization
 - Template synchronization with concurrency
 - Progress callback functionality
 - Merge behavior for updates
@@ -240,13 +239,7 @@ All requirements from "Admin Dashboard Doc.md" are tested:
 
 ## Conclusion
 
-The project now has comprehensive test coverage:
-- **App modules**: 98% coverage with 95 tests
-- **Main.py business logic**: 38% coverage with 19 tests (UI rendering excluded)
-- **Database isolation**: 6 verification tests
-- **Total**: 120 tests covering all testable code paths
-
-All core business logic modules achieve 100% coverage. The test suite includes extensive coverage of all major features, edge cases, and error conditions as specified in the requirements document.
+The project now has comprehensive test coverage across core modules, business logic, and database isolation. Run the test suite and coverage reports to confirm current numbers.
 
 **Database Isolation:** Tests use completely isolated temporary databases in `/tmp/`, ensuring the application database (`data/app.db`) is never modified or accessed during testing. Each test gets a fresh database, preventing cross-test contamination and making tests safe to run at any time.
 

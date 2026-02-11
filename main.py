@@ -20,7 +20,6 @@ from app.repository import (
     list_local_keys,
     list_services,
     list_templates,
-    list_users,
     resolve_local_key,
     set_secure_setting,
     set_setting,
@@ -139,24 +138,6 @@ async def handle_services_sync(status_badge, sync_label) -> None:
     await refresh_status_badge(status_badge)
 
 
-async def handle_users_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing users..."
-    await manager.sync_users(progress=progress)
-    sync_label.text = "Sync complete"
-    users_table.refresh()
-    await refresh_status_badge(status_badge)
-
-
 async def handle_templates_sync(status_badge, sync_label) -> None:
     if not await ensure_sync_enabled(sync_label):
         return
@@ -197,7 +178,6 @@ async def handle_api_keys_sync(status_badge, sync_label) -> None:
 
 async def refresh_tables() -> None:
     services_table.refresh()
-    users_table.refresh()
 
 
 def build_shell() -> tuple:
@@ -210,7 +190,6 @@ def build_shell() -> tuple:
         ui.link("Dashboard", "/")
         ui.link("Send Notification", "/send")
         ui.link("Services", "/services")
-        ui.link("Users", "/users")
         ui.link("Templates", "/templates")
         ui.link("API Keys", "/api-keys")
         ui.link("Settings", "/settings")
@@ -238,16 +217,14 @@ async def dashboard_page() -> None:
     await refresh_status_badge(status_badge)
 
     services = await list_services()
-    users = await list_users()
     templates = await list_templates()
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Dashboard").classes("text-lg font-semibold")
         with ui.row().classes("gap-4 w-full"):
             metric_card("Services", len(services))
-            metric_card("Users", len(users))
             metric_card("Templates", len(templates))
         ui.markdown(
-            "This dashboard caches services, templates, users, and local API keys. Use the left navigation to manage data and send notifications."
+            "This dashboard caches services, templates, and local API keys. Use the left navigation to manage data and send notifications."
         )
 
 
@@ -306,53 +283,6 @@ async def services_table() -> None:
             {"name": "research_mode", "label": "Research", "field": "research_mode"},
             {"name": "count_as_live", "label": "Live", "field": "count_as_live"},
             {"name": "permissions", "label": "Permissions", "field": "permissions"},
-        ],
-        rows=table_rows,
-        pagination={"rowsPerPage": 10},
-    ).props("row-key=id").classes("w-full")
-
-
-@ui.page("/users")
-async def users_page() -> None:
-    status_badge, sync_label, refresh_button = build_shell()
-
-    async def page_refresh():
-        await handle_full_sync(status_badge, sync_label)
-
-    async def page_sync_users():
-        await handle_users_sync(status_badge, sync_label)
-
-    refresh_button.on_click(page_refresh)
-    await refresh_status_badge(status_badge)
-
-    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
-        ui.label("Users").classes("text-lg font-semibold")
-        ui.button("Sync Users", on_click=page_sync_users)
-        await users_table()
-
-
-@ui.refreshable
-async def users_table() -> None:
-    rows = await list_users()
-    table_rows: List[Dict[str, Any]] = [
-        {
-            "id": row.id,
-            "name": row.name,
-            "email_address": row.email_address,
-            "state": row.state,
-            "platform_admin": row.platform_admin,
-            "blocked": row.blocked,
-        }
-        for row in rows
-    ]
-    ui.table(
-        columns=[
-            {"name": "id", "label": "ID", "field": "id"},
-            {"name": "name", "label": "Name", "field": "name"},
-            {"name": "email_address", "label": "Email", "field": "email_address"},
-            {"name": "state", "label": "State", "field": "state"},
-            {"name": "platform_admin", "label": "Admin", "field": "platform_admin"},
-            {"name": "blocked", "label": "Blocked", "field": "blocked"},
         ],
         rows=table_rows,
         pagination={"rowsPerPage": 10},

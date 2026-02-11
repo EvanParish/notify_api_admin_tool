@@ -12,9 +12,6 @@ class NotificationAPI:
     async def get_services(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
-    async def get_users(self) -> List[Dict[str, Any]]:
-        raise NotImplementedError
-
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -55,11 +52,6 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json().get("data", [])
 
-    async def get_users(self) -> List[Dict[str, Any]]:
-        resp = await self.client.get(f"{self.base_url}/user", auth=self._basic_auth)
-        resp.raise_for_status()
-        return resp.json().get("data", [])
-
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/service/{service_id}/template", auth=self._basic_auth
@@ -72,7 +64,7 @@ class HttpNotificationAPI(NotificationAPI):
             f"{self.base_url}/service/{service_id}/api-keys", auth=self._basic_auth
         )
         resp.raise_for_status()
-        return resp.json().get("data", [])
+        return resp.json().get("apiKeys", [])
 
     async def send_notification(
         self,
@@ -130,17 +122,6 @@ class MockNotificationAPI(NotificationAPI):
                 "limit": 1000,
                 "created_at": "2024-01-01T00:00:00Z",
                 "updated_at": "2024-01-02T00:00:00Z",
-            }
-        ]
-
-    async def get_users(self) -> List[Dict[str, Any]]:
-        await asyncio.sleep(self._sleep)
-        return [
-            {
-                "id": "user-1",
-                "name": "Demo User",
-                "email_address": "demo@example.com",
-                "auth_type": "basic",
             }
         ]
 

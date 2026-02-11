@@ -43,13 +43,12 @@ The following cannot be easily unit tested without a running NiceGUI server:
 1. **Page Rendering Functions** (Lines 120-450)
    - `@ui.page("/")` - dashboard_page()
    - `@ui.page("/services")` - services_page()
-   - `@ui.page("/users")` - users_page()
    - `@ui.page("/templates")` - templates_page()
    - `@ui.page("/send")` - send_page()
    - `@ui.page("/settings")` - settings_page()
 
 2. **UI Element Creation**
-   - Table rendering (`services_table()`, `users_table()`)
+   - Table rendering (`services_table()`)
    - Form controls and event handlers
    - Template personalization UI generation
    - Dynamic dropdown population

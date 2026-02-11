@@ -41,39 +41,7 @@ Updated the table displays in `main.py` to show all relevant fields from the upd
 }
 ```
 
-### 2. Users Table
-
-**Previous Fields:**
-- ID, Name, Email
-
-**Updated Fields:**
-- ID
-- Name
-- Email
-- **State** ✨ NEW
-- **Platform Admin** ✨ NEW
-- **Blocked** ✨ NEW
-- **Mobile Number** ✨ NEW
-
-**Benefits:**
-- Quickly identify active vs inactive users
-- See platform admin status at a glance
-- Identify blocked users
-- View contact information
-
-```python
-{
-    "id": row.id,
-    "name": row.name,
-    "email_address": row.email_address,
-    "state": row.state,                   # NEW
-    "platform_admin": row.platform_admin, # NEW
-    "blocked": row.blocked,               # NEW
-    "mobile_number": row.mobile_number,   # NEW
-}
-```
-
-### 3. Templates Table
+### 2. Templates Table
 
 **Previous Fields:**
 - ID, Service, Name, Type, Version
@@ -134,15 +102,6 @@ Updated the table displays in `main.py` to show all relevant fields from the upd
 └──────────┴─────────┴────────┴────────────┴──────────┴──────────┴──────────┴──────┴─────────────┘
 ```
 
-### Users Table View
-```
-┌──────────┬──────────┬───────────────┬────────┬───────┬─────────┬────────────┐
-│ ID       │ Name     │ Email         │ State  │ Admin │ Blocked │ Mobile     │
-├──────────┼──────────┼───────────────┼────────┼───────┼─────────┼────────────┤
-│ user-123 │ John Doe │ john@mail.com │ active │ True  │ False   │ +12345...  │
-└──────────┴──────────┴───────────────┴────────┴───────┴─────────┴────────────┘
-```
-
 ### Templates Table View
 ```
 ┌──────────┬──────────┬────────┬──────┬─────────┬──────────┬────────┬─────────┬────────────┐
@@ -167,20 +126,6 @@ Updated the table displays in `main.py` to show all relevant fields from the upd
 **Scenario 3: Review Permissions**
 - See what channels each service can use
 - Ensure proper permissions are set
-
-### Users Table
-
-**Scenario 1: Find Platform Admins**
-- Scan Platform Admin column
-- Identify all admin users
-
-**Scenario 2: Check User States**
-- Filter by State column
-- Find inactive users for cleanup
-
-**Scenario 3: Review Blocked Users**
-- Check Blocked column
-- Investigate why users are blocked
 
 ### Templates Table
 
@@ -242,15 +187,14 @@ table_rows: List[Dict[str, Any]] = [
 
 ### Test Coverage
 
-✅ **All 120 tests pass**
-- UI changes don't break existing tests
+✅ **Run tests after changes**
+- UI changes should not break existing tests
 - Model tests verify data is available
 - Integration tests confirm end-to-end flow
 
 ### Manual Testing Checklist
 
 - [ ] Services table displays all 9 columns
-- [ ] Users table displays all 7 columns
 - [ ] Templates table displays all 9 columns
 - [ ] Permissions field truncates properly
 - [ ] Date field shows only date portion
@@ -291,7 +235,7 @@ table_rows: List[Dict[str, Any]] = [
 
 ✅ **No Breaking Changes**
 - Existing functionality preserved
-- All tests pass
+- Run tests to confirm
 - App starts successfully
 - Database queries unchanged
 
@@ -328,7 +272,6 @@ table_rows: List[Dict[str, Any]] = [
 
 ✅ **Enhanced Information Display**
 - Services: 7 → 9 columns
-- Users: 3 → 7 columns  
 - Templates: 5 → 9 columns
 
 ✅ **Better User Experience**
@@ -337,9 +280,8 @@ table_rows: List[Dict[str, Any]] = [
 - Clean date formatting
 - Consistent layout
 
-✅ **All Tests Passing**
-- 120 tests pass
-- No breaking changes
-- App starts successfully
+✅ **Validation Needed**
+- Run the test suite after the update
+- Confirm app starts successfully
 
 The UI updates provide users with comprehensive information while maintaining clean, readable table displays.

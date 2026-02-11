@@ -17,17 +17,6 @@ async def test_mock_api_get_services():
 
 
 @pytest.mark.asyncio
-async def test_mock_api_get_users():
-    api = MockNotificationAPI()
-    users = await api.get_users()
-    
-    assert len(users) == 1
-    assert users[0]["id"] == "user-1"
-    assert users[0]["name"] == "Demo User"
-    assert users[0]["email_address"] == "demo@example.com"
-
-
-@pytest.mark.asyncio
 async def test_mock_api_get_templates():
     api = MockNotificationAPI()
     templates = await api.get_templates("svc-1")
@@ -112,21 +101,6 @@ async def test_http_api_get_services():
         mock_get.assert_called_once_with("https://api.example.com/service", auth=None)
         assert len(services) == 1
         assert services[0]["id"] == "svc-1"
-
-
-@pytest.mark.asyncio
-async def test_http_api_get_users():
-    api = HttpNotificationAPI("https://api.example.com")
-    
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"data": [{"id": "user-1", "name": "User"}]}
-    mock_response.raise_for_status = MagicMock()
-    
-    with patch.object(api.client, "get", return_value=mock_response) as mock_get:
-        users = await api.get_users()
-        
-        mock_get.assert_called_once_with("https://api.example.com/user", auth=None)
-        assert len(users) == 1
 
 
 @pytest.mark.asyncio

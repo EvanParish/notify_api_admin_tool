@@ -1,6 +1,6 @@
 import pytest
 from app.db import init_engine, create_all, get_session
-from app.models import Service, Template, User, ApiKey, LocalApiKey, Setting
+from app.models import Service, Template, ApiKey, LocalApiKey, Setting
 
 
 @pytest.mark.asyncio
@@ -95,36 +95,6 @@ async def test_template_model(initialized_db):
         assert retrieved.version == 1
         assert retrieved.archived is False
         assert retrieved.hidden is False
-
-
-@pytest.mark.asyncio
-async def test_user_model(initialized_db):
-    async with get_session() as session:
-        user = User(
-            id="user-1",
-            name="John Doe",
-            email_address="john@example.com",
-            auth_type="basic",
-            mobile_number="+1234567890",
-            state="active",
-            platform_admin=False,
-            blocked=False,
-            failed_login_count=0
-        )
-        session.add(user)
-        await session.commit()
-        
-        from sqlalchemy import select
-        result = await session.execute(select(User).where(User.id == "user-1"))
-        retrieved = result.scalar_one()
-        
-        assert retrieved.id == "user-1"
-        assert retrieved.name == "John Doe"
-        assert retrieved.email_address == "john@example.com"
-        assert retrieved.auth_type == "basic"
-        assert retrieved.mobile_number == "+1234567890"
-        assert retrieved.state == "active"
-        assert retrieved.platform_admin is False
 
 
 @pytest.mark.asyncio

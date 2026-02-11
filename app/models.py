@@ -54,22 +54,6 @@ class Template(Base):
     service: Mapped[Service] = relationship(back_populates="templates")
 
 
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    name: Mapped[str] = mapped_column(String)
-    email_address: Mapped[str] = mapped_column(String, index=True)
-    auth_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    
-    # Additional fields from API
-    mobile_number: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    state: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)
-    blocked: Mapped[bool] = mapped_column(Boolean, default=False)
-    failed_login_count: Mapped[int] = mapped_column(Integer, default=0)
-
-
 class ApiKey(Base):
     __tablename__ = "api_keys"
 

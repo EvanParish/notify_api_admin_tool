@@ -516,16 +516,13 @@ async def test_refresh_tables():
     import main
     
     # Mock the table refresh functions
-    with patch.object(main, 'services_table', create=True) as mock_services, \
-         patch.object(main, 'users_table', create=True) as mock_users:
+    with patch.object(main, 'services_table', create=True) as mock_services:
         
         mock_services.refresh = AsyncMock()
-        mock_users.refresh = AsyncMock()
         
         await main.refresh_tables()
         
         mock_services.refresh.assert_called_once()
-        mock_users.refresh.assert_called_once()
 
 
 def test_module_level_initialization():

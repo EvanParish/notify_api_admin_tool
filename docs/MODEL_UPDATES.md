@@ -79,31 +79,7 @@ Updated database models, sync functionality, and tests to more closely match the
 }
 ```
 
-### 3. User Model Updates (`app/models.py`)
-
-**Added:**
-- `mobile_number` - String, user's mobile number
-- `state` - String, user state (active, inactive)
-- `platform_admin` - Boolean, platform admin flag
-- `blocked` - Boolean, blocked status
-- `failed_login_count` - Integer, failed login attempts
-
-**Matches API Fields:**
-```python
-{
-    "id": "0a02afbc-aa35-4905-9ea9-2a2228e73b63",
-    "name": "asdfasddsff",
-    "email_address": "admin_user@email.com",
-    "auth_type": None,
-    "mobile_number": None,
-    "state": "active",
-    "platform_admin": True,
-    "blocked": False,
-    "failed_login_count": 0
-}
-```
-
-### 4. ApiKey Model Updates (`app/models.py`)
+### 3. ApiKey Model Updates (`app/models.py`)
 
 **Added:**
 - `key_type` - String, key type (normal, team, test)
@@ -125,11 +101,10 @@ Updated database models, sync functionality, and tests to more closely match the
 }
 ```
 
-### 5. Sync Manager Updates (`app/sync.py`)
+### 4. Sync Manager Updates (`app/sync.py`)
 
 **Updated:**
 - `sync_services()` now syncs all new Service fields
-- `sync_users()` now syncs all new User fields
 - `sync_templates()` now syncs all new Template fields
 - Added JSON serialization for `permissions` array
 - Handles `service` vs `service_id` field variations
@@ -186,15 +161,12 @@ New columns added to existing tables:
 - archived, hidden, process_type, created_at
 - updated_at, created_by, reply_to_email
 
-**users table:**
-- mobile_number, state, platform_admin, blocked, failed_login_count
-
 **api_keys table:**
 - key_type, created_at, revoked, version
 
 ### Backward Compatibility
 
-✅ **Existing tests pass** - All 120 tests pass  
+✅ **Existing tests pass** - Run tests to confirm  
 ✅ **Optional fields** - All new fields are nullable or have defaults  
 ✅ **Graceful handling** - Sync uses `.get()` with defaults  
 ✅ **No breaking changes** - Core functionality unchanged  
@@ -208,22 +180,21 @@ All model changes are covered by tests:
 ```bash
 # Run model tests
 python -m pytest tests/test_db.py -v
-# 10 passed
+# (updated after user cache removal)
 
 # Run sync tests
 python -m pytest tests/test_sync.py -v
-# 9 passed
+# (updated after user cache removal)
 
 # Run all tests
 python -m pytest tests/
-# 120 passed, 1 skipped
+# (updated after user cache removal)
 ```
 
 ### Test Data Source
 
 Tests use `tests/testing_data.py` which contains real API response structures from:
 - `GET /service` - Service list
-- `GET /user` - User list
 - `GET /service/{service_id}/template` - Template list
 - `GET /service/{service_id}/api-key` - API key list
 
@@ -237,7 +208,6 @@ Tests use `tests/testing_data.py` which contains real API response structures fr
 ### 2. Enhanced Features
 - Can filter by research mode
 - Track creation timestamps
-- Monitor failed logins
 - Identify archived templates
 
 ### 3. Future Proof
@@ -265,11 +235,6 @@ template = await session.get(Template, template_id)
 print(f"Created: {template.created_at}")
 print(f"Archived: {template.archived}")
 
-# User fields
-user = await session.get(User, user_id)
-print(f"Platform admin: {user.platform_admin}")
-print(f"State: {user.state}")
-
 # API Key fields
 key = await session.get(ApiKey, key_id)
 print(f"Revoked: {key.revoked}")
@@ -292,15 +257,11 @@ templates = await session.execute(
     select(Template).where(Template.archived == False)
 )
 
-# Find platform admins
-admins = await session.execute(
-    select(User).where(User.platform_admin == True)
-)
 ```
 
 ## Summary
 
-✅ **120 tests passing**  
+✅ **Run tests after updates**  
 ✅ **Models match API structure**  
 ✅ **No breaking changes**  
 ✅ **Enhanced functionality**  

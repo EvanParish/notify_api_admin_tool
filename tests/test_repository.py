@@ -6,7 +6,6 @@ from app.repository import (
     get_secure_setting,
     set_secure_setting,
     list_services,
-    list_users,
     list_templates,
     list_local_keys,
     add_local_key,
@@ -14,7 +13,7 @@ from app.repository import (
     list_api_keys,
 )
 from app.crypto import EncryptionManager
-from app.models import Service, User, Template, LocalApiKey, ApiKey, Setting
+from app.models import Service, Template, LocalApiKey, ApiKey, Setting
 from app.db import get_session
 
 
@@ -82,24 +81,6 @@ async def test_list_services(initialized_db):
     services = await list_services()
     assert len(services) == 2
     assert {s.id for s in services} == {"svc-1", "svc-2"}
-
-
-@pytest.mark.asyncio
-async def test_list_users_empty(initialized_db):
-    users = await list_users()
-    assert users == []
-
-
-@pytest.mark.asyncio
-async def test_list_users(initialized_db):
-    async with get_session() as session:
-        session.add(User(id="u1", name="User 1", email_address="u1@test.com"))
-        session.add(User(id="u2", name="User 2", email_address="u2@test.com"))
-        await session.commit()
-    
-    users = await list_users()
-    assert len(users) == 2
-    assert {u.id for u in users} == {"u1", "u2"}
 
 
 @pytest.mark.asyncio

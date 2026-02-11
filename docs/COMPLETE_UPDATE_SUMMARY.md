@@ -16,7 +16,7 @@ This document summarizes all updates made to align the VA NAPI Admin Dashboard w
 **Results:**
 - ✅ Each test gets unique temporary database in `/tmp/`
 - ✅ `data/app.db` protected from test interference
-- ✅ 120 tests passing
+- ✅ Tests pass (run to confirm)
 
 **Documentation:**
 - `tests/DATABASE_ISOLATION.md`
@@ -36,9 +36,6 @@ This document summarizes all updates made to align the VA NAPI Admin Dashboard w
 - **Added:** `archived`, `hidden`, `process_type`, `created_at`, `updated_at`, `created_by`, `reply_to_email`
 - **Updated:** `template_type` enum includes "letter"
 
-### User Model
-- **Added:** `mobile_number`, `state`, `platform_admin`, `blocked`, `failed_login_count`
-
 ### ApiKey Model
 - **Added:** `key_type`, `created_at`, `revoked`, `version`
 
@@ -49,8 +46,8 @@ This document summarizes all updates made to align the VA NAPI Admin Dashboard w
 
 **Test Updates:**
 - Updated `tests/test_db.py` with new fields
-- All sync tests passing
-- 120 tests passing
+- Run sync tests to confirm
+- Run tests to confirm totals
 
 **Results:**
 - ✅ Models match `tests/testing_data.py` API structure
@@ -71,10 +68,6 @@ This document summarizes all updates made to align the VA NAPI Admin Dashboard w
 - **Added:** Research Mode, Count as Live
 - **Enhanced:** Permissions (truncated to 50 chars)
 
-### Users Table
-- **Columns:** 3 → 7
-- **Added:** State, Platform Admin, Blocked, Mobile Number
-
 ### Templates Table
 - **Columns:** 5 → 9
 - **Added:** Archived, Hidden, Process Type, Updated (date only)
@@ -84,30 +77,20 @@ This document summarizes all updates made to align the VA NAPI Admin Dashboard w
 - ✅ More informative tables
 - ✅ Better data visibility
 - ✅ Clean formatting
-- ✅ All tests passing
+- ✅ Tests pass (run to confirm)
 
 **Documentation:**
 - `UI_UPDATES.md`
 
 ## Test Coverage Summary
 
-### Total Tests: 120 (All Passing!)
+### Total Tests (run to confirm)
 
 **Test Breakdown:**
-- `test_api_client.py` - 10 tests
-- `test_config.py` - 17 tests (1 skipped)
-- `test_crypto.py` - 9 tests
-- `test_db.py` - 10 tests
-- `test_repository.py` - 25 tests
-- `test_sync.py` - 9 tests
-- `test_utils.py` - 18 tests
-- `test_main.py` - 19 tests
-- `test_database_isolation.py` - 6 tests
+- Run the test suite to refresh counts
 
 ### Coverage:
-- **App modules:** 98%
-- **Main.py:** 38% (business logic)
-- **Overall:** 71%
+- Run coverage to refresh numbers
 
 ## Files Modified
 
@@ -136,23 +119,23 @@ This document summarizes all updates made to align the VA NAPI Admin Dashboard w
 - ✅ No cross-test contamination
 
 ### Enhanced Models
-- ✅ 24 new fields across 4 models
+- ✅ Updated fields across core models
 - ✅ Accurate API representation
 - ✅ JSON handling for arrays
 - ✅ Field name variation support
 
 ### Better UI
-- ✅ 17 additional table columns
+- ✅ Expanded table columns for core resources
 - ✅ Smart data truncation
 - ✅ Date formatting
 - ✅ New template type support
 
 ## Verification
 
-### All Tests Pass
+### Run Tests
 ```bash
 python -m pytest tests/
-# 120 passed, 1 skipped, 41 warnings in 6.73s
+# (updated after user cache removal)
 ```
 
 ### Application Starts
@@ -196,7 +179,7 @@ python -m pytest tests/test_database_isolation.py -v
 - Defaults provided where appropriate
 
 ### Data Migration
-1. Existing services/users/templates remain unchanged
+1. Existing services/templates remain unchanged
 2. Next sync will populate new fields
 3. Old data remains valid
 4. No manual intervention required
@@ -239,19 +222,19 @@ python -m pytest tests/test_database_isolation.py -v
 - **Lines Removed:** ~50
 
 ### Test Coverage
-- **Total Tests:** 120
-- **New Tests:** 6 (isolation)
-- **Pass Rate:** 100%
-- **Coverage:** 98% (app), 71% (overall)
+- **Total Tests:** Run tests to confirm
+- **New Tests:** Run tests to confirm
+- **Pass Rate:** Run tests to confirm
+- **Coverage:** Run coverage to confirm
 
 ### Model Enhancements
-- **New Fields:** 24
-- **Models Updated:** 4
-- **Tables Enhanced:** 3
+- **New Fields:** Updated to match current models
+- **Models Updated:** Service, Template, ApiKey
+- **Tables Enhanced:** Services and Templates
 
 ### UI Improvements
-- **New Columns:** 17
-- **Better Formatting:** 3 fields
+- **New Columns:** Services and Templates tables
+- **Better Formatting:** Permissions and dates
 - **New Options:** 1 (letter type)
 
 ## Success Criteria Met
@@ -259,7 +242,7 @@ python -m pytest tests/test_database_isolation.py -v
 ✅ Database isolation implemented  
 ✅ Tests never touch app.db  
 ✅ Models match API structure  
-✅ All tests passing (120/120)  
+✅ Run tests to confirm status  
 ✅ UI shows relevant fields  
 ✅ No breaking changes  
 ✅ Documentation complete  
@@ -272,7 +255,7 @@ All requested updates have been successfully implemented and verified. The VA NA
 1. **Complete database isolation** between tests and application
 2. **Enhanced data models** matching the actual API structure
 3. **Improved UI tables** displaying all relevant information
-4. **Comprehensive test coverage** at 98% for core modules
+4. **Comprehensive test coverage** for core modules (run coverage to confirm)
 5. **Detailed documentation** of all changes
 
-The system is production-ready with 120 passing tests and no breaking changes to existing functionality.
+The system is production-ready once tests and coverage are confirmed for the current codebase.

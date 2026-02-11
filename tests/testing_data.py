@@ -57,50 +57,6 @@ service_data = {
     ]
 }
 
-# The GET /user endpoint returns a list of users like this
-user_data = {
-    "data": [
-        {
-            "additional_information": {},
-            "auth_type": None,
-            "blocked": False,
-            "current_session_id": None,
-            "email_address": "admin_user@email.com",
-            "failed_login_count": 0,
-            "id": "0a02afbc-aa35-4905-9ea9-2a2228e73b63",
-            "identity_provider_user_id": None,
-            "logged_in_at": None,
-            "mobile_number": None,
-            "name": "asdfasddsff",
-            "organisations": [],
-            "password_changed_at": None,
-            "permissions": {},
-            "platform_admin": True,
-            "services": [],
-            "state": "active"
-        },
-        {
-            "additional_information": {},
-            "auth_type": None,
-            "blocked": False,
-            "current_session_id": None,
-            "email_address": "_archived_2025-01-29_16:57:14__archived_2024-05-03_15:07:30_ASDFASDDSFF@email.com",
-            "failed_login_count": 0,
-            "id": "0a02afbc-aa35-4905-9ea9-2a2228e73b63",
-            "identity_provider_user_id": None,
-            "logged_in_at": None,
-            "mobile_number": None,
-            "name": "asdfasddsff",
-            "organisations": [],
-            "password_changed_at": None,
-            "permissions": {},
-            "platform_admin": False,
-            "services": [],
-            "state": "inactive"
-        }
-    ]
-}
-
 # The GET /service/{service_id}/template endpoint returns an object with a list of template data
 template_data={
     "data": [

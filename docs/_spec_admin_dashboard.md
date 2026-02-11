@@ -7,7 +7,7 @@ Target API: [VA Notification API](https://github.com/department-of-veterans-affa
    * Layout: Standard "App Shell" layout (Left Sidebar for Navigation, Top Status Bar, Main Content Area).  
    * State Management: Native NiceGUI state (bindings) + SQLite data.  
 * Local Database: SQLite (via SQLAlchemy ORM).  
-   * Purpose: Local caching of remote resources (Services, Templates, Users) to enable fast client-side filtering and persistence of user configurations.  
+   * Purpose: Local caching of remote resources (Services, Templates) to enable fast client-side filtering and persistence of user configurations.  
 * Security & Encryption:  
    * Library: cryptography (Fernet).  
    * Scope: API Key Secrets and Basic Auth credentials stored in the local SQLite DB must be encrypted at rest.  
@@ -20,8 +20,8 @@ Target API: [VA Notification API](https://github.com/department-of-veterans-affa
 The tool must handle two distinct authentication layers:  
 
 ### A. Global Admin Auth (Basic Auth)  
-* Usage: Used for fetching system-wide administrative data (e.g., listing all Services, Users, or Templates).  
-* Routes: GET /service, GET /user, etc.  
+* Usage: Used for fetching system-wide administrative data (e.g., listing all Services or Templates).  
+* Routes: GET /service, etc.  
 * Storage: Credentials (username/password) stored in a settings table, encrypted.  
 
 ### B. Service-Level Auth (Bearer Token / JWT)  
@@ -49,11 +49,6 @@ Core Tables
    * content (Text) - Stores the body content for parsing variables.  
    * subject (String) - Email only.  
    * version (Integer)  
-* users  
-   * id (String/UUID, Primary Key)  
-   * name (String)  
-   * email_address (String, Indexed)  
-   * auth_type (String)  
 * api_keys
    * id (String/UUID, Primary Key)
    * name (String)
@@ -72,7 +67,6 @@ Core Tables
    * Dashboard (Home)  
    * Send Notification (The Form)  
    * Services (Data Grid)  
-   * Users (Data Grid)  
    * Templates (Data Grid)  
    * Settings (Keys & Auth)  
 * Status Bar:  
@@ -101,7 +95,7 @@ This page acts as a visual client/form for the API.
    * Action: "Send Notification".  
    * Feedback: Show a loading spinner, then display the full JSON response in a ui.log or code block component.  
 
-### C. Resource Pages (Services, Users, Templates)  
+### C. Resource Pages (Services, Templates)  
 Each resource page follows a consistent "Datagrid" pattern:  
 * Data Table:  
    * Use ui.table with sortable columns.  

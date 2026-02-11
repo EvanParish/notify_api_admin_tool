@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from .crypto import EncryptionManager
 from .db import get_session
-from .models import ApiKey, LocalApiKey, Service, Setting, Template, User
+from .models import ApiKey, LocalApiKey, Service, Setting, Template
 
 
 async def get_setting(key: str) -> Optional[str]:
@@ -43,11 +43,6 @@ async def set_secure_setting(key: str, value: str, encryption: EncryptionManager
 async def list_services() -> List[Service]:
     async with get_session() as session:
         return list((await session.execute(select(Service))).scalars().all())
-
-
-async def list_users() -> List[User]:
-    async with get_session() as session:
-        return list((await session.execute(select(User))).scalars().all())
 
 
 async def list_templates(service_id: Optional[str] = None, template_type: Optional[str] = None) -> List[Template]:

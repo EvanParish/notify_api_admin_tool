@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 from sqlalchemy import select, delete
 
 from app.db import create_all, get_session, init_engine
-from app.models import Service, Template, User
+from app.models import Service, Template
 from app.sync import SyncManager
 from app.api_client import NotificationAPI
 
@@ -11,17 +11,13 @@ import tests.testing_data as testing_data
 
 
 class FakeAPI(NotificationAPI):
-    def __init__(self, services=None, users=None, templates=None):
+    def __init__(self, services=None, templates=None):
         self.services_data = services or testing_data.service_data["data"]
-        self.users_data = users or testing_data.user_data["data"]
         self.templates_data = templates or testing_data.template_data["data"]
         self._template_generator = None
 
     async def get_services(self):
         return self.services_data
-
-    async def get_users(self):
-        return self.users_data
 
     async def get_templates(self, service_id: str):
         # If template_generator is set, use it to generate unique templates per service
@@ -47,7 +43,7 @@ def setup_db(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_sync_services_users_templates(setup_db):
+async def test_sync_services_templates(setup_db):
     await create_all()
     api = FakeAPI()
     sync = SyncManager(api, max_concurrency=5)
@@ -61,15 +57,6 @@ async def test_sync_services_users_templates(setup_db):
         assert svc.name == "VA Notify"
         assert svc.active is True
         assert svc.restricted is False
-
-    await sync.sync_users()
-    async with get_session() as session:
-        users = (await session.execute(select(User))).scalars().all()
-        # duplicate ids in payload collapse to a single row via merge
-        assert len(users) == 1
-        user = users[0]
-        assert user.id == "0a02afbc-aa35-4905-9ea9-2a2228e73b63"
-        assert user.email_address == "_archived_2025-01-29_16:57:14__archived_2024-05-03_15:07:30_ASDFASDDSFF@email.com"
 
     await sync.sync_templates()
     async with get_session() as session:
@@ -92,11 +79,9 @@ async def test_sync_all(setup_db):
     
     async with get_session() as session:
         services = (await session.execute(select(Service))).scalars().all()
-        users = (await session.execute(select(User))).scalars().all()
         templates = (await session.execute(select(Template))).scalars().all()
         
         assert len(services) >= 1
-        assert len(users) >= 1
         assert len(templates) >= 2
 
 
@@ -111,11 +96,9 @@ async def test_sync_with_progress_callback(setup_db):
         messages.append(msg)
     
     await sync.sync_services(progress=progress)
-    await sync.sync_users(progress=progress)
     await sync.sync_templates(progress=progress)
     
     assert "Syncing services" in messages
-    assert "Syncing users" in messages
     assert any("Templates for" in msg for msg in messages)
 
 
@@ -124,13 +107,11 @@ async def test_sync_empty_data_no_errors(setup_db):
     """Test that syncing empty data arrays doesn't cause errors."""
     await create_all()
     
-    api = FakeAPI(services=[], users=[], templates=[])
+    api = FakeAPI(services=[], templates=[])
     sync = SyncManager(api)
     
     # These should complete without raising exceptions
     await sync.sync_services()
-    await sync.sync_users()
-    
     # If we got here without exceptions, test passes
     assert True
 
