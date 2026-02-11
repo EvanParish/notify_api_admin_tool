@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, JSON
@@ -37,7 +37,7 @@ class Template(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     service_id: Mapped[str] = mapped_column(ForeignKey("services.id"))
     name: Mapped[str] = mapped_column(String)
-    template_type: Mapped[str] = mapped_column(Enum("email", "sms", "letter", name="template_type"))
+    template_type: Mapped[str] = mapped_column(Enum("email", "sms", name="template_type"))
     content: Mapped[str] = mapped_column(Text)
     subject: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -83,4 +83,8 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

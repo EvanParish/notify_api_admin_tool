@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import os
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from nicegui import app, ui
@@ -183,7 +185,7 @@ async def handle_services_sync(status_badge, sync_label) -> None:
     sync_label.text = "Syncing services..."
     await manager.sync_services(progress=progress)
     sync_label.text = "Sync complete"
-    services_table.refresh()
+    await refresh_if_needed(services_table)
     await refresh_status_badge(status_badge)
 
 
@@ -226,7 +228,7 @@ async def handle_api_keys_sync(status_badge, sync_label) -> None:
 
 
 async def refresh_tables() -> None:
-    services_table.refresh()
+    await refresh_if_needed(services_table)
 
 
 def set_theme_preference(is_dark: bool) -> None:
@@ -261,7 +263,7 @@ def build_shell() -> tuple:
         ui.link("Settings", "/settings")
 
     dark_mode = ui.dark_mode()
-    with ui.header().classes("items-center justify-between bg-gray-100 dark:bg-slate-800"):
+    with ui.header().classes("items-center justify-between bg-gray-600 dark:bg-slate-800"):
         with ui.row().classes("items-center gap-3"):
             ui.button(icon="menu", on_click=drawer.toggle).props("flat round dense")
             ui.label("Notification Admin Dashboard").classes("text-xl font-medium")
@@ -304,6 +306,40 @@ def metric_card(title: str, value: int) -> None:
         ui.label(str(value)).classes("text-3xl font-bold")
 
 
+async def refresh_if_needed(refreshable) -> None:
+    result = refreshable.refresh()
+    if inspect.isawaitable(result):
+        await result
+
+
+def make_sortable(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [{**column, "sortable": True} for column in columns]
+
+
+def _parse_filter_date(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value.split("T", 1)[0])
+    except ValueError:
+        return None
+
+
+def _matches_expiry_range(
+    expiry_value: Optional[str], start_date: Optional[date], end_date: Optional[date]
+) -> bool:
+    if not start_date and not end_date:
+        return True
+    expiry_date = _parse_filter_date(expiry_value)
+    if not expiry_date:
+        return False
+    if start_date and expiry_date < start_date:
+        return False
+    if end_date and expiry_date > end_date:
+        return False
+    return True
+
+
 @ui.page("/services")
 async def services_page() -> None:
     status_badge, sync_label, refresh_button, dark_mode = build_shell()
@@ -344,7 +380,8 @@ async def services_table() -> None:
         for row in rows
     ]
     ui.table(
-        columns=[
+        columns=make_sortable(
+            [
             {"name": "id", "label": "ID", "field": "id"},
             {"name": "name", "label": "Name", "field": "name"},
             {"name": "active", "label": "Active", "field": "active"},
@@ -354,7 +391,8 @@ async def services_table() -> None:
             {"name": "research_mode", "label": "Research", "field": "research_mode"},
             {"name": "count_as_live", "label": "Live", "field": "count_as_live"},
             {"name": "permissions", "label": "Permissions", "field": "permissions"},
-        ],
+            ]
+        ),
         rows=table_rows,
         pagination={"rowsPerPage": 10},
     ).props("row-key=id").classes("w-full")
@@ -378,7 +416,7 @@ async def templates_page() -> None:
         ui.label("Templates").classes("text-lg font-semibold")
         filter_row = ui.row().classes("gap-2")
         service_options = {svc.id: svc.name for svc in await list_services()}
-        type_options = {"email": "Email", "sms": "SMS", "letter": "Letter"}
+        type_options = {"email": "Email", "sms": "SMS"}
         service_select = ui.select(
             service_options, label="Service", with_input=True
         ).props("clearable")
@@ -415,7 +453,8 @@ async def templates_page() -> None:
                 for row in rows
             ]
             ui.table(
-                columns=[
+                columns=make_sortable(
+                    [
                     {"name": "id", "label": "ID", "field": "id"},
                     {"name": "service_id", "label": "Service", "field": "service_id"},
                     {"name": "name", "label": "Name", "field": "name"},
@@ -430,7 +469,8 @@ async def templates_page() -> None:
                     {"name": "updated_at", "label": "Updated", "field": "updated_at"},
                     {"name": "subject", "label": "Subject", "field": "subject"},
                     {"name": "content", "label": "Content", "field": "content"},
-                ],
+                    ]
+                ),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
             ).props("row-key=id").classes("w-full")
@@ -463,6 +503,8 @@ async def api_keys_page() -> None:
         service_select = ui.select(
             service_options, label="Filter by Service", with_input=True
         ).props("clearable")
+        expires_from = ui.input(label="Expires from").props("clearable type=date")
+        expires_to = ui.input(label="Expires to").props("clearable type=date")
 
         async def handle_sync_keys() -> None:
             await page_sync_api_keys()
@@ -471,6 +513,8 @@ async def api_keys_page() -> None:
         @ui.refreshable
         async def render_table() -> None:
             selected_service = service_select.value
+            start_date = _parse_filter_date(expires_from.value)
+            end_date = _parse_filter_date(expires_to.value)
             keys = await list_api_keys(selected_service)
             table_rows: List[Dict[str, Any]] = [
                 {
@@ -485,9 +529,11 @@ async def api_keys_page() -> None:
                     "version": key.version,
                 }
                 for key in keys
+                if _matches_expiry_range(key.expiry_date, start_date, end_date)
             ]
             ui.table(
-                columns=[
+                columns=make_sortable(
+                    [
                     {"name": "id", "label": "ID", "field": "id"},
                     {
                         "name": "service_id",
@@ -505,12 +551,15 @@ async def api_keys_page() -> None:
                     {"name": "created_at", "label": "Created", "field": "created_at"},
                     {"name": "revoked", "label": "Revoked", "field": "revoked"},
                     {"name": "version", "label": "Version", "field": "version"},
-                ],
+                    ]
+                ),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
             ).props("row-key=id").classes("w-full")
 
         service_select.on_value_change(lambda _: render_table.refresh())
+        expires_from.on_value_change(lambda _: render_table.refresh())
+        expires_to.on_value_change(lambda _: render_table.refresh())
         ui.button("Sync API Keys", on_click=handle_sync_keys)
         await render_table()
 
@@ -546,6 +595,7 @@ async def send_page() -> None:
         recipient_input = ui.input(label="Recipient")
         personalisation_area = ui.column()
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
+        personalisation_controls: Dict[str, Input] = {}
 
         async def load_keys() -> None:
             selected_service = service_select.value
@@ -560,6 +610,7 @@ async def send_page() -> None:
 
         async def handle_template_change() -> None:
             personalisation_area.clear()
+            personalisation_controls.clear()
             selected_id = template_select.value
             templates = await list_templates(service_select.value, type_toggle.value)
             tmpl = next((t for t in templates if t.id == selected_id), None)
@@ -568,8 +619,11 @@ async def send_page() -> None:
             placeholders = extract_placeholders(
                 (tmpl.subject or "") + " " + (tmpl.content or "")
             )
-            for name in placeholders:
-                ui.input(label=name, placeholder=name)
+            with personalisation_area:
+                for name in placeholders:
+                    personalisation_controls[name] = ui.input(
+                        label=name, placeholder=name
+                    )
 
         async def handle_send() -> None:
             selected_env = env_select.value
@@ -589,12 +643,9 @@ async def send_page() -> None:
                 ui.notify("Recipient format looks invalid", color="red")
                 return
 
-            personalisation_inputs = [
-                c for c in personalisation_area.children if isinstance(c, Input)
-            ]
             personalisation: Dict[str, Any] = {}
-            for control in personalisation_inputs:
-                personalisation[control.label] = control.value or ""
+            for key, control in personalisation_controls.items():
+                personalisation[key] = control.value or ""
             for key, val in personalisation.items():
                 if val == "":
                     ui.notify(f"Personalisation field '{key}' is empty", color="red")
@@ -798,7 +849,7 @@ async def save_local_key(
         return
     await add_local_key(encryption, service_id, name, secret, key_type)
     ui.notify("Key saved", color="green")
-    render_local_keys.refresh()
+    await refresh_if_needed(render_local_keys)
 
 
 @ui.refreshable
@@ -814,12 +865,14 @@ async def render_local_keys() -> None:
         for k in keys
     ]
     ui.table(
-        columns=[
+        columns=make_sortable(
+            [
             {"name": "id", "label": "ID", "field": "id"},
             {"name": "service_id", "label": "Service", "field": "service_id"},
             {"name": "key_name", "label": "Name", "field": "key_name"},
             {"name": "key_type", "label": "Type", "field": "key_type"},
-        ],
+            ]
+        ),
         rows=rows,
         pagination={"rowsPerPage": 5},
     ).props("row-key=id").classes("w-full")
