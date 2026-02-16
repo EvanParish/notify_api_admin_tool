@@ -107,6 +107,25 @@ class SmsSender(Base):
     updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
+class ProviderDetail(Base):
+    __tablename__ = "provider_details"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    environment: Mapped[str] = mapped_column(
+        String, primary_key=True, default="unknown", index=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    current_month_billable_sms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    display_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    identifier: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    load_balancing_weight: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    notification_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    supports_international: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
 class LocalApiKey(Base):
     __tablename__ = "local_api_keys"
 

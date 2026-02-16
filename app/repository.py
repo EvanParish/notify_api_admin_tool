@@ -6,7 +6,15 @@ from sqlalchemy import or_, select
 
 from .crypto import EncryptionManager
 from .db import get_session
-from .models import ApiKey, LocalApiKey, Service, Setting, SmsSender, Template
+from .models import (
+    ApiKey,
+    LocalApiKey,
+    ProviderDetail,
+    Service,
+    Setting,
+    SmsSender,
+    Template,
+)
 
 
 def _is_archived_value(value: Optional[str]) -> bool:
@@ -141,3 +149,16 @@ async def list_sms_senders(
             for row in rows
             if not _is_archived(row.id, row.sms_sender, row.description)
         ]
+
+
+async def list_provider_details(
+    environment: Optional[str] = None,
+) -> List[ProviderDetail]:
+    async with get_session() as session:
+        query = select(ProviderDetail)
+        if environment:
+            query = query.where(
+                or_(ProviderDetail.environment == environment, ProviderDetail.environment.is_(None))
+            )
+        rows = list((await session.execute(query)).scalars().all())
+        return rows

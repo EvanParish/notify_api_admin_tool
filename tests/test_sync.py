@@ -31,6 +31,9 @@ class FakeAPI(NotificationAPI):
     async def get_sms_senders(self, service_id: str):
         return []
 
+    async def get_provider_details(self):
+        return []
+
     async def send_notification(self, *args, **kwargs):
         return {}
 

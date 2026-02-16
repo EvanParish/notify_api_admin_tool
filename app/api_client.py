@@ -21,6 +21,9 @@ class NotificationAPI:
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+    async def get_provider_details(self) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
     async def send_notification(
         self,
         template_id: str,
@@ -78,6 +81,16 @@ class HttpNotificationAPI(NotificationAPI):
         if isinstance(payload, list):
             return payload
         return payload.get("sms_senders") or payload.get("data") or []
+
+    async def get_provider_details(self) -> List[Dict[str, Any]]:
+        resp = await self.client.get(
+            f"{self.base_url}/provider-details", auth=self._basic_auth
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, list):
+            return payload
+        return payload.get("provider_details") or payload.get("data") or []
 
     async def send_notification(
         self,
@@ -182,6 +195,37 @@ class MockNotificationAPI(NotificationAPI):
                 "is_default": True,
                 "archived": False,
             }
+        ]
+
+    async def get_provider_details(self) -> List[Dict[str, Any]]:
+        await asyncio.sleep(self._sleep)
+        return [
+            {
+                "active": False,
+                "created_by_name": "Filip Fafara",
+                "current_month_billable_sms": 0,
+                "display_name": "Govdelivery",
+                "id": "5fa26210-93a5-4f10-bf6a-00f2a14a9b4b",
+                "identifier": "govdelivery",
+                "load_balancing_weight": 0,
+                "notification_type": "email",
+                "priority": 5,
+                "supports_international": False,
+                "updated_at": "Mon, 16 Aug 2021 19:38:10 GMT",
+            },
+            {
+                "active": True,
+                "created_by_name": "Filip Fafara",
+                "current_month_billable_sms": 0,
+                "display_name": "AWS SES",
+                "id": "4b7d3f9a-ab42-4795-b2ce-28e7c2e2d3f7",
+                "identifier": "ses",
+                "load_balancing_weight": 100,
+                "notification_type": "email",
+                "priority": 10,
+                "supports_international": False,
+                "updated_at": "Mon, 16 Aug 2021 19:39:12 GMT",
+            },
         ]
 
     async def send_notification(

@@ -30,6 +30,7 @@ class SyncManager:
         await self.sync_templates(progress)
         await self.sync_api_keys(progress)
         await self.sync_sms_senders(progress)
+        await self.sync_provider_details(progress)
 
     async def sync_services(self, progress: ProgressCallback = None) -> None:
         if progress:
@@ -181,3 +182,26 @@ class SyncManager:
                     )
                     await session.merge(record)
                 await session.commit()
+
+    async def sync_provider_details(self, progress: ProgressCallback = None) -> None:
+        if progress:
+            await progress("Syncing provider details")
+        provider_details = await self.api.get_provider_details()
+        async with get_session() as session:
+            for provider in provider_details:
+                record = models.ProviderDetail(
+                    id=provider.get("id"),
+                    environment=self.environment,
+                    active=provider.get("active", False),
+                    created_by_name=provider.get("created_by_name"),
+                    current_month_billable_sms=provider.get("current_month_billable_sms"),
+                    display_name=provider.get("display_name"),
+                    identifier=provider.get("identifier"),
+                    load_balancing_weight=provider.get("load_balancing_weight"),
+                    notification_type=provider.get("notification_type"),
+                    priority=provider.get("priority"),
+                    supports_international=provider.get("supports_international"),
+                    updated_at=provider.get("updated_at"),
+                )
+                await session.merge(record)
+            await session.commit()

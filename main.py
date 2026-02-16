@@ -24,6 +24,7 @@ from app.repository import (
     get_setting,
     list_api_keys,
     list_local_keys,
+    list_provider_details,
     list_sms_senders,
     list_services,
     list_templates,
@@ -327,6 +328,32 @@ async def handle_sms_senders_sync(status_badge, sync_label) -> None:
     await refresh_status_badge(status_badge)
 
 
+async def handle_provider_details_sync(status_badge, sync_label) -> None:
+    if not await ensure_sync_enabled(sync_label):
+        return
+
+    if not await ensure_admin_auth(state.environment, sync_label):
+        return
+
+    api = await build_api_client(state.environment)
+    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
+
+    async def progress(msg: str):
+        state.sync_message = msg
+        sync_label.text = msg
+
+    sync_label.text = "Syncing provider details..."
+    try:
+        await manager.sync_provider_details(progress=progress)
+    except httpx.HTTPStatusError as exc:
+        if exc.response and exc.response.status_code == 401:
+            handle_unauthorized(sync_label, state.environment)
+            return
+        raise
+    sync_label.text = "Sync complete"
+    await refresh_status_badge(status_badge)
+
+
 async def refresh_tables() -> None:
     await refresh_if_needed(services_table)
 
@@ -361,6 +388,7 @@ def build_shell(on_view_env_change=None) -> tuple:
         ui.link("Templates", "/templates")
         ui.link("API Keys", "/api-keys")
         ui.link("SMS Senders", "/sms-senders")
+        ui.link("Provider Details", "/provider-details")
         ui.link("Settings", "/settings")
 
     dark_mode = ui.dark_mode()
@@ -845,19 +873,11 @@ async def api_keys_page() -> None:
                     [
                     {"name": "id", "label": "ID", "field": "id"},
                     {"name": "environment", "label": "Environment", "field": "environment"},
-                    {
-                        "name": "service_id",
-                        "label": "Service ID",
-                        "field": "service_id",
-                    },
+                    {"name": "service_id", "label": "Service ID", "field": "service_id"},
                     {"name": "name", "label": "Name", "field": "name"},
                     {"name": "key_type", "label": "Type", "field": "key_type"},
                     {"name": "expiry_date", "label": "Expires", "field": "expiry_date"},
-                    {
-                        "name": "created_by",
-                        "label": "Created By",
-                        "field": "created_by",
-                    },
+                    {"name": "created_by", "label": "Created By", "field": "created_by"},
                     {"name": "created_at", "label": "Created", "field": "created_at"},
                     {"name": "revoked", "label": "Revoked", "field": "revoked"},
                     {"name": "version", "label": "Version", "field": "version"},
@@ -947,39 +967,15 @@ async def sms_senders_page() -> None:
                 columns=make_sortable(
                     [
                         {"name": "id", "label": "ID", "field": "id"},
-                        {
-                            "name": "environment",
-                            "label": "Environment",
-                            "field": "environment",
-                        },
+                        {"name": "environment", "label": "Environment", "field": "environment",},
                         {"name": "service_id", "label": "Service", "field": "service_id"},
-                        {
-                            "name": "sms_sender",
-                            "label": "SMS Sender",
-                            "field": "sms_sender",
-                        },
+                        {"name": "sms_sender", "label": "SMS Sender", "field": "sms_sender"},
                         {"name": "is_default", "label": "Default", "field": "is_default"},
                         {"name": "archived", "label": "Archived", "field": "archived"},
-                        {
-                            "name": "description",
-                            "label": "Description",
-                            "field": "description",
-                        },
-                        {
-                            "name": "provider_name",
-                            "label": "Provider",
-                            "field": "provider_name",
-                        },
-                        {
-                            "name": "rate_limit",
-                            "label": "Rate Limit",
-                            "field": "rate_limit",
-                        },
-                        {
-                            "name": "rate_limit_interval",
-                            "label": "Rate Interval",
-                            "field": "rate_limit_interval",
-                        },
+                        {"name": "description", "label": "Description", "field": "description"},
+                        {"name": "provider_name", "label": "Provider", "field": "provider_name"},
+                        {"name": "rate_limit", "label": "Rate Limit", "field": "rate_limit"},
+                        {"name": "rate_limit_interval", "label": "Rate Interval", "field": "rate_limit_interval"},
                         {"name": "created_at", "label": "Created", "field": "created_at"},
                         {"name": "updated_at", "label": "Updated", "field": "updated_at"},
                     ]
@@ -992,6 +988,112 @@ async def sms_senders_page() -> None:
 
         service_select.on_value_change(lambda _: render_table.refresh())
         ui.button("Sync SMS Senders", on_click=handle_sync_senders)
+        await render_table()
+
+
+@ui.page("/provider-details")
+async def provider_details_page() -> None:
+    async def handle_view_env_change() -> None:
+        await refresh_if_needed(render_table)
+
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=handle_view_env_change
+    )
+    await ensure_theme_preference(dark_mode)
+
+    async def page_refresh():
+        await handle_full_sync(status_badge, sync_label)
+
+    refresh_button.on_click(page_refresh)
+    await refresh_status_badge(status_badge)
+
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
+        ui.label("Provider Details").classes("text-lg font-semibold")
+
+        async def handle_sync_provider_details() -> None:
+            await handle_provider_details_sync(status_badge, sync_label)
+            render_table.refresh()
+
+        @ui.refreshable
+        async def render_table() -> None:
+            providers = await list_provider_details(get_view_environment())
+            table_rows: List[Dict[str, Any]] = [
+                {
+                    "id": provider.id,
+                    "environment": format_environment(provider.environment),
+                    "display_name": provider.display_name,
+                    "identifier": provider.identifier,
+                    "notification_type": provider.notification_type,
+                    "priority": provider.priority,
+                    "load_balancing_weight": provider.load_balancing_weight,
+                    "active": provider.active,
+                    "supports_international": provider.supports_international,
+                    "current_month_billable_sms": provider.current_month_billable_sms,
+                    "created_by_name": provider.created_by_name,
+                    "updated_at": provider.updated_at,
+                }
+                for provider in providers
+            ]
+            table = ui.table(
+                columns=make_sortable(
+                    [
+                        {"name": "id", "label": "ID", "field": "id"},
+                        {
+                            "name": "environment",
+                            "label": "Environment",
+                            "field": "environment",
+                        },
+                        {
+                            "name": "display_name",
+                            "label": "Display Name",
+                            "field": "display_name",
+                        },
+                        {
+                            "name": "identifier",
+                            "label": "Identifier",
+                            "field": "identifier",
+                        },
+                        {
+                            "name": "notification_type",
+                            "label": "Type",
+                            "field": "notification_type",
+                        },
+                        {"name": "priority", "label": "Priority", "field": "priority"},
+                        {
+                            "name": "load_balancing_weight",
+                            "label": "Weight",
+                            "field": "load_balancing_weight",
+                        },
+                        {"name": "active", "label": "Active", "field": "active"},
+                        {
+                            "name": "supports_international",
+                            "label": "International",
+                            "field": "supports_international",
+                        },
+                        {
+                            "name": "current_month_billable_sms",
+                            "label": "Billable SMS",
+                            "field": "current_month_billable_sms",
+                        },
+                        {
+                            "name": "created_by_name",
+                            "label": "Created By",
+                            "field": "created_by_name",
+                        },
+                        {
+                            "name": "updated_at",
+                            "label": "Updated",
+                            "field": "updated_at",
+                        },
+                    ]
+                ),
+                rows=table_rows,
+                pagination={"rowsPerPage": 9},
+            )
+            table.props("row-key=id").classes("w-full")
+            add_copyable_slots(table, table_rows)
+
+        ui.button("Sync Provider Details", on_click=handle_sync_provider_details)
         await render_table()
 
 
