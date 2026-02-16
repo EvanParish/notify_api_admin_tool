@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -996,6 +997,8 @@ async def sms_senders_page() -> None:
 
 @ui.page("/send")
 async def send_page() -> None:
+    placeholder_pattern = re.compile(r"\(\((.*?)\)\)")
+
     async def refresh_service_options() -> None:
         options = {
             svc.id: format_service_label(svc)
@@ -1041,6 +1044,23 @@ async def send_page() -> None:
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
         personalisation_controls: Dict[str, Input] = {}
 
+        def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:
+            if not content:
+                return ""
+
+            def replace(match: re.Match) -> str:
+                key = match.group(1).strip()
+                value = personalisation.get(key, "")
+                return value if value else match.group(0)
+
+            return placeholder_pattern.sub(replace, content)
+
+        def build_personalisation() -> Dict[str, str]:
+            return {
+                key: control.value or ""
+                for key, control in personalisation_controls.items()
+            }
+
         async def load_keys() -> None:
             selected_service = service_select.value
             keys = await list_local_keys(selected_service)
@@ -1052,7 +1072,10 @@ async def send_page() -> None:
             templates = await list_templates(
                 selected_service, t_type, environment=state.environment
             )
-            template_select.set_options({t.id: t.name for t in templates})
+            options = {t.id: t.name for t in templates}
+            template_select.set_options(options)
+            if template_select.value not in options:
+                template_select.value = None
 
         async def handle_template_change() -> None:
             personalisation_area.clear()
@@ -1072,6 +1095,28 @@ async def send_page() -> None:
                     personalisation_controls[name] = ui.input(
                         label=name, placeholder=name
                     ).classes("w-full md:w-1/2")
+                    personalisation_controls[name].on_value_change(update_preview)
+            await update_preview()
+
+        async def update_preview(_=None) -> None:
+            selected_id = template_select.value
+            if not selected_id:
+                preview_subject.text = ""
+                preview_body.text = "Select a template to see the preview."
+                return
+            templates = await list_templates(
+                service_select.value, type_toggle.value, environment=state.environment
+            )
+            tmpl = next((t for t in templates if t.id == selected_id), None)
+            if not tmpl:
+                preview_subject.text = ""
+                preview_body.text = "Select a template to see the preview."
+                return
+            personalisation = build_personalisation()
+            subject = render_preview_text(tmpl.subject or "", personalisation)
+            content = render_preview_text(tmpl.content or "", personalisation)
+            preview_subject.text = f"Subject: {subject}" if subject else ""
+            preview_body.text = content or ""
 
         async def handle_send() -> None:
             selected_env = env_select.value
@@ -1118,9 +1163,11 @@ async def send_page() -> None:
         async def handle_service_change(_=None) -> None:
             await load_keys()
             await load_templates()
+            await update_preview()
 
         async def handle_type_change(_=None) -> None:
             await load_templates()
+            await update_preview()
 
         async def handle_template_select(_=None) -> None:
             await handle_template_change()
@@ -1135,6 +1182,10 @@ async def send_page() -> None:
         template_select.on_value_change(handle_template_select)
         env_select.on_value_change(handle_env_change)
         ui.button("Send Notification", on_click=handle_send, color="primary")
+        with ui.card().classes("p-6 w-full"):
+            ui.label("Preview").classes("text-md font-semibold")
+            preview_subject = ui.label("").classes("text-sm font-medium")
+            preview_body = ui.label("").classes("text-sm whitespace-pre-wrap")
 
         await handle_service_change()
 
