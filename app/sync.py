@@ -30,6 +30,7 @@ class SyncManager:
         await self.sync_templates(progress)
         await self.sync_api_keys(progress)
         await self.sync_sms_senders(progress)
+        await self.sync_users(progress)
         await self.sync_provider_details(progress)
 
     async def sync_services(self, progress: ProgressCallback = None) -> None:
@@ -182,6 +183,38 @@ class SyncManager:
                     )
                     await session.merge(record)
                 await session.commit()
+
+    async def sync_users(self, progress: ProgressCallback = None) -> None:
+        if progress:
+            await progress("Syncing users")
+        users = await self.api.get_users()
+        async with get_session() as session:
+            for user in users:
+                email = (user.get("email_address") or "").lower()
+                if email.startswith("_archived"):
+                    continue
+                record = models.User(
+                    id=user.get("id"),
+                    environment=self.environment,
+                    email_address=user.get("email_address"),
+                    name=user.get("name"),
+                    state=user.get("state"),
+                    platform_admin=user.get("platform_admin", False),
+                    blocked=user.get("blocked", False),
+                    auth_type=user.get("auth_type"),
+                    mobile_number=user.get("mobile_number"),
+                    failed_login_count=user.get("failed_login_count"),
+                    logged_in_at=user.get("logged_in_at"),
+                    password_changed_at=user.get("password_changed_at"),
+                    current_session_id=user.get("current_session_id"),
+                    identity_provider_user_id=user.get("identity_provider_user_id"),
+                    additional_information=user.get("additional_information"),
+                    permissions=user.get("permissions"),
+                    services=user.get("services"),
+                    organisations=user.get("organisations"),
+                )
+                await session.merge(record)
+            await session.commit()
 
     async def sync_provider_details(self, progress: ProgressCallback = None) -> None:
         if progress:

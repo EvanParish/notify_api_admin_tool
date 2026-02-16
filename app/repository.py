@@ -14,6 +14,7 @@ from .models import (
     Setting,
     SmsSender,
     Template,
+    User,
 )
 
 
@@ -162,3 +163,16 @@ async def list_provider_details(
             )
         rows = list((await session.execute(query)).scalars().all())
         return rows
+
+
+async def list_users(environment: Optional[str] = None) -> List[User]:
+    async with get_session() as session:
+        query = select(User)
+        if environment:
+            query = query.where(or_(User.environment == environment, User.environment.is_(None)))
+        rows = list((await session.execute(query)).scalars().all())
+        return [
+            row
+            for row in rows
+            if not (row.email_address or "").lower().startswith("_archived")
+        ]

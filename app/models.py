@@ -107,6 +107,31 @@ class SmsSender(Base):
     updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    environment: Mapped[str] = mapped_column(
+        String, primary_key=True, default="unknown", index=True
+    )
+    email_address: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    auth_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    mobile_number: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    failed_login_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    logged_in_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    password_changed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    current_session_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    identity_provider_user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    additional_information: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    permissions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    services: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    organisations: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
+
 class ProviderDetail(Base):
     __tablename__ = "provider_details"
 

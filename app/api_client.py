@@ -21,6 +21,9 @@ class NotificationAPI:
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+    async def get_users(self) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
     async def get_provider_details(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -81,6 +84,14 @@ class HttpNotificationAPI(NotificationAPI):
         if isinstance(payload, list):
             return payload
         return payload.get("sms_senders") or payload.get("data") or []
+
+    async def get_users(self) -> List[Dict[str, Any]]:
+        resp = await self.client.get(f"{self.base_url}/user", auth=self._basic_auth)
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, list):
+            return payload
+        return payload.get("data") or []
 
     async def get_provider_details(self) -> List[Dict[str, Any]]:
         resp = await self.client.get(
@@ -194,6 +205,30 @@ class MockNotificationAPI(NotificationAPI):
                 "sms_sender": "+15551234567",
                 "is_default": True,
                 "archived": False,
+            }
+        ]
+
+    async def get_users(self) -> List[Dict[str, Any]]:
+        await asyncio.sleep(self._sleep)
+        return [
+            {
+                "additional_information": {},
+                "auth_type": "email_auth",
+                "blocked": False,
+                "current_session_id": None,
+                "email_address": "demo.user@example.com",
+                "failed_login_count": 0,
+                "id": "user-1",
+                "identity_provider_user_id": None,
+                "logged_in_at": None,
+                "mobile_number": None,
+                "name": "Demo User",
+                "organisations": [],
+                "password_changed_at": None,
+                "permissions": {},
+                "platform_admin": False,
+                "services": [],
+                "state": "active",
             }
         ]
 

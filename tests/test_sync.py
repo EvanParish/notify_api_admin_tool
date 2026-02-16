@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 from sqlalchemy import select, delete
 
 from app.db import create_all, get_session, init_engine
-from app.models import Service, Template
+from app.models import Service, Template, User
 from app.sync import SyncManager
 from app.api_client import NotificationAPI
 
@@ -11,9 +11,10 @@ import tests.testing_data as testing_data
 
 
 class FakeAPI(NotificationAPI):
-    def __init__(self, services=None, templates=None):
+    def __init__(self, services=None, templates=None, users=None):
         self.services_data = services or testing_data.service_data["data"]
         self.templates_data = templates or testing_data.template_data["data"]
+        self.users_data = users or []
         self._template_generator = None
 
     async def get_services(self):
@@ -30,6 +31,9 @@ class FakeAPI(NotificationAPI):
 
     async def get_sms_senders(self, service_id: str):
         return []
+
+    async def get_users(self):
+        return self.users_data
 
     async def get_provider_details(self):
         return []
@@ -189,6 +193,23 @@ async def test_sync_all_with_progress(setup_db):
     await sync.sync_all(progress=track_progress)
     
     assert len(messages) > 0
+
+
+@pytest.mark.asyncio
+async def test_sync_users_filters_archived(setup_db):
+    await create_all()
+    api = FakeAPI(users=[
+        {"id": "u-1", "email_address": "_archived_user@example.com", "name": "Archived"},
+        {"id": "u-2", "email_address": "active.user@example.com", "name": "Active"},
+    ])
+    sync = SyncManager(api)
+
+    await sync.sync_users()
+
+    async with get_session() as session:
+        users = (await session.execute(select(User))).scalars().all()
+        assert len(users) == 1
+        assert users[0].id == "u-2"
 
 
 @pytest.mark.asyncio
