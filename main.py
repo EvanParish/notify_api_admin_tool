@@ -98,6 +98,30 @@ ui.add_head_html(
                     document.body.classList.add('body--dark');
                 });
             }
+            window.copyTableCellText = async (text) => {
+                const value = String(text ?? '');
+                try {
+                    if (navigator?.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(value);
+                        return true;
+                    }
+                } catch (error) {
+                    console.warn('Clipboard API copy failed; using fallback.', error);
+                }
+                if (!document?.body) return false;
+                const textarea = document.createElement('textarea');
+                textarea.value = value;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                try {
+                    return document.execCommand('copy');
+                } finally {
+                    document.body.removeChild(textarea);
+                }
+            };
         </script>
         """
 )
@@ -450,6 +474,38 @@ def make_sortable(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [{**column, "sortable": True} for column in columns]
 
 
+COPYABLE_FIELDS = ("id", "service_id", "name", "key_name")
+COPYABLE_CELL_SLOT = """
+<q-td :props="props">
+  <span
+    class="cursor-pointer text-primary"
+    title="Click to copy"
+    @click="$parent.$emit('copy', props.value)"
+  >{{ props.value }}</span>
+</q-td>
+"""
+
+
+def copy_to_clipboard(text: Any) -> None:
+    value = "" if text is None else str(text)
+    ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(value)})")
+    safe_notify(f'Copied "{value}" to clipboard!', color="green")
+
+
+def get_copyable_fields(rows: List[Dict[str, Any]]) -> List[str]:
+    if not rows:
+        return []
+    return [field for field in COPYABLE_FIELDS if field in rows[0]]
+
+
+def add_copyable_slots(table, rows: List[Dict[str, Any]]) -> None:
+    copyable_fields = get_copyable_fields(rows)
+    for field in copyable_fields:
+        table.add_slot(f"body-cell-{field}", COPYABLE_CELL_SLOT)
+    if copyable_fields:
+        table.on("copy", lambda e: copy_to_clipboard(e.args))
+
+
 def format_environment(value: Optional[str]) -> str:
     return value or "unknown"
 
@@ -588,7 +644,7 @@ async def services_table() -> None:
         }
         for row in rows
     ]
-    ui.table(
+    table = ui.table(
         columns=make_sortable(
             [
             {"name": "id", "label": "ID", "field": "id"},
@@ -605,7 +661,9 @@ async def services_table() -> None:
         ),
         rows=table_rows,
         pagination={"rowsPerPage": 10},
-    ).props("row-key=id").classes("w-full")
+    )
+    table.props("row-key=id").classes("w-full")
+    add_copyable_slots(table, table_rows)
 
 
 @ui.page("/templates")
@@ -681,7 +739,7 @@ async def templates_page() -> None:
                 }
                 for row in rows
             ]
-            ui.table(
+            table = ui.table(
                 columns=make_sortable(
                     [
                     {"name": "id", "label": "ID", "field": "id"},
@@ -703,7 +761,9 @@ async def templates_page() -> None:
                 ),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
-            ).props("row-key=id").classes("w-full")
+            )
+            table.props("row-key=id").classes("w-full")
+            add_copyable_slots(table, table_rows)
 
         service_select.on_value_change(lambda _: render_table.refresh())
         type_select.on_value_change(lambda _: render_table.refresh())
@@ -779,7 +839,7 @@ async def api_keys_page() -> None:
                 for key in keys
                 if _matches_expiry_range(key.expiry_date, start_date, end_date)
             ]
-            ui.table(
+            table = ui.table(
                 columns=make_sortable(
                     [
                     {"name": "id", "label": "ID", "field": "id"},
@@ -804,7 +864,9 @@ async def api_keys_page() -> None:
                 ),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
-            ).props("row-key=id").classes("w-full")
+            )
+            table.props("row-key=id").classes("w-full")
+            add_copyable_slots(table, table_rows)
 
         service_select.on_value_change(lambda _: render_table.refresh())
         expires_from.on_value_change(lambda _: render_table.refresh())
@@ -880,7 +942,7 @@ async def sms_senders_page() -> None:
                 }
                 for sender in senders
             ]
-            ui.table(
+            table = ui.table(
                 columns=make_sortable(
                     [
                         {"name": "id", "label": "ID", "field": "id"},
@@ -923,7 +985,9 @@ async def sms_senders_page() -> None:
                 ),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
-            ).props("row-key=id").classes("w-full")
+            )
+            table.props("row-key=id").classes("w-full")
+            add_copyable_slots(table, table_rows)
 
         service_select.on_value_change(lambda _: render_table.refresh())
         ui.button("Sync SMS Senders", on_click=handle_sync_senders)
@@ -1218,7 +1282,7 @@ async def render_local_keys() -> None:
         }
         for k in keys
     ]
-    ui.table(
+    table = ui.table(
         columns=make_sortable(
             [
             {"name": "id", "label": "ID", "field": "id"},
@@ -1229,7 +1293,9 @@ async def render_local_keys() -> None:
         ),
         rows=rows,
         pagination={"rowsPerPage": 5},
-    ).props("row-key=id").classes("w-full")
+    )
+    table.props("row-key=id").classes("w-full")
+    add_copyable_slots(table, rows)
 
 
 if __name__ in {"__main__", "__mp_main__"}:

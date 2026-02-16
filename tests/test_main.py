@@ -432,6 +432,17 @@ def test_app_state_creation():
     assert state2.sync_message == "Syncing..."
 
 
+def test_get_copyable_fields():
+    """Test extraction of copy-enabled fields from table rows."""
+    import main
+
+    assert main.get_copyable_fields([]) == []
+    assert main.get_copyable_fields([{"id": "svc-1", "name": "Service", "active": True}]) == [
+        "id",
+        "name",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_startup_function(initialized_db, mock_config):
     """Test the startup function by calling ensure_default_hosts directly."""
