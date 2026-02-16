@@ -503,7 +503,7 @@ def make_sortable(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [{**column, "sortable": True} for column in columns]
 
 
-COPYABLE_FIELDS = ("id", "service_id", "name", "key_name")
+COPYABLE_FIELDS = ("id", "service_id", "name", "key_name", "sms_sender")
 COPYABLE_CELL_SLOT = """
 <q-td :props="props">
   <span
@@ -697,6 +697,8 @@ async def services_table() -> None:
 
 @ui.page("/templates")
 async def templates_page() -> None:
+    template_search_query = ""
+
     async def refresh_service_options() -> None:
         options = {
             svc.id: format_service_label(svc)
@@ -726,6 +728,9 @@ async def templates_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Templates").classes("text-lg font-semibold")
+        template_search = ui.input(
+            label="Search by Template ID or Name"
+        ).classes("w-full md:w-1/2")
         filter_row = ui.row().classes("gap-2")
         service_options = {
             svc.id: format_service_label(svc)
@@ -750,6 +755,13 @@ async def templates_page() -> None:
             rows = await list_templates(
                 selected_service, selected_type, environment=get_view_environment()
             )
+            if template_search_query:
+                rows = [
+                    row
+                    for row in rows
+                    if template_search_query in (row.id or "").lower()
+                    or template_search_query in (row.name or "").lower()
+                ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "id": row.id,
@@ -790,12 +802,18 @@ async def templates_page() -> None:
                 ),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
-            )
+                )
             table.props("row-key=id").classes("w-full")
             add_copyable_slots(table, table_rows)
 
+        async def handle_template_search_event(e) -> None:
+            nonlocal template_search_query
+            template_search_query = (getattr(e, "value", None) or "").strip().lower()
+            await refresh_if_needed(render_table)
+
         service_select.on_value_change(lambda _: render_table.refresh())
         type_select.on_value_change(lambda _: render_table.refresh())
+        template_search.on_value_change(handle_template_search_event)
         ui.button("Sync Templates", on_click=handle_sync_templates)
         await render_table()
 
@@ -1021,7 +1039,7 @@ async def provider_details_page() -> None:
                 {
                     "id": provider.id,
                     "environment": format_environment(provider.environment),
-                    "display_name": provider.display_name,
+                    "name": provider.display_name,
                     "identifier": provider.identifier,
                     "notification_type": provider.notification_type,
                     "priority": provider.priority,
@@ -1044,9 +1062,9 @@ async def provider_details_page() -> None:
                             "field": "environment",
                         },
                         {
-                            "name": "display_name",
+                            "name": "name",
                             "label": "Display Name",
-                            "field": "display_name",
+                            "field": "name",
                         },
                         {
                             "name": "identifier",
