@@ -999,7 +999,7 @@ async def send_page() -> None:
     async def refresh_service_options() -> None:
         options = {
             svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
+            for svc in await list_services(state.environment)
         }
         service_select.set_options(options)
         if service_select.value not in options:
@@ -1019,7 +1019,7 @@ async def send_page() -> None:
 
     service_options = {
         svc.id: format_service_label(svc)
-        for svc in await list_services(get_view_environment())
+        for svc in await list_services(state.environment)
     }
     env_options = list(config.api_hosts.keys())
 
@@ -1050,7 +1050,7 @@ async def send_page() -> None:
             selected_service = service_select.value
             t_type = type_toggle.value
             templates = await list_templates(
-                selected_service, t_type, environment=get_view_environment()
+                selected_service, t_type, environment=state.environment
             )
             template_select.set_options({t.id: t.name for t in templates})
 
@@ -1059,7 +1059,7 @@ async def send_page() -> None:
             personalisation_controls.clear()
             selected_id = template_select.value
             templates = await list_templates(
-                service_select.value, type_toggle.value, environment=get_view_environment()
+                service_select.value, type_toggle.value, environment=state.environment
             )
             tmpl = next((t for t in templates if t.id == selected_id), None)
             if not tmpl:
@@ -1128,6 +1128,7 @@ async def send_page() -> None:
         async def handle_env_change(e) -> None:
             state.environment = e.value
             await refresh_status_badge(status_badge)
+            await refresh_service_options()
 
         service_select.on_value_change(handle_service_change)
         type_toggle.on_value_change(handle_type_change)
