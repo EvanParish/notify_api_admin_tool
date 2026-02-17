@@ -1521,6 +1521,8 @@ async def bulk_send_page() -> None:
         ).classes("w-full md:w-1/2")
         personalisation_area = ui.column().classes("w-full md:w-1/2")
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
+        progress_label = ui.label("Bulk send progress: idle").classes("text-sm")
+        progress_bar = ui.linear_progress(value=0).classes("w-full")
         personalisation_controls: Dict[str, Input] = {}
 
         def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:
@@ -1627,17 +1629,25 @@ async def bulk_send_page() -> None:
                 ui.notify("No active users found", color="warning")
                 return
 
+            total_users = len(active_users)
+            completed = 0
+            sent_count = 0
+            skipped_count = 0
+            error_count = 0
+            progress_bar.value = 0
+            progress_label.text = f"Sending 0/{total_users}"
+
             try:
                 api_key_secret = await resolve_local_key(encryption, selected_key)
                 api = await build_api_client(selected_env)
                 semaphore = asyncio.Semaphore(config.max_concurrency)
 
-                async def send_for_user(user):
+                async def send_for_user(user, index: int):
                     recipient = (
                         user.email_address if t_type == "email" else user.mobile_number
                     )
                     if not recipient:
-                        return {
+                        return index, {
                             "user_id": user.id,
                             "recipient": recipient,
                             "status": "skipped",
@@ -1653,34 +1663,53 @@ async def bulk_send_page() -> None:
                                 service_id=selected_service,
                                 template_type=t_type,
                             )
-                            return {
+                            return index, {
                                 "user_id": user.id,
                                 "recipient": recipient,
                                 "status": "sent",
                                 "response": result,
                             }
                         except Exception as exc:
-                            return {
+                            return index, {
                                 "user_id": user.id,
                                 "recipient": recipient,
                                 "status": "error",
                                 "error": str(exc),
                             }
 
-                results = await asyncio.gather(
-                    *(send_for_user(user) for user in active_users)
-                )
+                tasks = [
+                    asyncio.create_task(send_for_user(user, idx))
+                    for idx, user in enumerate(active_users)
+                ]
+                results: List[Optional[Dict[str, Any]]] = [None] * len(tasks)
+                for task in asyncio.as_completed(tasks):
+                    index, result = await task
+                    results[index] = result
+                    completed += 1
+                    status = result.get("status")
+                    if status == "sent":
+                        sent_count += 1
+                    elif status == "skipped":
+                        skipped_count += 1
+                    elif status == "error":
+                        error_count += 1
+                    progress_bar.value = completed / total_users
+                    progress_label.text = (
+                        f"Sending {completed}/{total_users} "
+                        f"(sent {sent_count}, skipped {skipped_count}, errors {error_count})"
+                    )
                 timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
                 file_path = os.path.join(
                     "data", f"bulk_send_responses_{timestamp}.json"
                 )
+                final_results = [r for r in results if r is not None]
                 output = {
                     "environment": selected_env,
                     "service_id": selected_service,
                     "template_id": selected_template,
                     "template_type": t_type,
                     "total_users": len(active_users),
-                    "results": results,
+                    "results": final_results,
                 }
                 with open(file_path, "w", encoding="utf-8") as handle:
                     json.dump(output, handle, indent=2)
@@ -1689,19 +1718,24 @@ async def bulk_send_page() -> None:
                         {
                             "file": file_path,
                             "total": len(active_users),
-                            "sent": sum(1 for r in results if r["status"] == "sent"),
-                            "skipped": sum(
-                                1 for r in results if r["status"] == "skipped"
-                            ),
-                            "errors": sum(
-                                1 for r in results if r["status"] == "error"
-                            ),
+                            "sent": sent_count,
+                            "skipped": skipped_count,
+                            "errors": error_count,
                         },
                         indent=2,
                     )
                 )
+                progress_bar.value = 1
+                progress_label.text = (
+                    f"Complete: sent {sent_count}, "
+                    f"skipped {skipped_count}, errors {error_count}"
+                )
                 ui.notify("Bulk send complete", color="green")
             except Exception as exc:
+                progress_bar.value = 0
+                progress_label.text = (
+                    f"Bulk send failed after {completed}/{total_users}"
+                )
                 ui.notify(f"Error: {exc}", color="red")
 
         async def handle_bulk_send() -> None:
