@@ -684,7 +684,7 @@ async def services_page() -> None:
         ui.label("Services").classes("text-lg font-semibold")
         service_search = ui.input(
             label="Search by Service ID or Name"
-        ).classes("w-full md:w-1/2")
+        ).props("clearable").classes("w-full md:w-1/2")
         service_search.on_value_change(handle_service_search_event)
         ui.button("Sync Services", on_click=page_sync_services)
         await services_table()
@@ -774,7 +774,7 @@ async def templates_page() -> None:
         ui.label("Templates").classes("text-lg font-semibold")
         template_search = ui.input(
             label="Search by Template ID or Name"
-        ).classes("w-full md:w-1/2")
+        ).props("clearable").classes("w-full md:w-1/2")
         filter_row = ui.row().classes("gap-2")
         service_options = {
             svc.id: format_service_label(svc)
@@ -831,11 +831,7 @@ async def templates_page() -> None:
                     {"name": "environment", "label": "Environment", "field": "environment"},
                     {"name": "service_id", "label": "Service", "field": "service_id"},
                     {"name": "name", "label": "Name", "field": "name"},
-                    {
-                        "name": "template_type",
-                        "label": "Type",
-                        "field": "template_type",
-                    },
+                    {"name": "template_type", "label": "Type", "field": "template_type"},
                     {"name": "version", "label": "Version", "field": "version"},
                     {"name": "archived", "label": "Archived", "field": "archived"},
                     {"name": "hidden", "label": "Hidden", "field": "hidden"},
@@ -980,7 +976,7 @@ async def users_page() -> None:
         ui.label("Users").classes("text-lg font-semibold")
         user_search = ui.input(
             label="Search by Name or Email"
-        ).classes("w-full md:w-1/2")
+        ).props("clearable").classes("w-full md:w-1/2")
 
         async def handle_sync_users() -> None:
             await handle_users_sync(status_badge, sync_label)
@@ -1332,9 +1328,9 @@ async def send_page() -> None:
             "clearable"
         ).classes("w-full md:w-1/2")
         recipient_input = ui.input(
-            label="Recipients (comma or semicolon separated)",
+            label="Recipients (comma separated)",
             placeholder="email1@example.com, email2@example.com",
-        ).classes("w-full md:w-1/2")
+        ).props("clearable").classes("w-full md:w-1/2")
         personalisation_area = ui.column().classes("w-full md:w-1/2")
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
         personalisation_controls: Dict[str, Input] = {}
@@ -1389,7 +1385,7 @@ async def send_page() -> None:
                 for name in placeholders:
                     personalisation_controls[name] = ui.input(
                         label=name, placeholder=name
-                    ).classes("w-full md:w-1/2")
+                    ).props("clearable").classes("w-full md:w-1/2")
                     personalisation_controls[name].on_value_change(update_preview)
             await update_preview()
 
@@ -1644,7 +1640,7 @@ async def bulk_send_page() -> None:
                 for name in placeholders:
                     personalisation_controls[name] = ui.input(
                         label=name, placeholder=name
-                    ).classes("w-full md:w-1/2")
+                    ).props("clearable").classes("w-full md:w-1/2")
                     personalisation_controls[name].on_value_change(update_preview)
             await update_preview()
 
@@ -1914,7 +1910,7 @@ async def settings_page() -> None:
             for env, url in rows:
                 inputs[env] = ui.input(
                     label=f"{env.title()} Base URL", value=url
-                ).classes("w-full md:w-1/2")
+                ).props("clearable").classes("w-full md:w-1/2")
 
             async def handle_save_urls() -> None:
                 await save_base_urls(inputs)
@@ -1939,10 +1935,10 @@ async def settings_page() -> None:
                 auth_inputs[env] = {
                     "user": ui.input(
                         label=f"{env.title()} Username", value=user_val
-                    ).classes("w-full md:w-1/2"),
+                    ).props("clearable").classes("w-full md:w-1/2"),
                     "pass": ui.input(
                         label=f"{env.title()} Password", value=pass_val, password=True
-                    ).classes("w-full md:w-1/2"),
+                    ).props("clearable").classes("w-full md:w-1/2"),
                 }
 
             async def handle_save_auth() -> None:
@@ -1966,8 +1962,8 @@ async def settings_page() -> None:
             key_service = ui.select(
                 service_options, label="Service", with_input=True
             ).classes("w-full md:w-1/2")
-            key_name = ui.input(label="Key Name").classes("w-full md:w-1/2")
-            key_secret = ui.input(label="Key Secret", password=True).classes("w-full md:w-1/2")
+            key_name = ui.input(label="Key Name").props("clearable").classes("w-full md:w-1/2")
+            key_secret = ui.input(label="Key Secret", password=True).props("clearable").classes("w-full md:w-1/2")
             key_type = ui.select(
                 {"normal": "Normal", "team": "Team", "test": "Test"}, value="normal"
             ).classes("w-full md:w-1/2")
