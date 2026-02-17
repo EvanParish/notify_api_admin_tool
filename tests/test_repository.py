@@ -147,8 +147,8 @@ async def test_list_local_keys_empty(initialized_db):
 @pytest.mark.asyncio
 async def test_list_local_keys_all(initialized_db):
     async with get_session() as session:
-        session.add(LocalApiKey(service_id="svc-1", key_name="Key1", key_secret="enc1", key_type="normal"))
-        session.add(LocalApiKey(service_id="svc-2", key_name="Key2", key_secret="enc2", key_type="test"))
+        session.add(LocalApiKey(service_id="svc-1", environment="dev", key_name="Key1", key_secret="enc1", key_type="normal"))
+        session.add(LocalApiKey(service_id="svc-2", environment="prod", key_name="Key2", key_secret="enc2", key_type="test"))
         await session.commit()
     
     keys = await list_local_keys()
@@ -158,11 +158,11 @@ async def test_list_local_keys_all(initialized_db):
 @pytest.mark.asyncio
 async def test_list_local_keys_by_service(initialized_db):
     async with get_session() as session:
-        session.add(LocalApiKey(service_id="svc-1", key_name="Key1", key_secret="enc1", key_type="normal"))
-        session.add(LocalApiKey(service_id="svc-2", key_name="Key2", key_secret="enc2", key_type="test"))
+        session.add(LocalApiKey(service_id="svc-1", environment="dev", key_name="Key1", key_secret="enc1", key_type="normal"))
+        session.add(LocalApiKey(service_id="svc-1", environment="prod", key_name="Key2", key_secret="enc2", key_type="test"))
         await session.commit()
     
-    keys = await list_local_keys(service_id="svc-1")
+    keys = await list_local_keys(service_id="svc-1", environment="dev")
     assert len(keys) == 1
     assert keys[0].key_name == "Key1"
 
@@ -174,12 +174,13 @@ async def test_add_local_key(initialized_db):
     await add_local_key(
         encryption=encryption,
         service_id="svc-1",
+        environment="dev",
         key_name="Test Key",
         key_secret="my-secret-123",
         key_type="normal"
     )
     
-    keys = await list_local_keys(service_id="svc-1")
+    keys = await list_local_keys(service_id="svc-1", environment="dev")
     assert len(keys) == 1
     assert keys[0].key_name == "Test Key"
     assert keys[0].key_type == "normal"
@@ -193,6 +194,7 @@ async def test_resolve_local_key(initialized_db):
     await add_local_key(
         encryption=encryption,
         service_id="svc-1",
+        environment="dev",
         key_name="Test Key",
         key_secret="my-secret-456",
         key_type="test"
@@ -233,7 +235,7 @@ async def test_multiple_operations(initialized_db):
         await session.commit()
     
     # Add local key
-    await add_local_key(encryption, "svc-1", "Key1", "secret1", "normal")
+    await add_local_key(encryption, "svc-1", "dev", "Key1", "secret1", "normal")
     
     # Add template
     async with get_session() as session:
@@ -246,7 +248,7 @@ async def test_multiple_operations(initialized_db):
     # Verify all
     services = await list_services()
     templates = await list_templates(service_id="svc-1")
-    keys = await list_local_keys(service_id="svc-1")
+    keys = await list_local_keys(service_id="svc-1", environment="dev")
     
     assert len(services) == 1
     assert len(templates) == 1

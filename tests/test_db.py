@@ -130,6 +130,7 @@ async def test_local_api_key_model(initialized_db):
     async with get_session() as session:
         local_key = LocalApiKey(
             service_id="svc-1",
+            environment="dev",
             key_name="Dev Key",
             key_secret="encrypted-secret",
             key_type="test"
@@ -142,6 +143,7 @@ async def test_local_api_key_model(initialized_db):
         retrieved = result.scalar_one()
         
         assert retrieved.service_id == "svc-1"
+        assert retrieved.environment == "dev"
         assert retrieved.key_name == "Dev Key"
         assert retrieved.key_secret == "encrypted-secret"
         assert retrieved.key_type == "test"

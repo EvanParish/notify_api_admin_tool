@@ -156,6 +156,7 @@ class LocalApiKey(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     service_id: Mapped[str] = mapped_column(String)
+    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     key_name: Mapped[str] = mapped_column(String)
     key_secret: Mapped[str] = mapped_column(Text)
     key_type: Mapped[str] = mapped_column(Enum("normal", "team", "test", name="key_type"))

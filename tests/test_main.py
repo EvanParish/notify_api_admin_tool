@@ -362,10 +362,10 @@ async def test_save_local_key_success(initialized_db, mock_encryption):
              patch.object(main, 'render_local_keys', create=True) as mock_render:
             mock_render.refresh = AsyncMock()
             
-            await main.save_local_key("svc-1", "Test Key", "secret123", "normal")
+            await main.save_local_key("dev", "svc-1", "Test Key", "secret123", "normal")
             
             # Verify key was saved
-            keys = await list_local_keys(service_id="svc-1")
+            keys = await list_local_keys(service_id="svc-1", environment="dev")
             assert len(keys) == 1
             assert keys[0].key_name == "Test Key"
             assert keys[0].key_type == "normal"
@@ -388,9 +388,10 @@ async def test_save_local_key_missing_params(initialized_db, mock_encryption):
             mock_render.refresh = AsyncMock()
             
             # Should not raise error, just notify user
-            await main.save_local_key(None, "name", "secret", "normal")
-            await main.save_local_key("svc-1", "", "secret", "normal")
-            await main.save_local_key("svc-1", "name", "", "normal")
+            await main.save_local_key(None, "svc-1", "name", "secret", "normal")
+            await main.save_local_key("dev", None, "name", "secret", "normal")
+            await main.save_local_key("dev", "svc-1", "", "secret", "normal")
+            await main.save_local_key("dev", "svc-1", "name", "", "normal")
             
             # Verify no keys were saved
             from app.repository import list_local_keys

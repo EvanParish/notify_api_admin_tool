@@ -85,11 +85,15 @@ async def list_templates(
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
 
-async def list_local_keys(service_id: Optional[str] = None) -> List[LocalApiKey]:
+async def list_local_keys(
+    service_id: Optional[str] = None, environment: Optional[str] = None
+) -> List[LocalApiKey]:
     async with get_session() as session:
         query = select(LocalApiKey)
         if service_id:
             query = query.where(LocalApiKey.service_id == service_id)
+        if environment:
+            query = query.where(LocalApiKey.environment == environment)
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(str(row.id), row.key_name)]
 
@@ -97,6 +101,7 @@ async def list_local_keys(service_id: Optional[str] = None) -> List[LocalApiKey]
 async def add_local_key(
     encryption: EncryptionManager,
     service_id: str,
+    environment: str,
     key_name: str,
     key_secret: str,
     key_type: str,
@@ -105,6 +110,7 @@ async def add_local_key(
     async with get_session() as session:
         record = LocalApiKey(
             service_id=service_id,
+            environment=environment,
             key_name=key_name,
             key_secret=encrypted_secret,
             key_type=key_type,

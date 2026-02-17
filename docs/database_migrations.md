@@ -23,6 +23,25 @@ python migrate_add_service_id_to_api_keys.py
 
 ---
 
+### 2026-02-17: Add environment to local_api_keys table
+
+**Purpose**: Make local API keys environment-specific to avoid collisions for shared service IDs.
+
+**Changes**:
+- Added `environment` column to `local_api_keys` table
+- Column is nullable (TEXT) to avoid breaking existing records
+
+**Migration Script**: `migrate_add_environment_to_local_api_keys.py`
+
+**To Run**:
+```bash
+python migrate_add_environment_to_local_api_keys.py
+```
+
+**Status**: ✓ Completed
+
+---
+
 ## How to Apply Migrations
 
 If you encounter database schema errors when starting the application:
@@ -48,6 +67,13 @@ For existing databases, migration scripts must be run manually to add new column
 python migrate_add_service_id_to_api_keys.py
 ```
 
+### Error: "no such column: local_api_keys.environment"
+
+**Solution**: Run the migration script:
+```bash
+python migrate_add_environment_to_local_api_keys.py
+```
+
 ### Migration Already Applied
 
 If the migration has already been applied, the script will detect it and skip:
@@ -64,4 +90,3 @@ When adding new columns or making schema changes:
 2. Check if the change already exists before applying
 3. Document the migration in this file
 4. Test with both fresh and existing databases
-

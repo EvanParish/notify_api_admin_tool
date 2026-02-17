@@ -1358,7 +1358,7 @@ async def send_page() -> None:
 
         async def load_keys() -> None:
             selected_service = service_select.value
-            keys = await list_local_keys(selected_service)
+            keys = await list_local_keys(selected_service, env_select.value)
             key_select.set_options({k.id: k.key_name for k in keys})
 
         async def load_templates() -> None:
@@ -1613,7 +1613,7 @@ async def bulk_send_page() -> None:
 
         async def load_keys() -> None:
             selected_service = service_select.value
-            keys = await list_local_keys(selected_service)
+            keys = await list_local_keys(selected_service, env_select.value)
             key_select.set_options({k.id: k.key_name for k in keys})
 
         async def load_templates() -> None:
@@ -1873,11 +1873,17 @@ async def bulk_send_page() -> None:
 
 @ui.page("/settings")
 async def settings_page() -> None:
+    key_environment = None
+    key_service = None
+
     async def refresh_service_options() -> None:
+        env_value = key_environment.value if key_environment else get_view_environment()
         options = {
             svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
+            for svc in await list_services(env_value)
         }
+        if not key_service:
+            return
         key_service.set_options(options)
         if key_service.value not in options:
             key_service.value = None
@@ -1949,9 +1955,13 @@ async def settings_page() -> None:
 
         with ui.card().classes("p-6 w-full"):
             ui.label("Local API Keys").classes("text-md font-semibold")
+            env_options = {env: env.title() for env in config.api_hosts}
+            key_environment = ui.select(
+                env_options, value=state.environment, label="Environment"
+            ).classes("w-full md:w-1/2")
             service_options = {
                 svc.id: format_service_label(svc)
-                for svc in await list_services(get_view_environment())
+                for svc in await list_services(key_environment.value)
             }
             key_service = ui.select(
                 service_options, label="Service", with_input=True
@@ -1964,13 +1974,21 @@ async def settings_page() -> None:
 
             async def handle_add_key() -> None:
                 await save_local_key(
-                    key_service.value, key_name.value, key_secret.value, key_type.value
+                    key_environment.value,
+                    key_service.value,
+                    key_name.value,
+                    key_secret.value,
+                    key_type.value,
                 )
+
+            async def handle_key_environment_change(_=None) -> None:
+                await refresh_service_options()
 
             ui.button(
                 "Add Key",
                 on_click=handle_add_key,
             )
+            key_environment.on_value_change(handle_key_environment_change)
             ui.label("Stored Keys")
             await render_local_keys()
 
@@ -1993,12 +2011,16 @@ async def save_admin_auth(auth_inputs: Dict[str, Dict[str, ui.input]]) -> None:
 
 
 async def save_local_key(
-    service_id: Optional[str], name: str, secret: str, key_type: str
+    environment: Optional[str],
+    service_id: Optional[str],
+    name: str,
+    secret: str,
+    key_type: str,
 ) -> None:
-    if not (service_id and name and secret):
-        ui.notify("Service, name, and secret are required", color="red")
+    if not (environment and service_id and name and secret):
+        ui.notify("Environment, service, name, and secret are required", color="red")
         return
-    await add_local_key(encryption, service_id, name, secret, key_type)
+    await add_local_key(encryption, service_id, environment, name, secret, key_type)
     ui.notify("Key saved", color="green")
     await refresh_if_needed(render_local_keys)
 
@@ -2010,6 +2032,7 @@ async def render_local_keys() -> None:
         {
             "id": k.id,
             "service_id": k.service_id,
+            "environment": k.environment,
             "key_name": k.key_name,
             "key_type": k.key_type,
         }
@@ -2020,6 +2043,7 @@ async def render_local_keys() -> None:
             [
             {"name": "id", "label": "ID", "field": "id"},
             {"name": "service_id", "label": "Service", "field": "service_id"},
+            {"name": "environment", "label": "Environment", "field": "environment"},
             {"name": "key_name", "label": "Name", "field": "key_name"},
             {"name": "key_type", "label": "Type", "field": "key_type"},
             ]
