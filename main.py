@@ -590,6 +590,13 @@ def safe_notify(message: str, color: str = "warning") -> None:
         logger.warning("UI notify skipped: %s", message)
 
 
+def find_missing_personalisation(personalisation: Dict[str, Any]) -> Optional[str]:
+    for key, value in personalisation.items():
+        if value is None or str(value).strip() == "":
+            return key
+    return None
+
+
 async def has_admin_auth(env: str) -> bool:
     if config.use_mock_api or os.getenv("PYTEST_CURRENT_TEST"):
         return True
@@ -1414,13 +1421,13 @@ async def send_page() -> None:
                 ui.notify("Recipient format looks invalid", color="red")
                 return
 
-            personalisation: Dict[str, Any] = {}
-            for key, control in personalisation_controls.items():
-                personalisation[key] = control.value or ""
-            for key, val in personalisation.items():
-                if val == "":
-                    ui.notify(f"Personalisation field '{key}' is empty", color="red")
-                    return
+            personalisation = build_personalisation()
+            missing_key = find_missing_personalisation(personalisation)
+            if missing_key:
+                ui.notify(
+                    f"Personalisation field '{missing_key}' is empty", color="red"
+                )
+                return
 
             try:
                 api_key_secret = await resolve_local_key(encryption, selected_key)
@@ -1604,13 +1611,13 @@ async def bulk_send_page() -> None:
                 )
                 return
 
-            personalisation: Dict[str, Any] = {}
-            for key, control in personalisation_controls.items():
-                personalisation[key] = control.value or ""
-            for key, val in personalisation.items():
-                if val == "":
-                    ui.notify(f"Personalisation field '{key}' is empty", color="red")
-                    return
+            personalisation = build_personalisation()
+            missing_key = find_missing_personalisation(personalisation)
+            if missing_key:
+                ui.notify(
+                    f"Personalisation field '{missing_key}' is empty", color="red"
+                )
+                return
 
             users = await list_users(selected_env)
             active_users = [
@@ -1709,6 +1716,12 @@ async def bulk_send_page() -> None:
                     "Environment, service, key, and template are required", color="red"
                 )
                 return
+            missing_key = find_missing_personalisation(build_personalisation())
+            if missing_key:
+                ui.notify(
+                    f"Personalisation field '{missing_key}' is empty", color="red"
+                )
+                return
             confirm_message.text = (
                 "You are about to send to ALL active users of the platform "
                 f"({selected_env})."
@@ -1746,7 +1759,7 @@ async def bulk_send_page() -> None:
             confirm_message = ui.label("")
             with ui.row().classes("gap-2"):
                 ui.button("Send to all", on_click=handle_confirm_send, color="primary")
-                ui.button("Cancel", on_click=confirm_dialog.close)
+                ui.button("Cancel", on_click=confirm_dialog.close, color="gray")
         with ui.card().classes("p-6 w-full"):
             ui.label("Preview").classes("text-md font-semibold")
             preview_subject = ui.label("").classes("text-sm font-medium")
