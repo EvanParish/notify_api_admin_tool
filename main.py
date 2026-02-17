@@ -597,6 +597,13 @@ def find_missing_personalisation(personalisation: Dict[str, Any]) -> Optional[st
     return None
 
 
+def parse_recipients(value: str) -> List[str]:
+    if not value:
+        return []
+    parts = re.split(r"[;,]", value)
+    return [part.strip() for part in parts if part.strip()]
+
+
 async def has_admin_auth(env: str) -> bool:
     if config.use_mock_api or os.getenv("PYTEST_CURRENT_TEST"):
         return True
@@ -1324,7 +1331,10 @@ async def send_page() -> None:
         template_select = ui.select({}, label="Template", with_input=True).props(
             "clearable"
         ).classes("w-full md:w-1/2")
-        recipient_input = ui.input(label="Recipient").classes("w-full md:w-1/2")
+        recipient_input = ui.input(
+            label="Recipients (comma or semicolon separated)",
+            placeholder="email1@example.com, email2@example.com",
+        ).classes("w-full md:w-1/2")
         personalisation_area = ui.column().classes("w-full md:w-1/2")
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
         personalisation_controls: Dict[str, Input] = {}
@@ -1409,7 +1419,7 @@ async def send_page() -> None:
             selected_key = key_select.value
             selected_template = template_select.value
             t_type = type_toggle.value
-            recipient = recipient_input.value or ""
+            recipient_value = recipient_input.value or ""
             if not (
                 selected_env and selected_service and selected_key and selected_template
             ):
@@ -1417,8 +1427,19 @@ async def send_page() -> None:
                     "Environment, service, key, and template are required", color="red"
                 )
                 return
-            if not validate_recipient(t_type, recipient):
-                ui.notify("Recipient format looks invalid", color="red")
+            recipients = parse_recipients(recipient_value)
+            if not recipients:
+                ui.notify("At least one recipient is required", color="red")
+                return
+            invalid_recipients = [
+                recipient
+                for recipient in recipients
+                if not validate_recipient(t_type, recipient)
+            ]
+            if invalid_recipients:
+                sample = ", ".join(invalid_recipients[:3])
+                suffix = "..." if len(invalid_recipients) > 3 else ""
+                ui.notify(f"Invalid recipients: {sample}{suffix}", color="red")
                 return
 
             personalisation = build_personalisation()
@@ -1432,16 +1453,64 @@ async def send_page() -> None:
             try:
                 api_key_secret = await resolve_local_key(encryption, selected_key)
                 api = await build_api_client(selected_env)
-                result = await api.send_notification(
-                    template_id=selected_template,
-                    recipient=recipient,
-                    personalisation=personalisation,
-                    api_key=api_key_secret,
-                    service_id=selected_service,
-                    template_type=t_type,
+                semaphore = asyncio.Semaphore(config.max_concurrency)
+
+                async def send_to_recipient(recipient: str, index: int):
+                    async with semaphore:
+                        try:
+                            result = await api.send_notification(
+                                template_id=selected_template,
+                                recipient=recipient,
+                                personalisation=personalisation,
+                                api_key=api_key_secret,
+                                service_id=selected_service,
+                                template_type=t_type,
+                            )
+                            return index, {
+                                "recipient": recipient,
+                                "status": "sent",
+                                "response": result,
+                            }
+                        except Exception as exc:
+                            return index, {
+                                "recipient": recipient,
+                                "status": "error",
+                                "error": str(exc),
+                            }
+
+                tasks = [
+                    asyncio.create_task(send_to_recipient(recipient, idx))
+                    for idx, recipient in enumerate(recipients)
+                ]
+                results: List[Optional[Dict[str, Any]]] = [None] * len(tasks)
+                sent_count = 0
+                error_count = 0
+                for task in asyncio.as_completed(tasks):
+                    index, result = await task
+                    results[index] = result
+                    if result.get("status") == "sent":
+                        sent_count += 1
+                    elif result.get("status") == "error":
+                        error_count += 1
+                final_results = [r for r in results if r is not None]
+                response_log.set_content(
+                    json.dumps(
+                        {
+                            "total": len(recipients),
+                            "sent": sent_count,
+                            "errors": error_count,
+                            "results": final_results,
+                        },
+                        indent=2,
+                    )
                 )
-                response_log.set_content(json.dumps(result, indent=2))
-                ui.notify("Notification sent", color="green")
+                if error_count:
+                    ui.notify(
+                        f"Sent {sent_count} with {error_count} errors",
+                        color="warning",
+                    )
+                else:
+                    ui.notify("Notification sent", color="green")
             except Exception as exc:
                 ui.notify(f"Error: {exc}", color="red")
 
