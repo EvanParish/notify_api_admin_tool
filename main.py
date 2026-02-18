@@ -493,15 +493,33 @@ def build_shell(on_view_env_change=None) -> tuple:
 async def dashboard_page() -> None:
     @ui.refreshable
     async def render_dashboard() -> None:
-        services = await list_services(get_view_environment())
-        templates = await list_templates(environment=get_view_environment())
+        view_env = get_view_environment()
+        (
+            services,
+            templates,
+            api_keys,
+            users,
+            sms_senders,
+            provider_details,
+        ) = await asyncio.gather(
+            list_services(view_env),
+            list_templates(environment=view_env),
+            list_api_keys(environment=view_env),
+            list_users(view_env),
+            list_sms_senders(environment=view_env),
+            list_provider_details(view_env),
+        )
         with ui.column().classes("p-8 gap-6 w-full max-w-none"):
             ui.label("Dashboard").classes("text-lg font-semibold")
-            with ui.row().classes("gap-4 w-full"):
+            with ui.row().classes("gap-4 w-full flex-wrap"):
                 metric_card("Services", len(services))
                 metric_card("Templates", len(templates))
+                metric_card("API Keys", len(api_keys))
+                metric_card("Users", len(users))
+                metric_card("SMS Senders", len(sms_senders))
+                metric_card("Provider Details", len(provider_details))
             ui.markdown(
-                "This dashboard caches services, templates, and local API keys. Use the left navigation to manage data and send notifications."
+                "This dashboard caches services, templates, API keys, users, SMS senders, provider details, and local API keys. Use the left navigation to manage data and send notifications."
             )
 
     status_badge, sync_label, refresh_button, dark_mode = build_shell(
@@ -783,10 +801,10 @@ async def templates_page() -> None:
         type_options = {"email": "Email", "sms": "SMS"}
         service_select = ui.select(
             service_options, label="Service", with_input=True
-        ).props("clearable")
+        ).props("clearable").classes("w-full md:w-1/2")
         type_select = ui.select(type_options, label="Type", with_input=True).props(
             "clearable"
-        )
+        ).classes("w-full md:w-1/2")
 
         async def handle_sync_templates() -> None:
             await page_sync_templates()
@@ -896,7 +914,7 @@ async def api_keys_page() -> None:
         }
         service_select = ui.select(
             service_options, label="Filter by Service", with_input=True
-        ).props("clearable")
+        ).props("clearable").classes("w-full md:w-1/2")
         expires_from = ui.input(label="Expires from").props("clearable type=date")
         expires_to = ui.input(label="Expires to").props("clearable type=date")
 
@@ -974,9 +992,14 @@ async def users_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Users").classes("text-lg font-semibold")
-        user_search = ui.input(
-            label="Search by Name or Email"
-        ).props("clearable").classes("w-full md:w-1/2")
+        filter_row = ui.row().classes("gap-2 w-full")
+        with filter_row:
+            user_search = ui.input(
+                label="Search by Name or Email"
+            ).props("clearable").classes("w-full md:w-1/2")
+            state_select = ui.select({}, label="Filter by State", with_input=True).props(
+                "clearable"
+            ).classes("w-full md:w-1/2")
 
         async def handle_sync_users() -> None:
             await handle_users_sync(status_badge, sync_label)
@@ -985,6 +1008,27 @@ async def users_page() -> None:
         @ui.refreshable
         async def render_table() -> None:
             users = await list_users(get_view_environment())
+            def normalize_state(value: Optional[str]) -> str:
+                return (value or "").strip().lower()
+
+            state_values = sorted(
+                {
+                    normalize_state(user.state)
+                    for user in users
+                    if normalize_state(user.state)
+                }
+            )
+            state_options = {state: state.title() for state in state_values}
+            state_select.set_options(state_options)
+            if state_select.value and state_select.value not in state_options:
+                state_select.value = None
+            selected_state = state_select.value
+            if selected_state:
+                users = [
+                    user
+                    for user in users
+                    if normalize_state(user.state) == selected_state
+                ]
             if user_search_query:
                 users = [
                     user
@@ -1079,11 +1123,14 @@ async def users_page() -> None:
 
         ui.button("Sync Users", on_click=handle_sync_users)
         user_search.on_value_change(handle_user_search_event)
+        state_select.on_value_change(lambda _: render_table.refresh())
         await render_table()
 
 
 @ui.page("/sms-senders")
 async def sms_senders_page() -> None:
+    sms_sender_search_query = ""
+
     async def refresh_service_options() -> None:
         options = {
             svc.id: format_service_label(svc)
@@ -1114,17 +1161,27 @@ async def sms_senders_page() -> None:
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("SMS Senders").classes("text-lg font-semibold")
 
+        filter_row = ui.row().classes("gap-2 w-full")
+        with filter_row:
+            sms_sender_search = ui.input(
+                label="Search by SMS Sender or ID"
+            ).props("clearable").classes("w-full md:w-1/2")
         service_options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
         }
         service_select = ui.select(
             service_options, label="Filter by Service", with_input=True
-        ).props("clearable")
+        ).props("clearable").classes("w-full md:w-1/2")
 
         async def handle_sync_senders() -> None:
             await page_sync_sms_senders()
             render_table.refresh()
+
+        async def handle_sms_sender_search_event(e) -> None:
+            nonlocal sms_sender_search_query
+            sms_sender_search_query = (getattr(e, "value", None) or "").strip().lower()
+            await refresh_if_needed(render_table)
 
         @ui.refreshable
         async def render_table() -> None:
@@ -1132,6 +1189,13 @@ async def sms_senders_page() -> None:
             senders = await list_sms_senders(
                 selected_service, environment=get_view_environment()
             )
+            if sms_sender_search_query:
+                senders = [
+                    sender
+                    for sender in senders
+                    if sms_sender_search_query in (sender.sms_sender or "").lower()
+                    or sms_sender_search_query in (sender.id or "").lower()
+                ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "id": sender.id,
@@ -1173,6 +1237,7 @@ async def sms_senders_page() -> None:
             add_copyable_slots(table, table_rows)
 
         service_select.on_value_change(lambda _: render_table.refresh())
+        sms_sender_search.on_value_change(handle_sms_sender_search_event)
         ui.button("Sync SMS Senders", on_click=handle_sync_senders)
         await render_table()
 
