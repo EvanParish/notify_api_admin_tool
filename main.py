@@ -1652,7 +1652,7 @@ async def bulk_send_page() -> None:
         personalisation_area = ui.column().classes("w-full md:w-1/2")
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
         progress_label = ui.label("Bulk send progress: idle").classes("text-sm")
-        progress_bar = ui.linear_progress(value=0).classes("w-full")
+        progress_bar = ui.linear_progress(value=0, show_value=False, color="green").classes("w-full")
         personalisation_controls: Dict[str, Input] = {}
 
         def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:
@@ -1764,8 +1764,14 @@ async def bulk_send_page() -> None:
             sent_count = 0
             skipped_count = 0
             error_count = 0
+
+            def progress_percent() -> int:
+                if not total_users:
+                    return 0
+                return min(100, int(round((completed / total_users) * 100)))
+
             progress_bar.value = 0
-            progress_label.text = f"Sending 0/{total_users}"
+            progress_label.text = "Sending 0%"
 
             try:
                 api_key_secret = await resolve_local_key(encryption, selected_key)
@@ -1824,8 +1830,9 @@ async def bulk_send_page() -> None:
                     elif status == "error":
                         error_count += 1
                     progress_bar.value = completed / total_users
+                    percent = progress_percent()
                     progress_label.text = (
-                        f"Sending {completed}/{total_users} "
+                        f"Sending {percent}% "
                         f"(sent {sent_count}, skipped {skipped_count}, errors {error_count})"
                     )
                 timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -1839,6 +1846,9 @@ async def bulk_send_page() -> None:
                     "template_id": selected_template,
                     "template_type": t_type,
                     "total_users": len(active_users),
+                    "sent": sent_count,
+                    "skipped": skipped_count,
+                    "errors": error_count,
                     "results": final_results,
                 }
                 with open(file_path, "w", encoding="utf-8") as handle:
@@ -1857,14 +1867,14 @@ async def bulk_send_page() -> None:
                 )
                 progress_bar.value = 1
                 progress_label.text = (
-                    f"Complete: sent {sent_count}, "
-                    f"skipped {skipped_count}, errors {error_count}"
+                    f"Complete: 100% (sent {sent_count}, "
+                    f"skipped {skipped_count}, errors {error_count})"
                 )
                 ui.notify("Bulk send complete", color="green")
             except Exception as exc:
                 progress_bar.value = 0
                 progress_label.text = (
-                    f"Bulk send failed after {completed}/{total_users}"
+                    f"Bulk send failed at {progress_percent()}%"
                 )
                 ui.notify(f"Error: {exc}", color="red")
 
