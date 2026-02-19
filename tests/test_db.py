@@ -7,7 +7,7 @@ from app.models import Service, Template, ApiKey, LocalApiKey, Setting
 async def test_db_init_engine(tmp_path):
     db_file = tmp_path / "test.db"
     engine = init_engine(str(db_file))
-    
+
     assert engine is not None
     assert db_file.parent.exists()
 
@@ -16,7 +16,7 @@ async def test_db_init_engine(tmp_path):
 async def test_create_all(initialized_db):
     # Tables should be created without error
     await create_all()
-    
+
     # Should be able to get session
     async with get_session() as session:
         assert session is not None
@@ -26,8 +26,9 @@ async def test_create_all(initialized_db):
 async def test_get_session_before_init(tmp_path):
     # Reset global state
     from app import db
+
     db.SessionLocal = None
-    
+
     with pytest.raises(RuntimeError, match="SessionLocal not initialized"):
         async with get_session() as session:
             pass
@@ -42,15 +43,18 @@ async def test_service_model(initialized_db):
             active=True,
             restricted=False,
             message_limit=1000,
-            rate_limit=3000
+            rate_limit=3000,
         )
         session.add(service)
         await session.commit()
-        
+
         from sqlalchemy import select
-        result = await session.execute(select(Service).where(Service.id == "test-svc-1"))
+
+        result = await session.execute(
+            select(Service).where(Service.id == "test-svc-1")
+        )
         retrieved = result.scalar_one()
-        
+
         assert retrieved.id == "test-svc-1"
         assert retrieved.name == "Test Service"
         assert retrieved.active is True
@@ -66,7 +70,7 @@ async def test_template_model(initialized_db):
         service = Service(id="svc-1", name="Service", active=True, restricted=False)
         session.add(service)
         await session.commit()
-        
+
         template = Template(
             id="tmpl-1",
             service_id="svc-1",
@@ -77,15 +81,16 @@ async def test_template_model(initialized_db):
             version=1,
             archived=False,
             hidden=False,
-            process_type="normal"
+            process_type="normal",
         )
         session.add(template)
         await session.commit()
-        
+
         from sqlalchemy import select
+
         result = await session.execute(select(Template).where(Template.id == "tmpl-1"))
         retrieved = result.scalar_one()
-        
+
         assert retrieved.id == "tmpl-1"
         assert retrieved.service_id == "svc-1"
         assert retrieved.name == "Welcome Email"
@@ -108,15 +113,16 @@ async def test_api_key_model(initialized_db):
             created_by="user-1",
             created_at="2025-01-01T00:00:00",
             revoked=False,
-            version=1
+            version=1,
         )
         session.add(api_key)
         await session.commit()
-        
+
         from sqlalchemy import select
+
         result = await session.execute(select(ApiKey).where(ApiKey.id == "key-1"))
         retrieved = result.scalar_one()
-        
+
         assert retrieved.id == "key-1"
         assert retrieved.name == "Test Key"
         assert retrieved.key_type == "normal"
@@ -133,15 +139,16 @@ async def test_local_api_key_model(initialized_db):
             environment="dev",
             key_name="Dev Key",
             key_secret="encrypted-secret",
-            key_type="test"
+            key_type="test",
         )
         session.add(local_key)
         await session.commit()
-        
+
         from sqlalchemy import select
+
         result = await session.execute(select(LocalApiKey))
         retrieved = result.scalar_one()
-        
+
         assert retrieved.service_id == "svc-1"
         assert retrieved.environment == "dev"
         assert retrieved.key_name == "Dev Key"
@@ -152,17 +159,15 @@ async def test_local_api_key_model(initialized_db):
 @pytest.mark.asyncio
 async def test_setting_model(initialized_db):
     async with get_session() as session:
-        setting = Setting(
-            key="test_key",
-            value="test_value"
-        )
+        setting = Setting(key="test_key", value="test_value")
         session.add(setting)
         await session.commit()
-        
+
         from sqlalchemy import select
+
         result = await session.execute(select(Setting).where(Setting.key == "test_key"))
         retrieved = result.scalar_one()
-        
+
         assert retrieved.key == "test_key"
         assert retrieved.value == "test_value"
         assert retrieved.updated_at is not None
@@ -178,18 +183,21 @@ async def test_template_service_relationship(initialized_db):
             name="Template",
             template_type="email",
             content="Content",
-            version=1
+            version=1,
         )
         session.add(service)
         session.add(template)
         await session.commit()
-        
+
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
+
         result = await session.execute(
-            select(Service).where(Service.id == "svc-1").options(selectinload(Service.templates))
+            select(Service)
+            .where(Service.id == "svc-1")
+            .options(selectinload(Service.templates))
         )
         retrieved_service = result.scalar_one()
-        
+
         assert len(retrieved_service.templates) == 1
         assert retrieved_service.templates[0].id == "tmpl-1"

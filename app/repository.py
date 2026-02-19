@@ -52,7 +52,9 @@ async def get_secure_setting(key: str, encryption: EncryptionManager) -> Optiona
     return await encryption.decrypt(value)
 
 
-async def set_secure_setting(key: str, value: str, encryption: EncryptionManager) -> None:
+async def set_secure_setting(
+    key: str, value: str, encryption: EncryptionManager
+) -> None:
     encrypted = await encryption.encrypt(value)
     await set_setting(key, encrypted)
 
@@ -61,7 +63,9 @@ async def list_services(environment: Optional[str] = None) -> List[Service]:
     async with get_session() as session:
         query = select(Service)
         if environment:
-            query = query.where(or_(Service.environment == environment, Service.environment.is_(None)))
+            query = query.where(
+                or_(Service.environment == environment, Service.environment.is_(None))
+            )
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
@@ -121,7 +125,9 @@ async def add_local_key(
 
 async def resolve_local_key(encryption: EncryptionManager, key_id: int) -> str:
     async with get_session() as session:
-        result = await session.execute(select(LocalApiKey).where(LocalApiKey.id == key_id))
+        result = await session.execute(
+            select(LocalApiKey).where(LocalApiKey.id == key_id)
+        )
         record = result.scalar_one()
         return await encryption.decrypt(record.key_secret)
 
@@ -134,7 +140,9 @@ async def list_api_keys(
         if service_id:
             query = query.where(ApiKey.service_id == service_id)
         if environment:
-            query = query.where(or_(ApiKey.environment == environment, ApiKey.environment.is_(None)))
+            query = query.where(
+                or_(ApiKey.environment == environment, ApiKey.environment.is_(None))
+            )
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
@@ -148,7 +156,10 @@ async def list_sms_senders(
             query = query.where(SmsSender.service_id == service_id)
         if environment:
             query = query.where(
-                or_(SmsSender.environment == environment, SmsSender.environment.is_(None))
+                or_(
+                    SmsSender.environment == environment,
+                    SmsSender.environment.is_(None),
+                )
             )
         rows = list((await session.execute(query)).scalars().all())
         return [
@@ -165,7 +176,10 @@ async def list_provider_details(
         query = select(ProviderDetail)
         if environment:
             query = query.where(
-                or_(ProviderDetail.environment == environment, ProviderDetail.environment.is_(None))
+                or_(
+                    ProviderDetail.environment == environment,
+                    ProviderDetail.environment.is_(None),
+                )
             )
         rows = list((await session.execute(query)).scalars().all())
         return rows
@@ -175,7 +189,9 @@ async def list_users(environment: Optional[str] = None) -> List[User]:
     async with get_session() as session:
         query = select(User)
         if environment:
-            query = query.where(or_(User.environment == environment, User.environment.is_(None)))
+            query = query.where(
+                or_(User.environment == environment, User.environment.is_(None))
+            )
         rows = list((await session.execute(query)).scalars().all())
         return [
             row

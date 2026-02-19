@@ -74,7 +74,7 @@ state = AppState(environment=next(iter(config.api_hosts.keys()), "dev"))
 service_search_query = ""
 
 ui.add_head_html(
-        """
+    """
         <meta name="color-scheme" content="dark light">
         <style>
             html, body, #q-app, .q-layout, .q-page-container {
@@ -422,7 +422,9 @@ def build_shell(on_view_env_change=None) -> tuple:
         ui.link("Settings", "/settings")
 
     dark_mode = ui.dark_mode()
-    with ui.header().classes("items-center justify-between bg-gray-200 dark:bg-slate-800"):
+    with ui.header().classes(
+        "items-center justify-between bg-gray-200 dark:bg-slate-800"
+    ):
         with ui.row().classes("items-center gap-3"):
             ui.button(icon="menu", on_click=drawer.toggle).props("flat round dense")
             ui.label("Notification Admin Dashboard").classes(
@@ -445,6 +447,7 @@ def build_shell(on_view_env_change=None) -> tuple:
             theme_button = ui.button(icon="dark_mode").props("flat round dense")
             theme_button.on_click(lambda: toggle_theme(dark_mode))
             if on_view_env_change:
+
                 async def handle_env_change(e):
                     state.view_environment = e.value
                     result = on_view_env_change()
@@ -453,7 +456,10 @@ def build_shell(on_view_env_change=None) -> tuple:
 
                 env_select.on_value_change(handle_env_change)
             else:
-                env_select.on_value_change(lambda e: setattr(state, "view_environment", e.value))
+                env_select.on_value_change(
+                    lambda e: setattr(state, "view_environment", e.value)
+                )
+
             async def handle_sync_env_change(e):
                 state.environment = e.value
                 await refresh_status_badge(status_badge)
@@ -474,7 +480,8 @@ def build_shell(on_view_env_change=None) -> tuple:
                             if e.value:
                                 state.enabled_sync_environments.add(environment)
                                 ui.notify(
-                                    f"Syncing enabled for {environment}", color="positive"
+                                    f"Syncing enabled for {environment}",
+                                    color="positive",
                                 )
                             else:
                                 state.enabled_sync_environments.discard(environment)
@@ -598,7 +605,9 @@ def truncate_text(value: Optional[str], limit: int = 50) -> Optional[str]:
 
 
 def get_view_environment() -> Optional[str]:
-    return None if state.view_environment in {"all", None, ""} else state.view_environment
+    return (
+        None if state.view_environment in {"all", None, ""} else state.view_environment
+    )
 
 
 def safe_notify(message: str, color: str = "warning") -> None:
@@ -700,9 +709,11 @@ async def services_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Services").classes("text-lg font-semibold")
-        service_search = ui.input(
-            label="Search by Service ID or Name"
-        ).props("clearable").classes("w-full md:w-1/2")
+        service_search = (
+            ui.input(label="Search by Service ID or Name")
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
         service_search.on_value_change(handle_service_search_event)
         ui.button("Sync Services", on_click=page_sync_services)
         await services_table()
@@ -738,16 +749,24 @@ async def services_table() -> None:
     table = ui.table(
         columns=make_sortable(
             [
-            {"name": "id", "label": "ID", "field": "id"},
-            {"name": "environment", "label": "Environment", "field": "environment"},
-            {"name": "name", "label": "Name", "field": "name"},
-            {"name": "active", "label": "Active", "field": "active"},
-            {"name": "restricted", "label": "Restricted", "field": "restricted"},
-            {"name": "message_limit", "label": "Msg Limit", "field": "message_limit"},
-            {"name": "rate_limit", "label": "Rate Limit", "field": "rate_limit"},
-            {"name": "research_mode", "label": "Research", "field": "research_mode"},
-            {"name": "count_as_live", "label": "Live", "field": "count_as_live"},
-            {"name": "permissions", "label": "Permissions", "field": "permissions"},
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "environment", "label": "Environment", "field": "environment"},
+                {"name": "name", "label": "Name", "field": "name"},
+                {"name": "active", "label": "Active", "field": "active"},
+                {"name": "restricted", "label": "Restricted", "field": "restricted"},
+                {
+                    "name": "message_limit",
+                    "label": "Msg Limit",
+                    "field": "message_limit",
+                },
+                {"name": "rate_limit", "label": "Rate Limit", "field": "rate_limit"},
+                {
+                    "name": "research_mode",
+                    "label": "Research",
+                    "field": "research_mode",
+                },
+                {"name": "count_as_live", "label": "Live", "field": "count_as_live"},
+                {"name": "permissions", "label": "Permissions", "field": "permissions"},
             ]
         ),
         rows=table_rows,
@@ -790,21 +809,27 @@ async def templates_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Templates").classes("text-lg font-semibold")
-        template_search = ui.input(
-            label="Search by Template ID or Name"
-        ).props("clearable").classes("w-full md:w-1/2")
+        template_search = (
+            ui.input(label="Search by Template ID or Name")
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
         filter_row = ui.row().classes("gap-2")
         service_options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
         }
         type_options = {"email": "Email", "sms": "SMS"}
-        service_select = ui.select(
-            service_options, label="Service", with_input=True
-        ).props("clearable").classes("w-full md:w-1/2")
-        type_select = ui.select(type_options, label="Type", with_input=True).props(
-            "clearable"
-        ).classes("w-full md:w-1/2")
+        service_select = (
+            ui.select(service_options, label="Service", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
+        type_select = (
+            ui.select(type_options, label="Type", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
 
         async def handle_sync_templates() -> None:
             await page_sync_templates()
@@ -845,22 +870,38 @@ async def templates_page() -> None:
             table = ui.table(
                 columns=make_sortable(
                     [
-                    {"name": "id", "label": "ID", "field": "id"},
-                    {"name": "environment", "label": "Environment", "field": "environment"},
-                    {"name": "service_id", "label": "Service", "field": "service_id"},
-                    {"name": "name", "label": "Name", "field": "name"},
-                    {"name": "template_type", "label": "Type", "field": "template_type"},
-                    {"name": "version", "label": "Version", "field": "version"},
-                    {"name": "archived", "label": "Archived", "field": "archived"},
-                    {"name": "hidden", "label": "Hidden", "field": "hidden"},
-                    {"name": "updated_at", "label": "Updated", "field": "updated_at"},
-                    {"name": "subject", "label": "Subject", "field": "subject"},
-                    {"name": "content", "label": "Content", "field": "content"},
+                        {"name": "id", "label": "ID", "field": "id"},
+                        {
+                            "name": "environment",
+                            "label": "Environment",
+                            "field": "environment",
+                        },
+                        {
+                            "name": "service_id",
+                            "label": "Service",
+                            "field": "service_id",
+                        },
+                        {"name": "name", "label": "Name", "field": "name"},
+                        {
+                            "name": "template_type",
+                            "label": "Type",
+                            "field": "template_type",
+                        },
+                        {"name": "version", "label": "Version", "field": "version"},
+                        {"name": "archived", "label": "Archived", "field": "archived"},
+                        {"name": "hidden", "label": "Hidden", "field": "hidden"},
+                        {
+                            "name": "updated_at",
+                            "label": "Updated",
+                            "field": "updated_at",
+                        },
+                        {"name": "subject", "label": "Subject", "field": "subject"},
+                        {"name": "content", "label": "Content", "field": "content"},
                     ]
                 ),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
-                )
+            )
             table.props("row-key=id").classes("w-full")
             add_copyable_slots(table, table_rows)
 
@@ -912,9 +953,11 @@ async def api_keys_page() -> None:
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
         }
-        service_select = ui.select(
-            service_options, label="Filter by Service", with_input=True
-        ).props("clearable").classes("w-full md:w-1/2")
+        service_select = (
+            ui.select(service_options, label="Filter by Service", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
         expires_from = ui.input(label="Expires from").props("clearable type=date")
         expires_to = ui.input(label="Expires to").props("clearable type=date")
 
@@ -927,7 +970,9 @@ async def api_keys_page() -> None:
             selected_service = service_select.value
             start_date = _parse_filter_date(expires_from.value)
             end_date = _parse_filter_date(expires_to.value)
-            keys = await list_api_keys(selected_service, environment=get_view_environment())
+            keys = await list_api_keys(
+                selected_service, environment=get_view_environment()
+            )
             table_rows: List[Dict[str, Any]] = [
                 {
                     "id": key.id,
@@ -947,16 +992,36 @@ async def api_keys_page() -> None:
             table = ui.table(
                 columns=make_sortable(
                     [
-                    {"name": "id", "label": "ID", "field": "id"},
-                    {"name": "environment", "label": "Environment", "field": "environment"},
-                    {"name": "service_id", "label": "Service ID", "field": "service_id"},
-                    {"name": "name", "label": "Name", "field": "name"},
-                    {"name": "key_type", "label": "Type", "field": "key_type"},
-                    {"name": "expiry_date", "label": "Expires", "field": "expiry_date"},
-                    {"name": "created_by", "label": "Created By", "field": "created_by"},
-                    {"name": "created_at", "label": "Created", "field": "created_at"},
-                    {"name": "revoked", "label": "Revoked", "field": "revoked"},
-                    {"name": "version", "label": "Version", "field": "version"},
+                        {"name": "id", "label": "ID", "field": "id"},
+                        {
+                            "name": "environment",
+                            "label": "Environment",
+                            "field": "environment",
+                        },
+                        {
+                            "name": "service_id",
+                            "label": "Service ID",
+                            "field": "service_id",
+                        },
+                        {"name": "name", "label": "Name", "field": "name"},
+                        {"name": "key_type", "label": "Type", "field": "key_type"},
+                        {
+                            "name": "expiry_date",
+                            "label": "Expires",
+                            "field": "expiry_date",
+                        },
+                        {
+                            "name": "created_by",
+                            "label": "Created By",
+                            "field": "created_by",
+                        },
+                        {
+                            "name": "created_at",
+                            "label": "Created",
+                            "field": "created_at",
+                        },
+                        {"name": "revoked", "label": "Revoked", "field": "revoked"},
+                        {"name": "version", "label": "Version", "field": "version"},
                     ]
                 ),
                 rows=table_rows,
@@ -994,12 +1059,16 @@ async def users_page() -> None:
         ui.label("Users").classes("text-lg font-semibold")
         filter_row = ui.row().classes("gap-2 w-full")
         with filter_row:
-            user_search = ui.input(
-                label="Search by Name or Email"
-            ).props("clearable").classes("w-full md:w-1/2")
-            state_select = ui.select({}, label="Filter by State", with_input=True).props(
-                "clearable"
-            ).classes("w-full md:w-1/2")
+            user_search = (
+                ui.input(label="Search by Name or Email")
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
+            state_select = (
+                ui.select({}, label="Filter by State", with_input=True)
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
 
         async def handle_sync_users() -> None:
             await handle_users_sync(status_badge, sync_label)
@@ -1008,6 +1077,7 @@ async def users_page() -> None:
         @ui.refreshable
         async def render_table() -> None:
             users = await list_users(get_view_environment())
+
             def normalize_state(value: Optional[str]) -> str:
                 return (value or "").strip().lower()
 
@@ -1163,16 +1233,20 @@ async def sms_senders_page() -> None:
 
         filter_row = ui.row().classes("gap-2 w-full")
         with filter_row:
-            sms_sender_search = ui.input(
-                label="Search by SMS Sender or ID"
-            ).props("clearable").classes("w-full md:w-1/2")
+            sms_sender_search = (
+                ui.input(label="Search by SMS Sender or ID")
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
         service_options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
         }
-        service_select = ui.select(
-            service_options, label="Filter by Service", with_input=True
-        ).props("clearable").classes("w-full md:w-1/2")
+        service_select = (
+            ui.select(service_options, label="Filter by Service", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
 
         async def handle_sync_senders() -> None:
             await page_sync_sms_senders()
@@ -1216,18 +1290,66 @@ async def sms_senders_page() -> None:
             table = ui.table(
                 columns=make_sortable(
                     [
-                        {"name": "id", "label": "ID", "field": "id"},
-                        {"name": "environment", "label": "Environment", "field": "environment",},
-                        {"name": "service_id", "label": "Service", "field": "service_id"},
-                        {"name": "sms_sender", "label": "SMS Sender", "field": "sms_sender"},
-                        {"name": "is_default", "label": "Default", "field": "is_default"},
-                        {"name": "archived", "label": "Archived", "field": "archived"},
-                        {"name": "description", "label": "Description", "field": "description"},
-                        {"name": "provider_name", "label": "Provider", "field": "provider_name"},
-                        {"name": "rate_limit", "label": "Rate Limit", "field": "rate_limit"},
-                        {"name": "rate_limit_interval", "label": "Rate Interval", "field": "rate_limit_interval"},
-                        {"name": "created_at", "label": "Created", "field": "created_at"},
-                        {"name": "updated_at", "label": "Updated", "field": "updated_at"},
+                        {
+                            "name": "id",
+                            "label": "ID",
+                            "field": "id",
+                        },
+                        {
+                            "name": "environment",
+                            "label": "Environment",
+                            "field": "environment",
+                        },
+                        {
+                            "name": "service_id",
+                            "label": "Service",
+                            "field": "service_id",
+                        },
+                        {
+                            "name": "sms_sender",
+                            "label": "SMS Sender",
+                            "field": "sms_sender",
+                        },
+                        {
+                            "name": "is_default",
+                            "label": "Default",
+                            "field": "is_default",
+                        },
+                        {
+                            "name": "archived",
+                            "label": "Archived",
+                            "field": "archived",
+                        },
+                        {
+                            "name": "description",
+                            "label": "Description",
+                            "field": "description",
+                        },
+                        {
+                            "name": "provider_name",
+                            "label": "Provider",
+                            "field": "provider_name",
+                        },
+                        {
+                            "name": "rate_limit",
+                            "label": "Rate Limit",
+                            "field": "rate_limit",
+                        },
+                        {
+                            "name": "rate_limit_interval",
+                            "label": "Rate Interval",
+                            "field": "rate_limit_interval",
+                        },
+                        {
+                            "name": "created_at",
+                            "label": "Created",
+                            "field": "created_at",
+                        },
+                        {
+                            "name": "updated_at",
+                            "label": "Updated",
+                            "field": "updated_at",
+                        },
                     ]
                 ),
                 rows=table_rows,
@@ -1288,7 +1410,11 @@ async def provider_details_page() -> None:
             table = ui.table(
                 columns=make_sortable(
                     [
-                        {"name": "id", "label": "ID", "field": "id"},
+                        {
+                            "name": "id",
+                            "label": "ID",
+                            "field": "id",
+                        },
                         {
                             "name": "environment",
                             "label": "Environment",
@@ -1309,13 +1435,21 @@ async def provider_details_page() -> None:
                             "label": "Type",
                             "field": "notification_type",
                         },
-                        {"name": "priority", "label": "Priority", "field": "priority"},
+                        {
+                            "name": "priority",
+                            "label": "Priority",
+                            "field": "priority",
+                        },
                         {
                             "name": "load_balancing_weight",
                             "label": "Weight",
                             "field": "load_balancing_weight",
                         },
-                        {"name": "active", "label": "Active", "field": "active"},
+                        {
+                            "name": "active",
+                            "label": "Active",
+                            "field": "active",
+                        },
                         {
                             "name": "supports_international",
                             "label": "International",
@@ -1384,20 +1518,32 @@ async def send_page() -> None:
         env_select = ui.select(
             env_options, value=state.environment, label="Environment"
         ).classes("w-full md:w-1/2")
-        service_select = ui.select(
-            service_options, label="Service", with_input=True
-        ).props("clearable").classes("w-full md:w-1/2")
-        key_select = ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
+        service_select = (
+            ui.select(service_options, label="Service", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
+        key_select = (
+            ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
+        )
         type_toggle = ui.toggle({"email": "Email", "sms": "SMS"}, value="email")
-        template_select = ui.select({}, label="Template", with_input=True).props(
-            "clearable"
-        ).classes("w-full md:w-1/2")
-        recipient_input = ui.input(
-            label="Recipients (comma separated)",
-            placeholder="email1@example.com, email2@example.com",
-        ).props("clearable").classes("w-full md:w-1/2")
+        template_select = (
+            ui.select({}, label="Template", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
+        recipient_input = (
+            ui.input(
+                label="Recipients (comma separated)",
+                placeholder="email1@example.com, email2@example.com",
+            )
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
         personalisation_area = ui.column().classes("w-full md:w-1/2")
-        response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
+        response_log = ui.code("", language="json").classes(
+            "w-full bg-gray-50 dark:bg-slate-900"
+        )
         personalisation_controls: Dict[str, Input] = {}
 
         def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:
@@ -1448,9 +1594,11 @@ async def send_page() -> None:
             )
             with personalisation_area:
                 for name in placeholders:
-                    personalisation_controls[name] = ui.input(
-                        label=name, placeholder=name
-                    ).props("clearable").classes("w-full md:w-1/2")
+                    personalisation_controls[name] = (
+                        ui.input(label=name, placeholder=name)
+                        .props("clearable")
+                        .classes("w-full md:w-1/2")
+                    )
                     personalisation_controls[name].on_value_change(update_preview)
             await update_preview()
 
@@ -1641,18 +1789,28 @@ async def bulk_send_page() -> None:
         env_select = ui.select(
             env_options, value=state.environment, label="Environment"
         ).classes("w-full md:w-1/2")
-        service_select = ui.select(
-            service_options, label="Service", with_input=True
-        ).props("clearable").classes("w-full md:w-1/2")
-        key_select = ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
+        service_select = (
+            ui.select(service_options, label="Service", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
+        key_select = (
+            ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
+        )
         type_toggle = ui.toggle({"email": "Email", "sms": "SMS"}, value="email")
-        template_select = ui.select({}, label="Template", with_input=True).props(
-            "clearable"
-        ).classes("w-full md:w-1/2")
+        template_select = (
+            ui.select({}, label="Template", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
         personalisation_area = ui.column().classes("w-full md:w-1/2")
-        response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
+        response_log = ui.code("", language="json").classes(
+            "w-full bg-gray-50 dark:bg-slate-900"
+        )
         progress_label = ui.label("Bulk send progress: idle").classes("text-sm")
-        progress_bar = ui.linear_progress(value=0, show_value=False, color="green").classes("w-full")
+        progress_bar = ui.linear_progress(
+            value=0, show_value=False, color="green"
+        ).classes("w-full")
         personalisation_controls: Dict[str, Input] = {}
 
         def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:
@@ -1703,9 +1861,11 @@ async def bulk_send_page() -> None:
             )
             with personalisation_area:
                 for name in placeholders:
-                    personalisation_controls[name] = ui.input(
-                        label=name, placeholder=name
-                    ).props("clearable").classes("w-full md:w-1/2")
+                    personalisation_controls[name] = (
+                        ui.input(label=name, placeholder=name)
+                        .props("clearable")
+                        .classes("w-full md:w-1/2")
+                    )
                     personalisation_controls[name].on_value_change(update_preview)
             await update_preview()
 
@@ -1873,9 +2033,7 @@ async def bulk_send_page() -> None:
                 ui.notify("Bulk send complete", color="green")
             except Exception as exc:
                 progress_bar.value = 0
-                progress_label.text = (
-                    f"Bulk send failed at {progress_percent()}%"
-                )
+                progress_label.text = f"Bulk send failed at {progress_percent()}%"
                 ui.notify(f"Error: {exc}", color="red")
 
         async def handle_bulk_send() -> None:
@@ -1950,8 +2108,7 @@ async def settings_page() -> None:
     async def refresh_service_options() -> None:
         env_value = key_environment.value if key_environment else get_view_environment()
         options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(env_value)
+            svc.id: format_service_label(svc) for svc in await list_services(env_value)
         }
         if not key_service:
             return
@@ -1983,9 +2140,11 @@ async def settings_page() -> None:
                 rows.append((env, current_url))
             inputs: Dict[str, ui.input] = {}
             for env, url in rows:
-                inputs[env] = ui.input(
-                    label=f"{env.title()} Base URL", value=url
-                ).props("clearable").classes("w-full md:w-1/2")
+                inputs[env] = (
+                    ui.input(label=f"{env.title()} Base URL", value=url)
+                    .props("clearable")
+                    .classes("w-full md:w-1/2")
+                )
 
             async def handle_save_urls() -> None:
                 await save_base_urls(inputs)
@@ -2008,12 +2167,14 @@ async def settings_page() -> None:
                     await get_secure_setting(f"basic_password_{env}", encryption) or ""
                 )
                 auth_inputs[env] = {
-                    "user": ui.input(
-                        label=f"{env.title()} Username", value=user_val
-                    ).props("clearable").classes("w-full md:w-1/2"),
+                    "user": ui.input(label=f"{env.title()} Username", value=user_val)
+                    .props("clearable")
+                    .classes("w-full md:w-1/2"),
                     "pass": ui.input(
                         label=f"{env.title()} Password", value=pass_val, password=True
-                    ).props("clearable").classes("w-full md:w-1/2"),
+                    )
+                    .props("clearable")
+                    .classes("w-full md:w-1/2"),
                 }
 
             async def handle_save_auth() -> None:
@@ -2037,8 +2198,14 @@ async def settings_page() -> None:
             key_service = ui.select(
                 service_options, label="Service", with_input=True
             ).classes("w-full md:w-1/2")
-            key_name = ui.input(label="Key Name").props("clearable").classes("w-full md:w-1/2")
-            key_secret = ui.input(label="Key Secret", password=True).props("clearable").classes("w-full md:w-1/2")
+            key_name = (
+                ui.input(label="Key Name").props("clearable").classes("w-full md:w-1/2")
+            )
+            key_secret = (
+                ui.input(label="Key Secret", password=True)
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
             key_type = ui.select(
                 {"normal": "Normal", "team": "Team", "test": "Test"}, value="normal"
             ).classes("w-full md:w-1/2")
@@ -2112,11 +2279,11 @@ async def render_local_keys() -> None:
     table = ui.table(
         columns=make_sortable(
             [
-            {"name": "id", "label": "ID", "field": "id"},
-            {"name": "service_id", "label": "Service", "field": "service_id"},
-            {"name": "environment", "label": "Environment", "field": "environment"},
-            {"name": "key_name", "label": "Name", "field": "key_name"},
-            {"name": "key_type", "label": "Type", "field": "key_type"},
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "service_id", "label": "Service", "field": "service_id"},
+                {"name": "environment", "label": "Environment", "field": "environment"},
+                {"name": "key_name", "label": "Name", "field": "key_name"},
+                {"name": "key_type", "label": "Type", "field": "key_type"},
             ]
         ),
         rows=rows,
@@ -2127,4 +2294,9 @@ async def render_local_keys() -> None:
 
 
 if __name__ in {"__main__", "__mp_main__"}:
-    ui.run(title="VA Notify Admin", port=8080, reload=True, storage_secret=config.master_key)
+    ui.run(
+        title="VA Notify Admin",
+        port=8080,
+        reload=True,
+        storage_secret=config.master_key,
+    )

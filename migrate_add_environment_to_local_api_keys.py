@@ -4,6 +4,7 @@ Migration script to add environment column to local_api_keys table.
 
 This script adds the environment column required for environment-specific local API keys.
 """
+
 import asyncio
 import sqlite3
 import sys
@@ -19,7 +20,9 @@ async def migrate():
 
     if not db_path.exists():
         print(f"Database not found at {db_path}")
-        print("No migration needed - database will be created with correct schema on first run")
+        print(
+            "No migration needed - database will be created with correct schema on first run"
+        )
         return
 
     print(f"Migrating database at {db_path}")

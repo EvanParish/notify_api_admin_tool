@@ -73,7 +73,10 @@ async def test_sync_services_templates(setup_db):
         templates = (await session.execute(select(Template))).scalars().all()
         assert len(templates) == 2
         ids = {t.id for t in templates}
-        assert {"e98f2fd4-f307-4092-be15-34a8d903aaaa", "aef3658a-1c78-443a-9c74-688ee96f18be"} == ids
+        assert {
+            "e98f2fd4-f307-4092-be15-34a8d903aaaa",
+            "aef3658a-1c78-443a-9c74-688ee96f18be",
+        } == ids
         email_template = next(t for t in templates if t.template_type == "email")
         assert email_template.subject == "Test ((title))"
         assert email_template.service_id == "d6aa2c68-a2d9-4437-ab19-3ae8eb202553"
@@ -84,13 +87,13 @@ async def test_sync_all(setup_db):
     await create_all()
     api = FakeAPI()
     sync = SyncManager(api, max_concurrency=10)
-    
+
     await sync.sync_all()
-    
+
     async with get_session() as session:
         services = (await session.execute(select(Service))).scalars().all()
         templates = (await session.execute(select(Template))).scalars().all()
-        
+
         assert len(services) >= 1
         assert len(templates) >= 2
 
@@ -100,14 +103,15 @@ async def test_sync_with_progress_callback(setup_db):
     await create_all()
     api = FakeAPI()
     sync = SyncManager(api, max_concurrency=5)
-    
+
     messages = []
+
     async def progress(msg: str):
         messages.append(msg)
-    
+
     await sync.sync_services(progress=progress)
     await sync.sync_templates(progress=progress)
-    
+
     assert "Syncing services" in messages
     assert any("Templates for" in msg for msg in messages)
 
@@ -116,10 +120,10 @@ async def test_sync_with_progress_callback(setup_db):
 async def test_sync_empty_data_no_errors(setup_db):
     """Test that syncing empty data arrays doesn't cause errors."""
     await create_all()
-    
+
     api = FakeAPI(services=[], templates=[])
     sync = SyncManager(api)
-    
+
     # These should complete without raising exceptions
     await sync.sync_services()
     # If we got here without exceptions, test passes
@@ -129,21 +133,35 @@ async def test_sync_empty_data_no_errors(setup_db):
 @pytest.mark.asyncio
 async def test_sync_services_merge_behavior(setup_db):
     await create_all()
-    
+
     # First sync
-    api1 = FakeAPI(services=[
-        {"id": "svc-1", "name": "Service Original", "active": True, "restricted": False}
-    ])
+    api1 = FakeAPI(
+        services=[
+            {
+                "id": "svc-1",
+                "name": "Service Original",
+                "active": True,
+                "restricted": False,
+            }
+        ]
+    )
     sync1 = SyncManager(api1)
     await sync1.sync_services()
-    
+
     # Second sync with updated data
-    api2 = FakeAPI(services=[
-        {"id": "svc-1", "name": "Service Updated", "active": False, "restricted": True}
-    ])
+    api2 = FakeAPI(
+        services=[
+            {
+                "id": "svc-1",
+                "name": "Service Updated",
+                "active": False,
+                "restricted": True,
+            }
+        ]
+    )
     sync2 = SyncManager(api2)
     await sync2.sync_services()
-    
+
     async with get_session() as session:
         services = (await session.execute(select(Service))).scalars().all()
         assert len(services) == 1
@@ -156,24 +174,34 @@ async def test_sync_services_merge_behavior(setup_db):
 @pytest.mark.asyncio
 async def test_sync_templates_concurrency(setup_db):
     await create_all()
-    
+
     # Add multiple services
     async with get_session() as session:
         for i in range(5):
-            session.add(Service(id=f"svc-{i}", name=f"Service {i}", active=True, restricted=False))
+            session.add(
+                Service(
+                    id=f"svc-{i}", name=f"Service {i}", active=True, restricted=False
+                )
+            )
         await session.commit()
-    
+
     # Create API with a generator that returns unique templates per service
     api = FakeAPI()
     api._template_generator = lambda svc_id: [
-        {"id": f"tmpl-{svc_id}-{i}", "service": svc_id, "name": f"Template {i}", 
-         "type": "email", "content": "Content", "version": 1}
+        {
+            "id": f"tmpl-{svc_id}-{i}",
+            "service": svc_id,
+            "name": f"Template {i}",
+            "type": "email",
+            "content": "Content",
+            "version": 1,
+        }
         for i in range(3)
     ]
     sync = SyncManager(api, max_concurrency=2)
-    
+
     await sync.sync_templates()
-    
+
     async with get_session() as session:
         templates = (await session.execute(select(Template))).scalars().all()
         # 5 services * 3 templates each = 15 templates
@@ -185,23 +213,30 @@ async def test_sync_all_with_progress(setup_db):
     await create_all()
     api = FakeAPI()
     sync = SyncManager(api)
-    
+
     messages = []
+
     async def track_progress(msg: str):
         messages.append(msg)
-    
+
     await sync.sync_all(progress=track_progress)
-    
+
     assert len(messages) > 0
 
 
 @pytest.mark.asyncio
 async def test_sync_users_filters_archived(setup_db):
     await create_all()
-    api = FakeAPI(users=[
-        {"id": "u-1", "email_address": "_archived_user@example.com", "name": "Archived"},
-        {"id": "u-2", "email_address": "active.user@example.com", "name": "Active"},
-    ])
+    api = FakeAPI(
+        users=[
+            {
+                "id": "u-1",
+                "email_address": "_archived_user@example.com",
+                "name": "Archived",
+            },
+            {"id": "u-2", "email_address": "active.user@example.com", "name": "Active"},
+        ]
+    )
     sync = SyncManager(api)
 
     await sync.sync_users()
@@ -215,24 +250,35 @@ async def test_sync_users_filters_archived(setup_db):
 @pytest.mark.asyncio
 async def test_sync_templates_for_service_direct(setup_db):
     await create_all()
-    
+
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Service", active=True, restricted=False))
         await session.commit()
-    
-    api = FakeAPI(templates=[
-        {"id": "t1", "service_id": "svc-1", "name": "T1", "type": "email", "content": "C", "subject": "S", "version": 1}
-    ])
+
+    api = FakeAPI(
+        templates=[
+            {
+                "id": "t1",
+                "service_id": "svc-1",
+                "name": "T1",
+                "type": "email",
+                "content": "C",
+                "subject": "S",
+                "version": 1,
+            }
+        ]
+    )
     sync = SyncManager(api)
-    
+
     messages = []
+
     async def progress(msg: str):
         messages.append(msg)
-    
+
     await sync._sync_templates_for_service("svc-1", progress)
-    
+
     assert any("Templates for svc-1" in msg for msg in messages)
-    
+
     async with get_session() as session:
         templates = (await session.execute(select(Template))).scalars().all()
         assert len(templates) == 1
@@ -241,20 +287,36 @@ async def test_sync_templates_for_service_direct(setup_db):
 @pytest.mark.asyncio
 async def test_sync_templates_handles_different_field_names(setup_db):
     await create_all()
-    
+
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Service", active=True, restricted=False))
         await session.commit()
-    
+
     # Test template data with different field name variations
-    api = FakeAPI(templates=[
-        {"id": "t1", "service": "svc-1", "name": "T1", "type": "email", "content": "C", "version": 1},
-        {"id": "t2", "service_id": "svc-1", "name": "T2", "template_type": "sms", "content": "C", "version": 1}
-    ])
+    api = FakeAPI(
+        templates=[
+            {
+                "id": "t1",
+                "service": "svc-1",
+                "name": "T1",
+                "type": "email",
+                "content": "C",
+                "version": 1,
+            },
+            {
+                "id": "t2",
+                "service_id": "svc-1",
+                "name": "T2",
+                "template_type": "sms",
+                "content": "C",
+                "version": 1,
+            },
+        ]
+    )
     sync = SyncManager(api)
-    
+
     await sync.sync_templates()
-    
+
     async with get_session() as session:
         templates = (await session.execute(select(Template))).scalars().all()
         assert len(templates) == 2
@@ -263,16 +325,17 @@ async def test_sync_templates_handles_different_field_names(setup_db):
         assert email_tmpl.template_type == "email"
         assert sms_tmpl.template_type == "sms"
 
+
 @pytest.mark.asyncio
 async def test_sync_services_with_empty_permissions_list(initialized_db):
     """Test that services with empty permissions list are handled correctly."""
     from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
     from app.repository import list_services
-    
+
     # Create a mock API that returns a service with empty permissions list
     mock_api = MockNotificationAPI()
-    
+
     # Override get_services to return service with empty list
     async def get_services_with_empty_perms():
         return [
@@ -286,12 +349,12 @@ async def test_sync_services_with_empty_permissions_list(initialized_db):
                 "count_as_live": True,
             }
         ]
-    
+
     mock_api.get_services = get_services_with_empty_perms
-    
+
     manager = SyncManager(mock_api, max_concurrency=5)
     await manager.sync_services()
-    
+
     # Verify the service was stored correctly
     services = await list_services()
     assert len(services) == 1
@@ -308,7 +371,7 @@ async def test_sync_api_keys_handles_404(initialized_db):
     from app.db import get_session
     from sqlalchemy import select
     import httpx
-    
+
     # Create a service
     async with get_session() as session:
         service = Service(
@@ -318,24 +381,23 @@ async def test_sync_api_keys_handles_404(initialized_db):
         )
         session.add(service)
         await session.commit()
-    
+
     # Create mock API that raises 404 for get_api_keys
     mock_api = MockNotificationAPI()
-    
+
     async def raise_404(service_id: str):
         raise httpx.HTTPStatusError(
-            "Client error '404 NOT FOUND'",
-            request=None,
-            response=None
+            "Client error '404 NOT FOUND'", request=None, response=None
         )
-    
+
     mock_api.get_api_keys = raise_404
-    
+
     # This should not raise an exception
     manager = SyncManager(mock_api, max_concurrency=5)
     await manager.sync_api_keys()  # Should complete without error
-    
+
     # Verify no API keys were added (which is expected)
     from app.repository import list_api_keys
+
     keys = await list_api_keys()
     assert len(keys) == 0

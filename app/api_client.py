@@ -125,13 +125,17 @@ class HttpNotificationAPI(NotificationAPI):
             payload["phone_number"] = recipient
             endpoint = "/v2/notifications/sms"
 
-        resp = await self.client.post(f"{self.base_url}{endpoint}", json=payload, headers=headers)
+        resp = await self.client.post(
+            f"{self.base_url}{endpoint}", json=payload, headers=headers
+        )
         resp.raise_for_status()
         return resp.json()
 
     async def healthcheck(self) -> bool:
         try:
-            resp = await self.client.get(f"{self.base_url}/_status", auth=self._basic_auth)
+            resp = await self.client.get(
+                f"{self.base_url}/_status", auth=self._basic_auth
+            )
             resp.raise_for_status()
             return True
         except Exception:
@@ -140,7 +144,9 @@ class HttpNotificationAPI(NotificationAPI):
     def _make_jwt(self, service_id: str, secret: str) -> str:
         now = int(time.time())
         payload = {"iss": service_id, "iat": now}
-        token = jwt.encode(payload, secret, algorithm="HS256", headers={"typ": "JWT", "alg": "HS256"})
+        token = jwt.encode(
+            payload, secret, algorithm="HS256", headers={"typ": "JWT", "alg": "HS256"}
+        )
         return token
 
 

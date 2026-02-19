@@ -19,13 +19,17 @@ class EncryptionManager:
 
     async def _get_or_create_salt(self) -> bytes:
         async with get_session() as session:
-            result = await session.execute(select(Setting).where(Setting.key == "encryption_salt"))
+            result = await session.execute(
+                select(Setting).where(Setting.key == "encryption_salt")
+            )
             setting: Setting | None = result.scalar_one_or_none()
             if setting:
                 return base64.urlsafe_b64decode(setting.value)
 
             salt = os.urandom(16)
-            setting = Setting(key="encryption_salt", value=base64.urlsafe_b64encode(salt).decode())
+            setting = Setting(
+                key="encryption_salt", value=base64.urlsafe_b64encode(salt).decode()
+            )
             session.add(setting)
             await session.commit()
             return salt

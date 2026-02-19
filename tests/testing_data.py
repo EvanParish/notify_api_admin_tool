@@ -27,38 +27,31 @@ service_data = {
             "organisation": None,
             "organisation_type": None,
             "p2p_enabled": True,
-            "permissions": [
-                "international_sms",
-                "push",
-                "email",
-                "sms"
-            ],
+            "permissions": ["international_sms", "push", "email", "sms"],
             "prefix_sms": False,
             "rate_limit": 3000,
             "research_mode": False,
             "restricted": False,
             "sending_domain": None,
-            "service_callback": [
-                "64250b4b-4efe-4d16-bd7c-3ef11b9be998"
-            ],
+            "service_callback": ["64250b4b-4efe-4d16-bd7c-3ef11b9be998"],
             "service_data_retention": [],
             "sms_provider_id": "1e566b9f-3c98-4857-9322-8968a37ad9ef",
             "smtp_user": None,
             "users": [
                 "61cd22b4-1a4f-4a7b-8007-13669d61d6e4",
-                "a17cc11f-739c-43d9-aa22-e03bb0f9ae6a"
+                "a17cc11f-739c-43d9-aa22-e03bb0f9ae6a",
             ],
             "version": 16,
             "volume_email": None,
             "volume_letter": None,
             "volume_sms": None,
-            "whitelist": []
+            "whitelist": [],
         }
     ]
 }
 
 # The GET /service/{service_id}/template endpoint returns an object with a list of template data
-template_data={
+template_data = {
     "data": [
         {
             "archived": False,
@@ -84,7 +77,7 @@ template_data={
             "template_redacted": "e98f2fd4-f307-4092-be15-34a8d903deda",
             "template_type": "sms",
             "updated_at": "2024-04-23T15:27:47.100809",
-            "version": 3
+            "version": 3,
         },
         {
             "archived": False,
@@ -110,8 +103,8 @@ template_data={
             "template_redacted": "aef3658a-1c78-443a-9c74-688ee96f18be",
             "template_type": "email",
             "updated_at": "2025-06-06T20:48:22.963264",
-            "version": 9
-        }
+            "version": 9,
+        },
     ]
 }
 
@@ -127,7 +120,7 @@ api_key_data = {
             "name": "my-apikey",
             "revoked": False,
             "updated_at": None,
-            "version": 1
+            "version": 1,
         },
         {
             "created_at": "2025-12-18T19:36:17.035499",
@@ -138,7 +131,7 @@ api_key_data = {
             "name": "postmantestapikey-expiry-in-2-days",
             "revoked": False,
             "updated_at": None,
-            "version": 1
-        }
+            "version": 1,
+        },
     ]
 }

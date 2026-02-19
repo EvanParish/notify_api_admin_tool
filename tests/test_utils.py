@@ -13,7 +13,9 @@ def test_extract_placeholders_single():
 
 
 def test_extract_placeholders_multiple():
-    result = extract_placeholders("Hello ((first_name)) ((last_name)), your code is ((code))")
+    result = extract_placeholders(
+        "Hello ((first_name)) ((last_name)), your code is ((code))"
+    )
     assert result == ["first_name", "last_name", "code"]
 
 

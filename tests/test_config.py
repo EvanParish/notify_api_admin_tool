@@ -38,9 +38,12 @@ def test_app_config_default_values():
 def test_app_config_api_hosts_from_dict():
     config = AppConfig(
         master_key="test-key",
-        api_hosts={"dev": "http://dev.example.com", "prod": "http://prod.example.com"}
+        api_hosts={"dev": "http://dev.example.com", "prod": "http://prod.example.com"},
     )
-    assert config.api_hosts == {"dev": "http://dev.example.com", "prod": "http://prod.example.com"}
+    assert config.api_hosts == {
+        "dev": "http://dev.example.com",
+        "prod": "http://prod.example.com",
+    }
 
 
 def test_app_config_api_hosts_from_json_string():
@@ -78,10 +81,10 @@ def test_app_config_max_concurrency_invalid():
 
 def test_load_config_missing_master_key():
     # Skip test if .env file exists that provides MASTER_KEY
-    env_file = os.path.join(os.getcwd(), '.env')
+    env_file = os.path.join(os.getcwd(), ".env")
     if os.path.exists(env_file):
         pytest.skip(".env file exists, cannot test missing MASTER_KEY")
-    
+
     with patch.dict(os.environ, {}, clear=True):
         with pytest.raises(RuntimeError, match="MASTER_KEY is required"):
             load_config()
@@ -92,7 +95,7 @@ def test_load_config_success():
         "MASTER_KEY": "test-master-key-123",
         "USE_MOCK_API": "true",
         "DATABASE_PATH": "test/db.db",
-        "MAX_CONCURRENCY": "10"
+        "MAX_CONCURRENCY": "10",
     }
     with patch.dict(os.environ, env, clear=True):
         config = load_config()
@@ -105,7 +108,7 @@ def test_load_config_success():
 def test_load_config_with_custom_api_hosts():
     env = {
         "MASTER_KEY": "test-key",
-        "API_PUBLIC_HOSTS": json.dumps({"custom": "http://custom.com"})
+        "API_PUBLIC_HOSTS": json.dumps({"custom": "http://custom.com"}),
     }
     with patch.dict(os.environ, env, clear=True):
         config = load_config()

@@ -43,7 +43,7 @@ class SyncManager:
                 permissions = svc.get("permissions")
                 if isinstance(permissions, list):
                     permissions = json.dumps(permissions)
-                
+
                 record = models.Service(
                     id=svc.get("id"),
                     environment=self.environment,
@@ -72,10 +72,14 @@ class SyncManager:
                 query = query.where(models.Service.environment == self.environment)
             service_rows = (await session.execute(query)).scalars().all()
 
-        tasks = [self._sync_templates_for_service(sid, progress) for sid in service_rows]
+        tasks = [
+            self._sync_templates_for_service(sid, progress) for sid in service_rows
+        ]
         await asyncio.gather(*tasks)
 
-    async def _sync_templates_for_service(self, service_id: str, progress: ProgressCallback) -> None:
+    async def _sync_templates_for_service(
+        self, service_id: str, progress: ProgressCallback
+    ) -> None:
         async with self._semaphore:
             if progress:
                 await progress(f"Templates for {service_id}")
@@ -85,7 +89,9 @@ class SyncManager:
                     record = models.Template(
                         id=tmpl.get("id"),
                         environment=self.environment,
-                        service_id=tmpl.get("service") or tmpl.get("service_id") or service_id,
+                        service_id=tmpl.get("service")
+                        or tmpl.get("service_id")
+                        or service_id,
                         name=tmpl.get("name", ""),
                         template_type=tmpl.get("type") or tmpl.get("template_type"),
                         content=tmpl.get("content", ""),
@@ -112,7 +118,9 @@ class SyncManager:
         tasks = [self._sync_api_keys_for_service(sid, progress) for sid in service_rows]
         await asyncio.gather(*tasks)
 
-    async def _sync_api_keys_for_service(self, service_id: str, progress: ProgressCallback) -> None:
+    async def _sync_api_keys_for_service(
+        self, service_id: str, progress: ProgressCallback
+    ) -> None:
         async with self._semaphore:
             if progress:
                 await progress(f"API keys for {service_id}")
@@ -127,7 +135,7 @@ class SyncManager:
                     return
                 # For other errors, re-raise
                 raise
-            
+
             async with get_session() as session:
                 for key in api_keys:
                     record = models.ApiKey(
@@ -152,7 +160,9 @@ class SyncManager:
                 query = query.where(models.Service.environment == self.environment)
             service_rows = (await session.execute(query)).scalars().all()
 
-        tasks = [self._sync_sms_senders_for_service(sid, progress) for sid in service_rows]
+        tasks = [
+            self._sync_sms_senders_for_service(sid, progress) for sid in service_rows
+        ]
         await asyncio.gather(*tasks)
 
     async def _sync_sms_senders_for_service(
@@ -227,7 +237,9 @@ class SyncManager:
                     environment=self.environment,
                     active=provider.get("active", False),
                     created_by_name=provider.get("created_by_name"),
-                    current_month_billable_sms=provider.get("current_month_billable_sms"),
+                    current_month_billable_sms=provider.get(
+                        "current_month_billable_sms"
+                    ),
                     display_name=provider.get("display_name"),
                     identifier=provider.get("identifier"),
                     load_balancing_weight=provider.get("load_balancing_weight"),

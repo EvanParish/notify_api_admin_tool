@@ -22,7 +22,7 @@ def init_engine(database_path: str) -> AsyncEngine:
         echo=False,
         future=True,
         pool_pre_ping=True,
-        connect_args={"check_same_thread": False}
+        connect_args={"check_same_thread": False},
     )
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     return engine
