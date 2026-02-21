@@ -38,6 +38,9 @@ class FakeAPI(NotificationAPI):
     async def get_provider_details(self):
         return []
 
+    async def get_communication_items(self):
+        return []
+
     async def send_notification(self, *args, **kwargs):
         return {}
 

@@ -174,6 +174,20 @@ class ProviderDetail(Base):
     updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
+class CommunicationItem(Base):
+    __tablename__ = "communication_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    environment: Mapped[str] = mapped_column(
+        String, primary_key=True, default="unknown", index=True
+    )
+    name: Mapped[str] = mapped_column(String)
+    va_profile_item_id: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    default_send_indicator: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class LocalApiKey(Base):
     __tablename__ = "local_api_keys"
 

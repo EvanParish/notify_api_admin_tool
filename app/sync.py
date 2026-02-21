@@ -31,6 +31,7 @@ class SyncManager:
         await self.sync_api_keys(progress)
         await self.sync_sms_senders(progress)
         await self.sync_users(progress)
+        await self.sync_communication_items(progress)
         await self.sync_provider_details(progress)
 
     async def sync_services(self, progress: ProgressCallback = None) -> None:
@@ -247,6 +248,24 @@ class SyncManager:
                     priority=provider.get("priority"),
                     supports_international=provider.get("supports_international"),
                     updated_at=provider.get("updated_at"),
+                )
+                await session.merge(record)
+            await session.commit()
+
+    async def sync_communication_items(self, progress: ProgressCallback = None) -> None:
+        if progress:
+            await progress("Syncing communication items")
+        communication_items = await self.api.get_communication_items()
+        async with get_session() as session:
+            for item in communication_items:
+                record = models.CommunicationItem(
+                    id=item.get("id"),
+                    environment=self.environment,
+                    name=item.get("name", ""),
+                    va_profile_item_id=item.get("va_profile_item_id"),
+                    default_send_indicator=item.get(
+                        "default_send_indicator", False
+                    ),
                 )
                 await session.merge(record)
             await session.commit()

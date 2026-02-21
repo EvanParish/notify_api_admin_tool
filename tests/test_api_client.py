@@ -44,6 +44,14 @@ async def test_mock_api_get_api_keys():
 
 
 @pytest.mark.asyncio
+async def test_mock_api_create_api_key():
+    api = MockNotificationAPI()
+    result = await api.create_api_key("svc-1", "New Key", "normal")
+
+    assert result["data"] == "secret_api_key_1234567890abcdef"
+
+
+@pytest.mark.asyncio
 async def test_mock_api_send_notification():
     api = MockNotificationAPI()
     result = await api.send_notification(
@@ -135,6 +143,25 @@ async def test_http_api_get_api_keys():
             "https://api.example.com/service/svc-1/api-keys", auth=None
         )
         assert len(keys) == 1
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_api_key():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": "secret_api_key_1234567890abcdef"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.create_api_key("svc-1", "New Key", "normal")
+
+        mock_post.assert_called_once_with(
+            "https://api.example.com/service/svc-1/api-key",
+            json={"name": "New Key", "key_type": "normal"},
+            auth=None,
+        )
+        assert result["data"] == "secret_api_key_1234567890abcdef"
 
 
 @pytest.mark.asyncio

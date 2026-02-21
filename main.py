@@ -7,7 +7,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -24,6 +24,7 @@ from app.repository import (
     get_secure_setting,
     get_setting,
     list_api_keys,
+    list_communication_items,
     list_local_keys,
     list_provider_details,
     list_sms_senders,
@@ -382,6 +383,32 @@ async def handle_provider_details_sync(status_badge, sync_label) -> None:
     await refresh_status_badge(status_badge)
 
 
+async def handle_communication_items_sync(status_badge, sync_label) -> None:
+    if not await ensure_sync_enabled(sync_label):
+        return
+
+    if not await ensure_admin_auth(state.environment, sync_label):
+        return
+
+    api = await build_api_client(state.environment)
+    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
+
+    async def progress(msg: str):
+        state.sync_message = msg
+        sync_label.text = msg
+
+    sync_label.text = "Syncing communication items..."
+    try:
+        await manager.sync_communication_items(progress=progress)
+    except httpx.HTTPStatusError as exc:
+        if exc.response and exc.response.status_code == 401:
+            handle_unauthorized(sync_label, state.environment)
+            return
+        raise
+    sync_label.text = "Sync complete"
+    await refresh_status_badge(status_badge)
+
+
 async def refresh_tables() -> None:
     await refresh_if_needed(services_table)
 
@@ -416,8 +443,10 @@ def build_shell(on_view_env_change=None) -> tuple:
         ui.link("Services", "/services")
         ui.link("Templates", "/templates")
         ui.link("API Keys", "/api-keys")
+        ui.link("Service API Key", "/api-key-service")
         ui.link("Users", "/users")
         ui.link("SMS Senders", "/sms-senders")
+        ui.link("Communication Items", "/communication-items")
         ui.link("Provider Details", "/provider-details")
         ui.link("Settings", "/settings")
 
@@ -536,6 +565,7 @@ async def dashboard_page() -> None:
 
     async def page_refresh():
         await handle_full_sync(status_badge, sync_label)
+        await refresh_if_needed(render_dashboard)
 
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
@@ -588,6 +618,100 @@ def add_copyable_slots(table, rows: List[Dict[str, Any]]) -> None:
         table.add_slot(f"body-cell-{field}", COPYABLE_CELL_SLOT)
     if copyable_fields:
         table.on("copy", lambda e: copy_to_clipboard(e.args))
+
+
+EMAIL_ENV_ALIASES = {"development": "dev", "production": "prod"}
+EMAIL_PUBLIC_ENDPOINTS = {
+    "local": "http://localhost:6011",
+    "dev": "https://dev-api.va.gov/vanotify",
+    "perf": "https://sandbox-api.va.gov/vanotify",
+    "staging": "https://staging-api.va.gov/vanotify",
+    "prod": "https://api.va.gov/vanotify",
+}
+EMAIL_PRIVATE_ENDPOINTS = {
+    "local": "http://priv-localhost:6011",
+    "dev": "https://dev.api.notifications.va.gov",
+    "perf": "https://perf.api.notifications.va.gov",
+    "staging": "https://staging.api.notifications.va.gov",
+    "prod": "https://api.notifications.va.gov",
+}
+UUID_SECRET_TYPE = "uuid"
+
+
+def _normalize_email_env(env: str) -> str:
+    return EMAIL_ENV_ALIASES.get(env, env)
+
+
+def _format_email_env_label(env: str) -> str:
+    normalized = _normalize_email_env(env)
+    return "Production" if normalized in {"prod", "production"} else normalized.title()
+
+
+def _resolve_email_endpoints(env: str) -> tuple[str, str]:
+    normalized = _normalize_email_env(env)
+    public_url = EMAIL_PUBLIC_ENDPOINTS.get(normalized)
+    private_url = EMAIL_PRIVATE_ENDPOINTS.get(normalized)
+    if public_url and private_url:
+        return public_url, private_url
+    fallback = config.api_hosts.get(env) or config.api_hosts.get(normalized)
+    if fallback:
+        fallback = fallback.rstrip("/")
+        return fallback, fallback
+    raise ValueError(f"No email endpoints configured for environment {env}")
+
+
+def _format_expiry_date(value: Optional[str]) -> str:
+    if not value:
+        return "unknown"
+    return value.split("T", 1)[0]
+
+
+def _select_latest_key(keys: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
+    matches = [key for key in keys if key.get("name") == name]
+    if not matches:
+        raise ValueError(f"No keys found with name: {name}")
+    if len(matches) == 1:
+        return matches[0]
+    return max(matches, key=lambda key: key.get("created_at") or "")
+
+
+def _build_key_email(
+    key_secret: str,
+    created_key: Dict[str, Any],
+    env: str,
+    service_name: str,
+    service_id: str,
+) -> str:
+    env_label = _format_email_env_label(env)
+    public_url, private_url = _resolve_email_endpoints(env)
+    expiry_date = _format_expiry_date(created_key.get("expiry_date"))
+    rotation_date = datetime.now(timezone.utc).date() + timedelta(days=30)
+    key_name = created_key.get("name") or ""
+    key_id = created_key.get("id") or ""
+    return (
+        "\nHello,\n\n"
+        "Please see the details below regarding your key(s) for the VA Notify API.\n\n"
+        "Action items:\n"
+        "1. Please confirm receipt of this email.\n"
+        "2. Please confirm when you have implemented the new key(s) in your application.\n\n"
+        f"{env_label} Details\n"
+        f"Key Secret: {key_secret}\n"
+        f"Expiration Date: {expiry_date}\n"
+        f"Key Name: {key_name}\n"
+        f"Key ID: {key_id}\n\n"
+        f"{env_label} Service\n"
+        f"Service Name: {service_name}\n"
+        f"Service ID: {service_id}\n\n"
+        f"{env_label} VA Notify Endpoints:\n"
+        "You would use this endpoint for email POST within the VA Network:\n"
+        f"{private_url}/v2/notifications/email\n"
+        "or if outside the VA Network:\n"
+        f"{public_url}/v2/notifications/email\n\n"
+        "If you need anything else, please don't hesitate to reach out - contact us via email "
+        "oitoctovanotify@va.gov or Slack #va-notify-public channel!\n\n"
+        "--- Only include for API key rotation notices ---\n"
+        f"Your current keys will expire in 30 days ({rotation_date}).\n"
+    )
 
 
 def format_environment(value: Optional[str]) -> str:
@@ -679,6 +803,15 @@ def _matches_expiry_range(
     if end_date and expiry_date > end_date:
         return False
     return True
+
+
+def _extract_api_key_secret(payload: Dict[str, Any]) -> str:
+    if not isinstance(payload, dict):
+        raise ValueError("Unexpected API response when creating API key")
+    data = payload.get("data")
+    if isinstance(data, str) and data.strip():
+        return data
+    raise ValueError("API key secret missing in response; expected data string")
 
 
 async def handle_service_search(value: Optional[str]) -> None:
@@ -949,6 +1082,98 @@ async def api_keys_page() -> None:
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("API Keys").classes("text-lg font-semibold")
 
+        create_button = ui.button("Create Personal API Key", color="green")
+
+        with ui.dialog() as create_dialog, ui.card().classes("p-6 w-full max-w-3xl"):
+            ui.label("Create Personal API Key").classes("text-md font-semibold")
+            create_env = ui.select(
+                {env: env.title() for env in config.api_hosts},
+                value=state.environment,
+                label="Environment",
+            ).classes("w-full md:w-1/2")
+            create_service = (
+                ui.select({}, label="Service", with_input=True)
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
+            create_name = (
+                ui.input(label="Key Name")
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
+            create_type = ui.select(
+                {"normal": "Normal", "team": "Team", "test": "Test"},
+                value="normal",
+                label="Key Type",
+            ).classes("w-full md:w-1/2")
+            with ui.row().classes("gap-2"):
+                submit_button = ui.button("Create API Key", color="green")
+                ui.button("Cancel", on_click=create_dialog.close, color="gray")
+
+        async def refresh_create_service_options() -> None:
+            options = {
+                svc.id: format_service_label(svc)
+                for svc in await list_services(create_env.value)
+            }
+            create_service.set_options(options)
+            if create_service.value not in options:
+                create_service.value = None
+
+        async def handle_create_env_change(_=None) -> None:
+            await refresh_create_service_options()
+
+        async def handle_create_api_key() -> None:
+            environment = create_env.value
+            service_id = create_service.value
+            name = (create_name.value or "").strip()
+            key_type = create_type.value
+            if not (environment and service_id and name and key_type):
+                ui.notify(
+                    "Environment, service, name, and type are required",
+                    color="red",
+                )
+                return
+            if not await ensure_admin_auth(environment, sync_label):
+                return
+            api = await build_api_client(environment)
+            try:
+                payload = await api.create_api_key(service_id, name, key_type)
+            except httpx.HTTPStatusError as exc:
+                if exc.response and exc.response.status_code == 401:
+                    handle_unauthorized(sync_label, environment)
+                    return
+                raise
+            try:
+                secret = _extract_api_key_secret(payload)
+            except ValueError as exc:
+                ui.notify(str(exc), color="red")
+                return
+            data = payload.get("data") if isinstance(payload, dict) else None
+            stored_name = name
+            stored_type = (
+                data.get("key_type") if isinstance(data, dict) else None
+            ) or key_type
+            await add_local_key(
+                encryption,
+                service_id,
+                environment,
+                stored_name,
+                secret,
+                stored_type,
+            )
+            ui.notify("API key created and stored locally", color="green")
+            await refresh_if_needed(render_local_keys)
+            create_dialog.close()
+
+        async def handle_open_create_dialog() -> None:
+            create_env.value = state.environment
+            await refresh_create_service_options()
+            create_dialog.open()
+
+        create_env.on_value_change(handle_create_env_change)
+        create_button.on_click(handle_open_create_dialog)
+        submit_button.on_click(handle_create_api_key)
+
         service_options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
@@ -1035,6 +1260,162 @@ async def api_keys_page() -> None:
         expires_to.on_value_change(lambda _: render_table.refresh())
         ui.button("Sync API Keys", on_click=handle_sync_keys)
         await render_table()
+
+
+@ui.page("/api-key-service")
+async def api_key_emails_page() -> None:
+    status_badge, sync_label, refresh_button, dark_mode = build_shell()
+    await ensure_theme_preference(dark_mode)
+
+    async def page_refresh():
+        await handle_full_sync(status_badge, sync_label)
+
+    refresh_button.on_click(page_refresh)
+    await refresh_status_badge(status_badge)
+
+    service_lookup: Dict[str, Any] = {}
+
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
+        ui.label("API Key Email Generator").classes("text-lg font-semibold")
+        ui.markdown(
+            "Generate a new API key and copy the email-ready content for sending."
+        )
+
+        with ui.card().classes("p-6 w-full"):
+            env_options = {env: env.title() for env in config.api_hosts}
+            env_select = ui.select(
+                env_options, value=state.environment, label="Environment"
+            ).classes("w-full md:w-1/2")
+            service_select = (
+                ui.select({}, label="Service", with_input=True)
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
+            key_prefix = (
+                ui.input(label="Key Name Prefix")
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
+            with ui.row().classes("gap-4 items-center"):
+                uuid_checkbox = ui.checkbox("Vets-api (UUID) key", value=False)
+                test_checkbox = ui.checkbox("Test key (non-sending)", value=False)
+            key_name_preview = ui.label(
+                "Generated key name will appear here."
+            ).classes("text-sm text-gray-600 dark:text-slate-300")
+            generate_button = ui.button("Generate API Key Email", color="green")
+
+        with ui.card().classes("p-6 w-full"):
+            ui.label("Generated Email Content").classes("text-md font-semibold")
+            ui.label(
+                "This generated email content will NOT be shown again after you leave this page. "
+                "Copy it now."
+            ).classes("text-sm text-red-600 dark:text-red-400")
+            output_area = (
+                ui.textarea(label="Email Content")
+                .props("readonly")
+                .classes("w-full")
+            )
+            copy_button = ui.button("Copy Email Content")
+
+    async def refresh_service_options() -> None:
+        env_value = env_select.value
+        services = await list_services(env_value) if env_value else []
+        service_lookup.clear()
+        service_lookup.update({svc.id: svc for svc in services})
+        options = {svc.id: format_service_label(svc) for svc in services}
+        service_select.set_options(options)
+        if service_select.value not in options:
+            service_select.value = None
+
+    def build_key_name() -> str:
+        environment = env_select.value
+        prefix = (key_prefix.value or "").strip().lower()
+        if not environment or not prefix:
+            return ""
+        env_token = _normalize_email_env(environment).lower()
+        uuid_part = "uuid-" if uuid_checkbox.value else ""
+        test_part = "test-" if test_checkbox.value else ""
+        return f"{env_token}-{prefix}-{uuid_part}{test_part}key"
+
+    def update_key_name_preview() -> None:
+        key_name = build_key_name()
+        if key_name:
+            key_name_preview.text = f"Generated key name: {key_name}"
+        else:
+            key_name_preview.text = "Generated key name will appear here."
+
+    async def handle_env_change(_=None) -> None:
+        await refresh_service_options()
+        update_key_name_preview()
+
+    async def handle_generate() -> None:
+        environment = env_select.value
+        service_id = service_select.value
+        key_name = build_key_name()
+        if not (environment and service_id and key_name):
+            ui.notify(
+                "Environment, service, and key name prefix are required",
+                color="red",
+            )
+            return
+        if not await ensure_admin_auth(environment, sync_label):
+            return
+        api = await build_api_client(environment)
+        key_type = "test" if test_checkbox.value else "normal"
+        secret_type = UUID_SECRET_TYPE if uuid_checkbox.value else None
+        try:
+            payload = await api.create_api_key(
+                service_id, key_name, key_type, secret_type
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response and exc.response.status_code == 401:
+                handle_unauthorized(sync_label, environment)
+                return
+            raise
+        try:
+            secret = _extract_api_key_secret(payload)
+        except ValueError as exc:
+            ui.notify(str(exc), color="red")
+            return
+        try:
+            keys = await api.get_api_keys(service_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response and exc.response.status_code == 401:
+                handle_unauthorized(sync_label, environment)
+                return
+            raise
+        try:
+            created_key = _select_latest_key(keys, key_name)
+        except ValueError as exc:
+            ui.notify(str(exc), color="red")
+            return
+        service = service_lookup.get(service_id)
+        if not service:
+            ui.notify(
+                "Service details not found; sync services and try again.",
+                color="red",
+            )
+            return
+        output_area.value = _build_key_email(
+            secret, created_key, environment, service.name, service_id
+        )
+        ui.notify("Email content generated", color="green")
+
+    def handle_copy_output() -> None:
+        if not output_area.value:
+            safe_notify("Generate email content first.", color="warning")
+            return
+        copy_to_clipboard(output_area.value)
+
+    env_select.on_value_change(handle_env_change)
+    key_prefix.on_value_change(lambda _: update_key_name_preview())
+    uuid_checkbox.on_value_change(lambda _: update_key_name_preview())
+    test_checkbox.on_value_change(lambda _: update_key_name_preview())
+    generate_button.on_click(handle_generate)
+    copy_button.on_click(handle_copy_output)
+
+    await refresh_service_options()
+    update_key_name_preview()
 
 
 @ui.page("/users")
@@ -1479,6 +1860,74 @@ async def provider_details_page() -> None:
             add_copyable_slots(table, table_rows)
 
         ui.button("Sync Provider Details", on_click=handle_sync_provider_details)
+        await render_table()
+
+
+@ui.page("/communication-items")
+async def communication_items_page() -> None:
+    async def handle_view_env_change() -> None:
+        await refresh_if_needed(render_table)
+
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=handle_view_env_change
+    )
+    await ensure_theme_preference(dark_mode)
+
+    async def page_refresh():
+        await handle_full_sync(status_badge, sync_label)
+
+    refresh_button.on_click(page_refresh)
+    await refresh_status_badge(status_badge)
+
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
+        ui.label("Communication Items").classes("text-lg font-semibold")
+
+        async def handle_sync_communication_items() -> None:
+            await handle_communication_items_sync(status_badge, sync_label)
+            render_table.refresh()
+
+        @ui.refreshable
+        async def render_table() -> None:
+            items = await list_communication_items(get_view_environment())
+            table_rows: List[Dict[str, Any]] = [
+                {
+                    "id": item.id,
+                    "environment": format_environment(item.environment),
+                    "name": item.name,
+                    "va_profile_item_id": item.va_profile_item_id,
+                    "default_send_indicator": item.default_send_indicator,
+                }
+                for item in items
+            ]
+            table = ui.table(
+                columns=make_sortable(
+                    [
+                        {"name": "id", "label": "ID", "field": "id"},
+                        {
+                            "name": "environment",
+                            "label": "Environment",
+                            "field": "environment",
+                        },
+                        {"name": "name", "label": "Name", "field": "name"},
+                        {
+                            "name": "va_profile_item_id",
+                            "label": "VA Profile Item ID",
+                            "field": "va_profile_item_id",
+                        },
+                        {
+                            "name": "default_send_indicator",
+                            "label": "Default Send",
+                            "field": "default_send_indicator",
+                        },
+                    ]
+                ),
+                rows=table_rows,
+                pagination={"rowsPerPage": 10},
+            )
+            table.props("row-key=id").classes("w-full")
+            add_copyable_slots(table, table_rows)
+
+        ui.button("Sync Communication Items", on_click=handle_sync_communication_items)
         await render_table()
 
 

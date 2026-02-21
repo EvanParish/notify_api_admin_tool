@@ -8,6 +8,7 @@ from .crypto import EncryptionManager
 from .db import get_session
 from .models import (
     ApiKey,
+    CommunicationItem,
     LocalApiKey,
     ProviderDetail,
     Service,
@@ -179,6 +180,22 @@ async def list_provider_details(
                 or_(
                     ProviderDetail.environment == environment,
                     ProviderDetail.environment.is_(None),
+                )
+            )
+        rows = list((await session.execute(query)).scalars().all())
+        return rows
+
+
+async def list_communication_items(
+    environment: Optional[str] = None,
+) -> List[CommunicationItem]:
+    async with get_session() as session:
+        query = select(CommunicationItem)
+        if environment:
+            query = query.where(
+                or_(
+                    CommunicationItem.environment == environment,
+                    CommunicationItem.environment.is_(None),
                 )
             )
         rows = list((await session.execute(query)).scalars().all())

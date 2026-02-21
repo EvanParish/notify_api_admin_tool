@@ -18,6 +18,15 @@ class NotificationAPI:
     async def get_api_keys(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+    async def create_api_key(
+        self,
+        service_id: str,
+        name: str,
+        key_type: str,
+        secret_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
+
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -25,6 +34,9 @@ class NotificationAPI:
         raise NotImplementedError
 
     async def get_provider_details(self) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    async def get_communication_items(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
     async def send_notification(
@@ -75,6 +87,24 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json().get("apiKeys", [])
 
+    async def create_api_key(
+        self,
+        service_id: str,
+        name: str,
+        key_type: str,
+        secret_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"name": name, "key_type": key_type}
+        if secret_type:
+            payload["secret_type"] = secret_type
+        resp = await self.client.post(
+            f"{self.base_url}/service/{service_id}/api-key",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/service/{service_id}/sms-sender", auth=self._basic_auth
@@ -102,6 +132,16 @@ class HttpNotificationAPI(NotificationAPI):
         if isinstance(payload, list):
             return payload
         return payload.get("provider_details") or payload.get("data") or []
+
+    async def get_communication_items(self) -> List[Dict[str, Any]]:
+        resp = await self.client.get(
+            f"{self.base_url}/communication-item", auth=self._basic_auth
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, list):
+            return payload
+        return payload.get("data") or []
 
     async def send_notification(
         self,
@@ -202,6 +242,16 @@ class MockNotificationAPI(NotificationAPI):
             }
         ]
 
+    async def create_api_key(
+        self,
+        service_id: str,
+        name: str,
+        key_type: str,
+        secret_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {"data": "secret_api_key_1234567890abcdef"}
+
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
@@ -266,6 +316,23 @@ class MockNotificationAPI(NotificationAPI):
                 "priority": 10,
                 "supports_international": False,
                 "updated_at": "Mon, 16 Aug 2021 19:39:12 GMT",
+            },
+        ]
+
+    async def get_communication_items(self) -> List[Dict[str, Any]]:
+        await asyncio.sleep(self._sleep)
+        return [
+            {
+                "default_send_indicator": True,
+                "id": "00dfc28c-e229-4cc3-b691-8ffadaba1c72",
+                "name": "Board of Veterans' Appeals hearing reminder",
+                "va_profile_item_id": 1,
+            },
+            {
+                "default_send_indicator": True,
+                "id": "8bc5e318-b316-49aa-8cb1-68e48fc3b086",
+                "name": "COVID-19 Updates",
+                "va_profile_item_id": 2,
             },
         ]
 
