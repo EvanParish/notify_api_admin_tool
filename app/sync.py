@@ -263,9 +263,7 @@ class SyncManager:
                     environment=self.environment,
                     name=item.get("name", ""),
                     va_profile_item_id=item.get("va_profile_item_id"),
-                    default_send_indicator=item.get(
-                        "default_send_indicator", False
-                    ),
+                    default_send_indicator=item.get("default_send_indicator", False),
                 )
                 await session.merge(record)
             await session.commit()

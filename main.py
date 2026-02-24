@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import inspect
 import json
 import logging
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -42,6 +44,27 @@ from app.utils import extract_placeholders, validate_recipient
 
 logger = logging.getLogger(__name__)
 _original_client_delete = Client.delete
+
+_active_api_clients: list[NotificationAPI] = []
+
+
+# NiceGUI adds GZipMiddleware which can raise during cleanup when a client
+# disconnects before the compressed response is fully flushed.  The error is
+# harmless so we silence it instead of printing a traceback to stderr.
+_original_unraisablehook = sys.unraisablehook
+
+
+def _suppress_gzip_close_error(unraisable: sys.UnraisableHookArgs) -> None:
+    if (
+        isinstance(unraisable.exc_value, ValueError)
+        and "I/O operation on closed file" in str(unraisable.exc_value)
+        and isinstance(unraisable.object, gzip.GzipFile)
+    ):
+        return
+    _original_unraisablehook(unraisable)
+
+
+sys.unraisablehook = _suppress_gzip_close_error
 
 
 def _safe_client_delete(self) -> None:
@@ -147,6 +170,9 @@ async def startup() -> None:
 
 @app.on_shutdown
 async def shutdown() -> None:
+    for c in _active_api_clients:
+        await c.aclose()
+    _active_api_clients.clear()
     await dispose_engine()
 
 
@@ -165,9 +191,11 @@ async def build_api_client(env: str) -> NotificationAPI:
         raise RuntimeError(f"Base URL missing for environment {env}")
     basic_user = await get_secure_setting(f"basic_username_{env}", encryption)
     basic_pass = await get_secure_setting(f"basic_password_{env}", encryption)
-    return HttpNotificationAPI(
+    client = HttpNotificationAPI(
         base_url=base_url, basic_username=basic_user, basic_password=basic_pass
     )
+    _active_api_clients.append(client)
+    return client
 
 
 async def refresh_status_badge(badge) -> None:
@@ -1190,9 +1218,7 @@ async def api_keys_page() -> None:
             ui.label("Confirm API Key Revocation").classes("text-md font-semibold")
             revoke_message = ui.label("")
             with ui.row().classes("gap-2"):
-                confirm_revoke_button = ui.button(
-                    "Revoke Key", color="negative"
-                )
+                confirm_revoke_button = ui.button("Revoke Key", color="negative")
                 ui.button("Cancel", on_click=revoke_dialog.close, color="gray")
 
         def resolve_selected_key() -> Optional[Dict[str, Any]]:
@@ -2918,4 +2944,5 @@ if __name__ in {"__main__", "__mp_main__"}:
         port=8080,
         reload=True,
         storage_secret=config.master_key,
+        show=False,
     )

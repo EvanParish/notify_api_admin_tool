@@ -182,9 +182,7 @@ class CommunicationItem(Base):
         String, primary_key=True, default="unknown", index=True
     )
     name: Mapped[str] = mapped_column(String)
-    va_profile_item_id: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
+    va_profile_item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     default_send_indicator: Mapped[bool] = mapped_column(Boolean, default=False)
 
 

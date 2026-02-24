@@ -155,7 +155,9 @@ async def update_api_key_expiry(
     environment: Optional[str] = None,
 ) -> bool:
     async with get_session() as session:
-        query = select(ApiKey).where(ApiKey.id == key_id, ApiKey.service_id == service_id)
+        query = select(ApiKey).where(
+            ApiKey.id == key_id, ApiKey.service_id == service_id
+        )
         if environment:
             query = query.where(
                 or_(ApiKey.environment == environment, ApiKey.environment.is_(None))
@@ -173,7 +175,9 @@ async def mark_api_key_revoked(
     service_id: str, key_id: str, environment: Optional[str] = None
 ) -> bool:
     async with get_session() as session:
-        query = select(ApiKey).where(ApiKey.id == key_id, ApiKey.service_id == service_id)
+        query = select(ApiKey).where(
+            ApiKey.id == key_id, ApiKey.service_id == service_id
+        )
         if environment:
             query = query.where(
                 or_(ApiKey.environment == environment, ApiKey.environment.is_(None))

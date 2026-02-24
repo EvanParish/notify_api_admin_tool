@@ -61,6 +61,9 @@ class NotificationAPI:
     async def healthcheck(self) -> bool:
         raise NotImplementedError
 
+    async def aclose(self) -> None:
+        pass
+
 
 class HttpNotificationAPI(NotificationAPI):
     def __init__(
@@ -208,6 +211,9 @@ class HttpNotificationAPI(NotificationAPI):
             return True
         except Exception:
             return False
+
+    async def aclose(self) -> None:
+        await self.client.aclose()
 
     def _make_jwt(self, service_id: str, secret: str) -> str:
         now = int(time.time())
