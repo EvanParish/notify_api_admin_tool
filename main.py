@@ -31,9 +31,11 @@ from app.repository import (
     list_services,
     list_templates,
     list_users,
+    mark_api_key_revoked,
     resolve_local_key,
     set_secure_setting,
     set_setting,
+    update_api_key_expiry,
 )
 from app.sync import SyncManager
 from app.utils import extract_placeholders, validate_recipient
@@ -443,7 +445,7 @@ def build_shell(on_view_env_change=None) -> tuple:
         ui.link("Services", "/services")
         ui.link("Templates", "/templates")
         ui.link("API Keys", "/api-keys")
-        ui.link("Service API Key", "/api-key-service")
+        ui.link("Create Service API Key", "/api-key-service")
         ui.link("Users", "/users")
         ui.link("SMS Senders", "/sms-senders")
         ui.link("Communication Items", "/communication-items")
@@ -1097,9 +1099,7 @@ async def api_keys_page() -> None:
                 .classes("w-full md:w-1/2")
             )
             create_name = (
-                ui.input(label="Key Name")
-                .props("clearable")
-                .classes("w-full md:w-1/2")
+                ui.input(label="Key Name").props("clearable").classes("w-full md:w-1/2")
             )
             create_type = ui.select(
                 {"normal": "Normal", "team": "Team", "test": "Test"},
@@ -1174,6 +1174,167 @@ async def api_keys_page() -> None:
         create_button.on_click(handle_open_create_dialog)
         submit_button.on_click(handle_create_api_key)
 
+        selected_api_key: Dict[str, Any] = {}
+        pending_revoke: Dict[str, str] = {}
+
+        with ui.dialog() as manage_dialog, ui.card().classes("p-6 w-full max-w-lg"):
+            ui.label("Manage API Key").classes("text-md font-semibold")
+            selected_key_label = ui.label("")
+            expiry_input = ui.input(label="Expiry Date").props("clearable type=date")
+            with ui.row().classes("gap-2"):
+                update_button = ui.button("Update Expiry", color="primary")
+                revoke_button = ui.button("Revoke Key", color="negative")
+                ui.button("Close", on_click=manage_dialog.close, color="gray")
+
+        with ui.dialog() as revoke_dialog, ui.card():
+            ui.label("Confirm API Key Revocation").classes("text-md font-semibold")
+            revoke_message = ui.label("")
+            with ui.row().classes("gap-2"):
+                confirm_revoke_button = ui.button(
+                    "Revoke Key", color="negative"
+                )
+                ui.button("Cancel", on_click=revoke_dialog.close, color="gray")
+
+        def resolve_selected_key() -> Optional[Dict[str, Any]]:
+            return selected_api_key if selected_api_key.get("id") else None
+
+        def resolve_selected_environment(key: Dict[str, Any]) -> Optional[str]:
+            env_value = key.get("environment_value") or key.get("environment")
+            if not env_value or env_value == "unknown":
+                return None
+            return env_value
+
+        def update_manage_fields(key: Optional[Dict[str, Any]]) -> None:
+            if not key:
+                selected_key_label.text = "No API key selected."
+                expiry_input.value = ""
+                return
+            key_id = key.get("id")
+            key_name = key.get("name") or ""
+            service_id = key.get("service_id") or ""
+            selected_key_label.text = (
+                f"Selected: {key_name} ({key_id}) - Service {service_id}"
+            )
+            expiry_value = key.get("expiry_date") or ""
+            expiry_input.value = expiry_value.split("T", 1)[0] if expiry_value else ""
+
+        def handle_table_selection(e) -> None:
+            selected_api_key.clear()
+            if e.selection:
+                selected_api_key.update(e.selection[0])
+            update_manage_fields(resolve_selected_key())
+
+        async def handle_open_manage_dialog() -> None:
+            key = resolve_selected_key()
+            if not key:
+                ui.notify("Select an API key from the table first", color="red")
+                return
+            update_manage_fields(key)
+            manage_dialog.open()
+
+        async def handle_update_expiry() -> None:
+            key = resolve_selected_key()
+            expiry_date = (expiry_input.value or "").strip()
+            if not key or not expiry_date:
+                ui.notify("Select an API key and expiry date", color="red")
+                return
+            environment = resolve_selected_environment(key)
+            service_id = key.get("service_id")
+            key_id = key.get("id")
+            if not (environment and service_id and key_id):
+                ui.notify("Selected API key is missing required details", color="red")
+                return
+            if not await ensure_admin_auth(environment, sync_label):
+                return
+            api = await build_api_client(environment)
+            try:
+                await api.update_api_key_expiry(service_id, key_id, expiry_date)
+            except httpx.HTTPStatusError as exc:
+                if exc.response and exc.response.status_code == 401:
+                    handle_unauthorized(sync_label, environment)
+                    return
+                ui.notify(str(exc), color="red")
+                return
+            updated = await update_api_key_expiry(
+                service_id,
+                key_id,
+                expiry_date,
+                environment=environment,
+            )
+            if updated:
+                ui.notify("API key expiry updated", color="green")
+            else:
+                ui.notify(
+                    "API key updated, but cache is missing. Run sync to refresh.",
+                    color="warning",
+                )
+            selected_api_key["expiry_date"] = expiry_date
+            update_manage_fields(resolve_selected_key())
+            await refresh_if_needed(render_table)
+
+        async def handle_revoke_request() -> None:
+            key = resolve_selected_key()
+            if not key:
+                ui.notify("Select an API key to revoke", color="red")
+                return
+            environment = resolve_selected_environment(key)
+            service_id = key.get("service_id")
+            key_id = key.get("id")
+            if not (environment and service_id and key_id):
+                ui.notify("Selected API key is missing required details", color="red")
+                return
+            key_name = key.get("name") or ""
+            revoke_message.text = f"Revoke API key {key_name} ({key_id})?"
+            pending_revoke.clear()
+            pending_revoke.update(
+                {
+                    "environment": environment,
+                    "service_id": service_id,
+                    "key_id": key_id,
+                }
+            )
+            revoke_dialog.open()
+
+        async def handle_confirm_revoke() -> None:
+            revoke_dialog.close()
+            if not pending_revoke:
+                return
+            environment = pending_revoke.get("environment")
+            service_id = pending_revoke.get("service_id")
+            key_id = pending_revoke.get("key_id")
+            pending_revoke.clear()
+            if not (environment and service_id and key_id):
+                return
+            if not await ensure_admin_auth(environment, sync_label):
+                return
+            api = await build_api_client(environment)
+            try:
+                await api.revoke_api_key(service_id, key_id)
+            except httpx.HTTPStatusError as exc:
+                if exc.response and exc.response.status_code == 401:
+                    handle_unauthorized(sync_label, environment)
+                    return
+                ui.notify(str(exc), color="red")
+                return
+            updated = await mark_api_key_revoked(
+                service_id,
+                key_id,
+                environment=environment,
+            )
+            if updated:
+                ui.notify("API key revoked", color="green")
+            else:
+                ui.notify(
+                    "API key revoked, but cache is missing. Run sync to refresh.",
+                    color="warning",
+                )
+            selected_api_key["revoked"] = True
+            await refresh_if_needed(render_table)
+
+        update_button.on_click(handle_update_expiry)
+        revoke_button.on_click(handle_revoke_request)
+        confirm_revoke_button.on_click(handle_confirm_revoke)
+
         service_options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
@@ -1192,6 +1353,8 @@ async def api_keys_page() -> None:
 
         @ui.refreshable
         async def render_table() -> None:
+            selected_api_key.clear()
+            update_manage_fields(None)
             selected_service = service_select.value
             start_date = _parse_filter_date(expires_from.value)
             end_date = _parse_filter_date(expires_to.value)
@@ -1202,6 +1365,7 @@ async def api_keys_page() -> None:
                 {
                     "id": key.id,
                     "environment": format_environment(key.environment),
+                    "environment_value": key.environment,
                     "service_id": key.service_id,
                     "name": key.name,
                     "key_type": key.key_type,
@@ -1250,6 +1414,8 @@ async def api_keys_page() -> None:
                     ]
                 ),
                 rows=table_rows,
+                selection="single",
+                on_select=handle_table_selection,
                 pagination={"rowsPerPage": 10},
             )
             table.props("row-key=id").classes("w-full")
@@ -1258,7 +1424,13 @@ async def api_keys_page() -> None:
         service_select.on_value_change(lambda _: render_table.refresh())
         expires_from.on_value_change(lambda _: render_table.refresh())
         expires_to.on_value_change(lambda _: render_table.refresh())
-        ui.button("Sync API Keys", on_click=handle_sync_keys)
+        with ui.row().classes("gap-2"):
+            ui.button("Sync API Keys", on_click=handle_sync_keys)
+            ui.button(
+                "Manage Selected Key",
+                on_click=handle_open_manage_dialog,
+                color="primary",
+            )
         await render_table()
 
 
@@ -1299,9 +1471,9 @@ async def api_key_emails_page() -> None:
             with ui.row().classes("gap-4 items-center"):
                 uuid_checkbox = ui.checkbox("Vets-api (UUID) key", value=False)
                 test_checkbox = ui.checkbox("Test key (non-sending)", value=False)
-            key_name_preview = ui.label(
-                "Generated key name will appear here."
-            ).classes("text-sm text-gray-600 dark:text-slate-300")
+            key_name_preview = ui.label("Generated key name will appear here.").classes(
+                "text-sm text-gray-600 dark:text-slate-300"
+            )
             generate_button = ui.button("Generate API Key Email", color="green")
 
         with ui.card().classes("p-6 w-full"):
@@ -1311,9 +1483,7 @@ async def api_key_emails_page() -> None:
                 "Copy it now."
             ).classes("text-sm text-red-600 dark:text-red-400")
             output_area = (
-                ui.textarea(label="Email Content")
-                .props("readonly")
-                .classes("w-full")
+                ui.textarea(label="Email Content").props("readonly").classes("w-full")
             )
             copy_button = ui.button("Copy Email Content")
 

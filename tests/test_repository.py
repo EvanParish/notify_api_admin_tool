@@ -11,6 +11,8 @@ from app.repository import (
     add_local_key,
     resolve_local_key,
     list_api_keys,
+    update_api_key_expiry,
+    mark_api_key_revoked,
 )
 from app.crypto import EncryptionManager
 from app.models import Service, Template, LocalApiKey, ApiKey, Setting
@@ -358,6 +360,61 @@ async def test_list_api_keys(initialized_db):
     keys = await list_api_keys()
     assert len(keys) == 2
     assert {k.id for k in keys} == {"key-1", "key-2"}
+
+
+@pytest.mark.asyncio
+async def test_update_api_key_expiry(initialized_db):
+    async with get_session() as session:
+        session.add(
+            ApiKey(
+                id="key-1",
+                service_id="svc-1",
+                environment="dev",
+                name="Key 1",
+                expiry_date="2025-12-31",
+            )
+        )
+        await session.commit()
+
+    updated = await update_api_key_expiry(
+        service_id="svc-1",
+        key_id="key-1",
+        expiry_date="2026-04-08",
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(select(ApiKey).where(ApiKey.id == "key-1"))
+        ).scalar_one()
+        assert record.expiry_date == "2026-04-08"
+
+
+@pytest.mark.asyncio
+async def test_mark_api_key_revoked(initialized_db):
+    async with get_session() as session:
+        session.add(
+            ApiKey(
+                id="key-1",
+                service_id="svc-1",
+                environment="dev",
+                name="Key 1",
+                revoked=False,
+            )
+        )
+        await session.commit()
+
+    updated = await mark_api_key_revoked(
+        service_id="svc-1", key_id="key-1", environment="dev"
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(select(ApiKey).where(ApiKey.id == "key-1"))
+        ).scalar_one()
+        assert record.revoked is True
 
 
 @pytest.mark.asyncio

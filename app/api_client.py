@@ -27,6 +27,14 @@ class NotificationAPI:
     ) -> Dict[str, Any]:
         raise NotImplementedError
 
+    async def update_api_key_expiry(
+        self, service_id: str, key_id: str, expiry_date: str
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    async def revoke_api_key(self, service_id: str, key_id: str) -> Dict[str, Any]:
+        raise NotImplementedError
+
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -100,6 +108,26 @@ class HttpNotificationAPI(NotificationAPI):
         resp = await self.client.post(
             f"{self.base_url}/service/{service_id}/api-key",
             json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def update_api_key_expiry(
+        self, service_id: str, key_id: str, expiry_date: str
+    ) -> Dict[str, Any]:
+        payload = {"expiry_date": expiry_date}
+        resp = await self.client.post(
+            f"{self.base_url}/service/{service_id}/api-key/{key_id}",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def revoke_api_key(self, service_id: str, key_id: str) -> Dict[str, Any]:
+        resp = await self.client.post(
+            f"{self.base_url}/service/{service_id}/api-key/revoke/{key_id}",
             auth=self._basic_auth,
         )
         resp.raise_for_status()
@@ -251,6 +279,20 @@ class MockNotificationAPI(NotificationAPI):
     ) -> Dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {"data": "secret_api_key_1234567890abcdef"}
+
+    async def update_api_key_expiry(
+        self, service_id: str, key_id: str, expiry_date: str
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {
+            "id": key_id,
+            "service_id": service_id,
+            "expiry_date": expiry_date,
+        }
+
+    async def revoke_api_key(self, service_id: str, key_id: str) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {"id": key_id, "service_id": service_id, "revoked": True}
 
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)

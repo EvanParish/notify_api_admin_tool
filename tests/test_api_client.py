@@ -52,6 +52,24 @@ async def test_mock_api_create_api_key():
 
 
 @pytest.mark.asyncio
+async def test_mock_api_update_api_key_expiry():
+    api = MockNotificationAPI()
+    result = await api.update_api_key_expiry("svc-1", "key-1", "2026-04-08")
+
+    assert result["id"] == "key-1"
+    assert result["expiry_date"] == "2026-04-08"
+
+
+@pytest.mark.asyncio
+async def test_mock_api_revoke_api_key():
+    api = MockNotificationAPI()
+    result = await api.revoke_api_key("svc-1", "key-1")
+
+    assert result["id"] == "key-1"
+    assert result["revoked"] is True
+
+
+@pytest.mark.asyncio
 async def test_mock_api_send_notification():
     api = MockNotificationAPI()
     result = await api.send_notification(
@@ -162,6 +180,43 @@ async def test_http_api_create_api_key():
             auth=None,
         )
         assert result["data"] == "secret_api_key_1234567890abcdef"
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_api_key_expiry():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "key-1"}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.update_api_key_expiry("svc-1", "key-1", "2026-04-08")
+
+        mock_post.assert_called_once_with(
+            "https://api.example.com/service/svc-1/api-key/key-1",
+            json={"expiry_date": "2026-04-08"},
+            auth=None,
+        )
+        assert result["data"]["id"] == "key-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_revoke_api_key():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "key-1"}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.revoke_api_key("svc-1", "key-1")
+
+        mock_post.assert_called_once_with(
+            "https://api.example.com/service/svc-1/api-key/revoke/key-1",
+            auth=None,
+        )
+        assert result["data"]["id"] == "key-1"
 
 
 @pytest.mark.asyncio

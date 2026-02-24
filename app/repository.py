@@ -148,6 +148,45 @@ async def list_api_keys(
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
 
+async def update_api_key_expiry(
+    service_id: str,
+    key_id: str,
+    expiry_date: str,
+    environment: Optional[str] = None,
+) -> bool:
+    async with get_session() as session:
+        query = select(ApiKey).where(ApiKey.id == key_id, ApiKey.service_id == service_id)
+        if environment:
+            query = query.where(
+                or_(ApiKey.environment == environment, ApiKey.environment.is_(None))
+            )
+        result = await session.execute(query)
+        record = result.scalar_one_or_none()
+        if not record:
+            return False
+        record.expiry_date = expiry_date
+        await session.commit()
+        return True
+
+
+async def mark_api_key_revoked(
+    service_id: str, key_id: str, environment: Optional[str] = None
+) -> bool:
+    async with get_session() as session:
+        query = select(ApiKey).where(ApiKey.id == key_id, ApiKey.service_id == service_id)
+        if environment:
+            query = query.where(
+                or_(ApiKey.environment == environment, ApiKey.environment.is_(None))
+            )
+        result = await session.execute(query)
+        record = result.scalar_one_or_none()
+        if not record:
+            return False
+        record.revoked = True
+        await session.commit()
+        return True
+
+
 async def list_sms_senders(
     service_id: Optional[str] = None, environment: Optional[str] = None
 ) -> List[SmsSender]:
