@@ -1361,6 +1361,11 @@ async def api_keys_page() -> None:
         revoke_button.on_click(handle_revoke_request)
         confirm_revoke_button.on_click(handle_confirm_revoke)
 
+        search_input = (
+            ui.input(label="Search by ID, Service ID, or Name")
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
         service_options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
@@ -1384,6 +1389,7 @@ async def api_keys_page() -> None:
             selected_service = service_select.value
             start_date = _parse_filter_date(expires_from.value)
             end_date = _parse_filter_date(expires_to.value)
+            search_term = (search_input.value or "").strip().lower()
             keys = await list_api_keys(
                 selected_service, environment=get_view_environment()
             )
@@ -1403,6 +1409,12 @@ async def api_keys_page() -> None:
                 }
                 for key in keys
                 if _matches_expiry_range(key.expiry_date, start_date, end_date)
+                and (
+                    not search_term
+                    or search_term in (key.id or "").lower()
+                    or search_term in (key.service_id or "").lower()
+                    or search_term in (key.name or "").lower()
+                )
             ]
             table = ui.table(
                 columns=make_sortable(
@@ -1447,6 +1459,7 @@ async def api_keys_page() -> None:
             table.props("row-key=id").classes("w-full")
             add_copyable_slots(table, table_rows)
 
+        search_input.on_value_change(lambda _: render_table.refresh())
         service_select.on_value_change(lambda _: render_table.refresh())
         expires_from.on_value_change(lambda _: render_table.refresh())
         expires_to.on_value_change(lambda _: render_table.refresh())
@@ -1500,6 +1513,8 @@ async def api_key_emails_page() -> None:
             key_name_preview = ui.label("Generated key name will appear here.").classes(
                 "text-sm text-gray-600 dark:text-slate-300"
             )
+            key_name_conflict = ui.label("").classes("text-sm text-red-600 dark:text-red-400")
+            key_name_conflict.visible = False
             generate_button = ui.button("Generate API Key Email", color="green")
 
         with ui.card().classes("p-6 w-full"):
@@ -1533,16 +1548,34 @@ async def api_key_emails_page() -> None:
         test_part = "test-" if test_checkbox.value else ""
         return f"{env_token}-{prefix}-{uuid_part}{test_part}key"
 
-    def update_key_name_preview() -> None:
+    async def update_key_name_preview() -> None:
         key_name = build_key_name()
         if key_name:
             key_name_preview.text = f"Generated key name: {key_name}"
         else:
             key_name_preview.text = "Generated key name will appear here."
+        service_id = service_select.value
+        environment = env_select.value
+        if key_name and service_id and environment:
+            existing_api_keys = await list_api_keys(
+                service_id=service_id, environment=environment
+            )
+            existing_local_keys = await list_local_keys(
+                service_id=service_id, environment=environment
+            )
+            if any(
+                k.name == key_name and not k.revoked for k in existing_api_keys
+            ) or any(k.key_name == key_name for k in existing_local_keys):
+                key_name_conflict.text = (
+                    f"⚠ A key named '{key_name}' already exists for this service"
+                )
+                key_name_conflict.visible = True
+                return
+        key_name_conflict.visible = False
 
     async def handle_env_change(_=None) -> None:
         await refresh_service_options()
-        update_key_name_preview()
+        await update_key_name_preview()
 
     async def handle_generate() -> None:
         environment = env_select.value
@@ -1551,6 +1584,20 @@ async def api_key_emails_page() -> None:
         if not (environment and service_id and key_name):
             ui.notify(
                 "Environment, service, and key name prefix are required",
+                color="red",
+            )
+            return
+        existing_api_keys = await list_api_keys(
+            service_id=service_id, environment=environment
+        )
+        existing_local_keys = await list_local_keys(
+            service_id=service_id, environment=environment
+        )
+        if any(
+            k.name == key_name and not k.revoked for k in existing_api_keys
+        ) or any(k.key_name == key_name for k in existing_local_keys):
+            ui.notify(
+                f"A key named '{key_name}' already exists for this service",
                 color="red",
             )
             return
@@ -1607,11 +1654,12 @@ async def api_key_emails_page() -> None:
     key_prefix.on_value_change(lambda _: update_key_name_preview())
     uuid_checkbox.on_value_change(lambda _: update_key_name_preview())
     test_checkbox.on_value_change(lambda _: update_key_name_preview())
+    service_select.on_value_change(lambda _: update_key_name_preview())
     generate_button.on_click(handle_generate)
     copy_button.on_click(handle_copy_output)
 
     await refresh_service_options()
-    update_key_name_preview()
+    await update_key_name_preview()
 
 
 @ui.page("/users")
