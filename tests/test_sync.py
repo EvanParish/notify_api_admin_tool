@@ -404,3 +404,55 @@ async def test_sync_api_keys_handles_404(initialized_db):
 
     keys = await list_api_keys()
     assert len(keys) == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_api_keys_handles_404_with_progress(initialized_db):
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service
+    from app.db import get_session
+
+    async with get_session() as session:
+        session.add(Service(id="svc-404", name="No Keys Service", active=True))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+
+    async def raise_404(service_id):
+        raise Exception("Client error '404 NOT FOUND'")
+
+    mock_api.get_api_keys = raise_404
+
+    messages = []
+
+    async def progress(msg):
+        messages.append(msg)
+
+    manager = SyncManager(mock_api, max_concurrency=5)
+    await manager.sync_api_keys(progress=progress)
+
+    assert any("No API keys" in msg for msg in messages)
+
+
+@pytest.mark.asyncio
+async def test_sync_api_keys_reraises_non_404(initialized_db):
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service
+    from app.db import get_session
+
+    async with get_session() as session:
+        session.add(Service(id="svc-err", name="Error Service", active=True))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+
+    async def raise_server_error(service_id):
+        raise Exception("Internal Server Error 500")
+
+    mock_api.get_api_keys = raise_server_error
+
+    manager = SyncManager(mock_api, max_concurrency=5)
+    with pytest.raises(Exception, match="Internal Server Error 500"):
+        await manager.sync_api_keys()

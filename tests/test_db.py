@@ -201,3 +201,38 @@ async def test_template_service_relationship(initialized_db):
 
         assert len(retrieved_service.templates) == 1
         assert retrieved_service.templates[0].id == "tmpl-1"
+
+
+@pytest.mark.asyncio
+async def test_create_all_without_engine():
+    from app import db
+
+    original_engine = db.engine
+    db.engine = None
+    try:
+        with pytest.raises(RuntimeError, match="Engine not initialized"):
+            await create_all()
+    finally:
+        db.engine = original_engine
+
+
+@pytest.mark.asyncio
+async def test_dispose_engine(initialized_db):
+    from app.db import dispose_engine
+    from app import db
+
+    assert db.engine is not None
+    await dispose_engine()
+
+
+@pytest.mark.asyncio
+async def test_dispose_engine_when_none():
+    from app.db import dispose_engine
+    from app import db
+
+    original_engine = db.engine
+    db.engine = None
+    try:
+        await dispose_engine()  # Should not raise
+    finally:
+        db.engine = original_engine

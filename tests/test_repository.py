@@ -453,3 +453,241 @@ async def test_multiple_operations(initialized_db):
     assert len(services) == 1
     assert len(templates) == 1
     assert len(keys) == 1
+
+
+# --- Additional coverage tests ---
+
+from app.repository import (
+    list_sms_senders,
+    list_provider_details,
+    list_communication_items,
+    list_users,
+)
+from app.models import SmsSender, ProviderDetail, CommunicationItem, User
+
+
+@pytest.mark.asyncio
+async def test_list_services_with_environment(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="prod"))
+        await session.commit()
+
+    services = await list_services(environment="dev")
+    assert len(services) == 1
+    assert services[0].id == "svc-1"
+
+
+@pytest.mark.asyncio
+async def test_list_templates_with_environment(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc", active=True, environment="dev"))
+        session.add(
+            Template(
+                id="t1",
+                service_id="svc-1",
+                name="T1",
+                template_type="email",
+                content="C",
+                version=1,
+                environment="dev",
+            )
+        )
+        session.add(
+            Template(
+                id="t2",
+                service_id="svc-1",
+                name="T2",
+                template_type="email",
+                content="C",
+                version=1,
+                environment="prod",
+            )
+        )
+        await session.commit()
+
+    templates = await list_templates(environment="dev")
+    assert len(templates) == 1
+    assert templates[0].id == "t1"
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_with_environment(initialized_db):
+    async with get_session() as session:
+        session.add(ApiKey(id="k1", name="K1", environment="dev", service_id="svc-1"))
+        session.add(ApiKey(id="k2", name="K2", environment="prod", service_id="svc-1"))
+        await session.commit()
+
+    keys = await list_api_keys(environment="dev")
+    assert len(keys) == 1
+    assert keys[0].id == "k1"
+
+
+@pytest.mark.asyncio
+async def test_update_api_key_expiry_not_found(initialized_db):
+    result = await update_api_key_expiry(
+        service_id="nonexistent", key_id="nonexistent", expiry_date="2026-01-01"
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_mark_api_key_revoked_not_found(initialized_db):
+    result = await mark_api_key_revoked(service_id="nonexistent", key_id="nonexistent")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_list_sms_senders_empty(initialized_db):
+    senders = await list_sms_senders()
+    assert senders == []
+
+
+@pytest.mark.asyncio
+async def test_list_sms_senders_with_data(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc", active=True, environment="dev"))
+        session.add(
+            SmsSender(
+                id="s1",
+                environment="dev",
+                service_id="svc-1",
+                sms_sender="+1555",
+                is_default=True,
+                archived=False,
+            )
+        )
+        session.add(
+            SmsSender(
+                id="s2",
+                environment="prod",
+                service_id="svc-1",
+                sms_sender="+1666",
+                is_default=False,
+                archived=False,
+            )
+        )
+        await session.commit()
+
+    senders = await list_sms_senders(service_id="svc-1", environment="dev")
+    assert len(senders) == 1
+    assert senders[0].id == "s1"
+
+
+@pytest.mark.asyncio
+async def test_list_provider_details_empty(initialized_db):
+    providers = await list_provider_details()
+    assert providers == []
+
+
+@pytest.mark.asyncio
+async def test_list_provider_details_with_environment(initialized_db):
+    async with get_session() as session:
+        session.add(
+            ProviderDetail(
+                id="p1",
+                environment="dev",
+                active=True,
+                display_name="P1",
+                identifier="p1",
+                notification_type="email",
+            )
+        )
+        session.add(
+            ProviderDetail(
+                id="p2",
+                environment="prod",
+                active=True,
+                display_name="P2",
+                identifier="p2",
+                notification_type="sms",
+            )
+        )
+        await session.commit()
+
+    providers = await list_provider_details(environment="dev")
+    assert len(providers) == 1
+    assert providers[0].id == "p1"
+
+
+@pytest.mark.asyncio
+async def test_list_communication_items_empty(initialized_db):
+    items = await list_communication_items()
+    assert items == []
+
+
+@pytest.mark.asyncio
+async def test_list_communication_items_with_environment(initialized_db):
+    async with get_session() as session:
+        session.add(
+            CommunicationItem(
+                id="c1",
+                environment="dev",
+                name="Item1",
+                va_profile_item_id=1,
+                default_send_indicator=True,
+            )
+        )
+        session.add(
+            CommunicationItem(
+                id="c2",
+                environment="prod",
+                name="Item2",
+                va_profile_item_id=2,
+                default_send_indicator=False,
+            )
+        )
+        await session.commit()
+
+    items = await list_communication_items(environment="dev")
+    assert len(items) == 1
+    assert items[0].id == "c1"
+
+
+@pytest.mark.asyncio
+async def test_list_users_empty(initialized_db):
+    users = await list_users()
+    assert users == []
+
+
+@pytest.mark.asyncio
+async def test_list_users_with_environment(initialized_db):
+    async with get_session() as session:
+        session.add(
+            User(
+                id="u1", environment="dev", email_address="user1@test.com", name="User1"
+            )
+        )
+        session.add(
+            User(
+                id="u2",
+                environment="prod",
+                email_address="user2@test.com",
+                name="User2",
+            )
+        )
+        session.add(
+            User(
+                id="u3",
+                environment="dev",
+                email_address="_archived@test.com",
+                name="Archived",
+            )
+        )
+        await session.commit()
+
+    users = await list_users(environment="dev")
+    assert len(users) == 1
+    assert users[0].id == "u1"
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_by_service_id(initialized_db):
+    async with get_session() as session:
+        session.add(ApiKey(id="key-1", service_id="svc-1", name="Key 1"))
+        session.add(ApiKey(id="key-2", service_id="svc-2", name="Key 2"))
+        await session.commit()
+
+    keys = await list_api_keys(service_id="svc-1")
+    assert len(keys) == 1
+    assert keys[0].id == "key-1"

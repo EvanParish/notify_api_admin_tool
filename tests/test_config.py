@@ -121,3 +121,15 @@ def test_load_config_has_api_hosts():
         config = load_config()
         # Default config has development, staging, production OR the .env may have different names
         assert len(config.api_hosts) > 0
+
+
+def test_app_config_api_hosts_non_string_non_dict():
+    config = AppConfig(master_key="test-key", api_hosts=12345)
+    assert config.api_hosts == {}
+
+
+def test_load_config_missing_master_key_patched():
+    with patch("app.config.load_dotenv"):
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(RuntimeError, match="MASTER_KEY is required"):
+                load_config()

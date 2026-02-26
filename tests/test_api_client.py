@@ -344,3 +344,262 @@ async def test_http_api_with_basic_auth():
         call_args = mock_get.call_args
         assert call_args[1]["auth"] is not None
         assert isinstance(call_args[1]["auth"], httpx.BasicAuth)
+
+
+# --- Base class NotImplementedError tests ---
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_services_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_services()
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_templates_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_templates("svc-1")
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_api_keys_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_api_keys("svc-1")
+
+
+@pytest.mark.asyncio
+async def test_base_api_create_api_key_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.create_api_key("svc-1", "name", "normal")
+
+
+@pytest.mark.asyncio
+async def test_base_api_update_api_key_expiry_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.update_api_key_expiry("svc-1", "key-1", "2026-01-01")
+
+
+@pytest.mark.asyncio
+async def test_base_api_revoke_api_key_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.revoke_api_key("svc-1", "key-1")
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_sms_senders_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_sms_senders("svc-1")
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_users_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_users()
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_provider_details_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_provider_details()
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_communication_items_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_communication_items()
+
+
+@pytest.mark.asyncio
+async def test_base_api_send_notification_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.send_notification("t", "r", {}, "k", "s", "email")
+
+
+@pytest.mark.asyncio
+async def test_base_api_healthcheck_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.healthcheck()
+
+
+@pytest.mark.asyncio
+async def test_base_api_aclose_noop():
+    api = NotificationAPI()
+    await api.aclose()  # Should not raise
+
+
+# --- create_api_key with secret_type ---
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_api_key_with_secret_type():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": "secret_key"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.create_api_key("svc-1", "Key", "normal", secret_type="app")
+
+        mock_post.assert_called_once_with(
+            "https://api.example.com/service/svc-1/api-key",
+            json={"name": "Key", "key_type": "normal", "secret_type": "app"},
+            auth=None,
+        )
+        assert result["data"] == "secret_key"
+
+
+# --- get_sms_senders response formats ---
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_sms_senders_direct_list():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = [{"id": "s1"}]
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_sms_senders("svc-1")
+        assert result == [{"id": "s1"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_sms_senders_sms_senders_key():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"sms_senders": [{"id": "s2"}]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_sms_senders("svc-1")
+        assert result == [{"id": "s2"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_sms_senders_data_key():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": [{"id": "s3"}]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_sms_senders("svc-1")
+        assert result == [{"id": "s3"}]
+
+
+# --- get_users response formats ---
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_users_direct_list():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = [{"id": "u1"}]
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_users()
+        assert result == [{"id": "u1"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_users_data_key():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": [{"id": "u2"}]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_users()
+        assert result == [{"id": "u2"}]
+
+
+# --- get_provider_details response formats ---
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_provider_details_direct_list():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = [{"id": "p1"}]
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_provider_details()
+        assert result == [{"id": "p1"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_provider_details_provider_details_key():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"provider_details": [{"id": "p2"}]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_provider_details()
+        assert result == [{"id": "p2"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_provider_details_data_key():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": [{"id": "p3"}]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_provider_details()
+        assert result == [{"id": "p3"}]
+
+
+# --- get_communication_items response formats ---
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_communication_items_direct_list():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = [{"id": "c1"}]
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_communication_items()
+        assert result == [{"id": "c1"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_communication_items_data_key():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": [{"id": "c2"}]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_communication_items()
+        assert result == [{"id": "c2"}]
+
+
+# --- aclose ---
+
+
+@pytest.mark.asyncio
+async def test_http_api_aclose():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    with patch.object(api.client, "aclose", new_callable=AsyncMock) as mock_aclose:
+        await api.aclose()
+        mock_aclose.assert_called_once()

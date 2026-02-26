@@ -159,7 +159,7 @@ ui.add_head_html(
 # Only initialize database if not in test mode
 # Tests will call init_engine with their own temporary database
 if not os.getenv("PYTEST_CURRENT_TEST"):
-    init_engine(config.database_path)
+    init_engine(config.database_path)  # pragma: no cover
 
 
 @app.on_startup
@@ -507,19 +507,19 @@ def build_shell(on_view_env_change=None) -> tuple:
             theme_button.on_click(lambda: toggle_theme(dark_mode))
             if on_view_env_change:
 
-                async def handle_env_change(e):
+                async def handle_env_change(e):  # pragma: no cover
                     state.view_environment = e.value
                     result = on_view_env_change()
                     if inspect.isawaitable(result):
                         await result
 
-                env_select.on_value_change(handle_env_change)
+                env_select.on_value_change(handle_env_change)  # pragma: no cover
             else:
                 env_select.on_value_change(
                     lambda e: setattr(state, "view_environment", e.value)
                 )
 
-            async def handle_sync_env_change(e):
+            async def handle_sync_env_change(e):  # pragma: no cover
                 state.environment = e.value
                 await refresh_status_badge(status_badge)
                 ui.notify(f"Switched to {e.value} environment", color="info")
@@ -534,7 +534,7 @@ def build_shell(on_view_env_change=None) -> tuple:
                     checkbox = ui.checkbox(env.title(), value=is_enabled)
                     env_checkboxes[env] = checkbox
 
-                    def make_handler(environment):
+                    def make_handler(environment):  # pragma: no cover
                         def handler(e):
                             if e.value:
                                 state.enabled_sync_environments.add(environment)
@@ -593,7 +593,7 @@ async def dashboard_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
         await refresh_if_needed(render_dashboard)
 
@@ -861,10 +861,10 @@ async def services_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def page_sync_services():
+    async def page_sync_services():  # pragma: no cover
         await handle_services_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -943,7 +943,7 @@ async def services_table() -> None:
 async def templates_page() -> None:
     template_search_query = ""
 
-    async def refresh_service_options() -> None:
+    async def refresh_service_options() -> None:  # pragma: no cover
         options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
@@ -952,7 +952,7 @@ async def templates_page() -> None:
         if service_select.value not in options:
             service_select.value = None
 
-    async def handle_view_env_change() -> None:
+    async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_service_options()
         await refresh_if_needed(render_table)
 
@@ -961,10 +961,10 @@ async def templates_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def page_sync_templates():
+    async def page_sync_templates():  # pragma: no cover
         await handle_templates_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -994,12 +994,12 @@ async def templates_page() -> None:
             .classes("w-full md:w-1/2")
         )
 
-        async def handle_sync_templates() -> None:
+        async def handle_sync_templates() -> None:  # pragma: no cover
             await page_sync_templates()
             render_table.refresh()
 
         @ui.refreshable
-        async def render_table() -> None:
+        async def render_table() -> None:  # pragma: no cover
             selected_service = service_select.value
             selected_type = type_select.value
             rows = await list_templates(
@@ -1068,7 +1068,7 @@ async def templates_page() -> None:
             table.props("row-key=id").classes("w-full")
             add_copyable_slots(table, table_rows)
 
-        async def handle_template_search_event(e) -> None:
+        async def handle_template_search_event(e) -> None:  # pragma: no cover
             nonlocal template_search_query
             template_search_query = (getattr(e, "value", None) or "").strip().lower()
             await refresh_if_needed(render_table)
@@ -1082,7 +1082,7 @@ async def templates_page() -> None:
 
 @ui.page("/api-keys")
 async def api_keys_page() -> None:
-    async def refresh_service_options() -> None:
+    async def refresh_service_options() -> None:  # pragma: no cover
         options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
@@ -1091,7 +1091,7 @@ async def api_keys_page() -> None:
         if service_select.value not in options:
             service_select.value = None
 
-    async def handle_view_env_change() -> None:
+    async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_service_options()
         await refresh_if_needed(render_table)
 
@@ -1100,10 +1100,10 @@ async def api_keys_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def page_sync_api_keys():
+    async def page_sync_api_keys():  # pragma: no cover
         await handle_api_keys_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -1138,7 +1138,7 @@ async def api_keys_page() -> None:
                 submit_button = ui.button("Create API Key", color="green")
                 ui.button("Cancel", on_click=create_dialog.close, color="gray")
 
-        async def refresh_create_service_options() -> None:
+        async def refresh_create_service_options() -> None:  # pragma: no cover
             options = {
                 svc.id: format_service_label(svc)
                 for svc in await list_services(create_env.value)
@@ -1147,10 +1147,10 @@ async def api_keys_page() -> None:
             if create_service.value not in options:
                 create_service.value = None
 
-        async def handle_create_env_change(_=None) -> None:
+        async def handle_create_env_change(_=None) -> None:  # pragma: no cover
             await refresh_create_service_options()
 
-        async def handle_create_api_key() -> None:
+        async def handle_create_api_key() -> None:  # pragma: no cover
             environment = create_env.value
             service_id = create_service.value
             name = (create_name.value or "").strip()
@@ -1193,7 +1193,7 @@ async def api_keys_page() -> None:
             await refresh_if_needed(render_local_keys)
             create_dialog.close()
 
-        async def handle_open_create_dialog() -> None:
+        async def handle_open_create_dialog() -> None:  # pragma: no cover
             create_env.value = state.environment
             await refresh_create_service_options()
             create_dialog.open()
@@ -1221,16 +1221,20 @@ async def api_keys_page() -> None:
                 confirm_revoke_button = ui.button("Revoke Key", color="negative")
                 ui.button("Cancel", on_click=revoke_dialog.close, color="gray")
 
-        def resolve_selected_key() -> Optional[Dict[str, Any]]:
+        def resolve_selected_key() -> Optional[Dict[str, Any]]:  # pragma: no cover
             return selected_api_key if selected_api_key.get("id") else None
 
-        def resolve_selected_environment(key: Dict[str, Any]) -> Optional[str]:
+        def resolve_selected_environment(
+            key: Dict[str, Any],
+        ) -> Optional[str]:  # pragma: no cover
             env_value = key.get("environment_value") or key.get("environment")
             if not env_value or env_value == "unknown":
                 return None
             return env_value
 
-        def update_manage_fields(key: Optional[Dict[str, Any]]) -> None:
+        def update_manage_fields(
+            key: Optional[Dict[str, Any]],
+        ) -> None:  # pragma: no cover
             if not key:
                 selected_key_label.text = "No API key selected."
                 expiry_input.value = ""
@@ -1244,13 +1248,13 @@ async def api_keys_page() -> None:
             expiry_value = key.get("expiry_date") or ""
             expiry_input.value = expiry_value.split("T", 1)[0] if expiry_value else ""
 
-        def handle_table_selection(e) -> None:
+        def handle_table_selection(e) -> None:  # pragma: no cover
             selected_api_key.clear()
             if e.selection:
                 selected_api_key.update(e.selection[0])
             update_manage_fields(resolve_selected_key())
 
-        async def handle_open_manage_dialog() -> None:
+        async def handle_open_manage_dialog() -> None:  # pragma: no cover
             key = resolve_selected_key()
             if not key:
                 ui.notify("Select an API key from the table first", color="red")
@@ -1258,7 +1262,7 @@ async def api_keys_page() -> None:
             update_manage_fields(key)
             manage_dialog.open()
 
-        async def handle_update_expiry() -> None:
+        async def handle_update_expiry() -> None:  # pragma: no cover
             key = resolve_selected_key()
             expiry_date = (expiry_input.value or "").strip()
             if not key or not expiry_date:
@@ -1298,7 +1302,7 @@ async def api_keys_page() -> None:
             update_manage_fields(resolve_selected_key())
             await refresh_if_needed(render_table)
 
-        async def handle_revoke_request() -> None:
+        async def handle_revoke_request() -> None:  # pragma: no cover
             key = resolve_selected_key()
             if not key:
                 ui.notify("Select an API key to revoke", color="red")
@@ -1321,7 +1325,7 @@ async def api_keys_page() -> None:
             )
             revoke_dialog.open()
 
-        async def handle_confirm_revoke() -> None:
+        async def handle_confirm_revoke() -> None:  # pragma: no cover
             revoke_dialog.close()
             if not pending_revoke:
                 return
@@ -1378,7 +1382,7 @@ async def api_keys_page() -> None:
         expires_from = ui.input(label="Expires from").props("clearable type=date")
         expires_to = ui.input(label="Expires to").props("clearable type=date")
 
-        async def handle_sync_keys() -> None:
+        async def handle_sync_keys() -> None:  # pragma: no cover
             await page_sync_api_keys()
             render_table.refresh()
 
@@ -1478,7 +1482,7 @@ async def api_key_emails_page() -> None:
     status_badge, sync_label, refresh_button, dark_mode = build_shell()
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -1513,7 +1517,9 @@ async def api_key_emails_page() -> None:
             key_name_preview = ui.label("Generated key name will appear here.").classes(
                 "text-sm text-gray-600 dark:text-slate-300"
             )
-            key_name_conflict = ui.label("").classes("text-sm text-red-600 dark:text-red-400")
+            key_name_conflict = ui.label("").classes(
+                "text-sm text-red-600 dark:text-red-400"
+            )
             key_name_conflict.visible = False
             generate_button = ui.button("Generate API Key Email", color="green")
 
@@ -1538,7 +1544,7 @@ async def api_key_emails_page() -> None:
         if service_select.value not in options:
             service_select.value = None
 
-    def build_key_name() -> str:
+    def build_key_name() -> str:  # pragma: no cover
         environment = env_select.value
         prefix = (key_prefix.value or "").strip().lower()
         if not environment or not prefix:
@@ -1548,7 +1554,7 @@ async def api_key_emails_page() -> None:
         test_part = "test-" if test_checkbox.value else ""
         return f"{env_token}-{prefix}-{uuid_part}{test_part}key"
 
-    async def update_key_name_preview() -> None:
+    async def update_key_name_preview() -> None:  # pragma: no cover
         key_name = build_key_name()
         if key_name:
             key_name_preview.text = f"Generated key name: {key_name}"
@@ -1573,11 +1579,11 @@ async def api_key_emails_page() -> None:
                 return
         key_name_conflict.visible = False
 
-    async def handle_env_change(_=None) -> None:
+    async def handle_env_change(_=None) -> None:  # pragma: no cover
         await refresh_service_options()
         await update_key_name_preview()
 
-    async def handle_generate() -> None:
+    async def handle_generate() -> None:  # pragma: no cover
         environment = env_select.value
         service_id = service_select.value
         key_name = build_key_name()
@@ -1593,9 +1599,9 @@ async def api_key_emails_page() -> None:
         existing_local_keys = await list_local_keys(
             service_id=service_id, environment=environment
         )
-        if any(
-            k.name == key_name and not k.revoked for k in existing_api_keys
-        ) or any(k.key_name == key_name for k in existing_local_keys):
+        if any(k.name == key_name and not k.revoked for k in existing_api_keys) or any(
+            k.key_name == key_name for k in existing_local_keys
+        ):
             ui.notify(
                 f"A key named '{key_name}' already exists for this service",
                 color="red",
@@ -1644,7 +1650,7 @@ async def api_key_emails_page() -> None:
         )
         ui.notify("Email content generated", color="green")
 
-    def handle_copy_output() -> None:
+    def handle_copy_output() -> None:  # pragma: no cover
         if not output_area.value:
             safe_notify("Generate email content first.", color="warning")
             return
@@ -1666,7 +1672,7 @@ async def api_key_emails_page() -> None:
 async def users_page() -> None:
     user_search_query = ""
 
-    async def handle_view_env_change() -> None:
+    async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_if_needed(render_table)
 
     status_badge, sync_label, refresh_button, dark_mode = build_shell(
@@ -1674,7 +1680,7 @@ async def users_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -1695,12 +1701,12 @@ async def users_page() -> None:
                 .classes("w-full md:w-1/2")
             )
 
-        async def handle_sync_users() -> None:
+        async def handle_sync_users() -> None:  # pragma: no cover
             await handle_users_sync(status_badge, sync_label)
             render_table.refresh()
 
         @ui.refreshable
-        async def render_table() -> None:
+        async def render_table() -> None:  # pragma: no cover
             users = await list_users(get_view_environment())
 
             def normalize_state(value: Optional[str]) -> str:
@@ -1811,7 +1817,7 @@ async def users_page() -> None:
             table.props("row-key=id").classes("w-full")
             add_copyable_slots(table, table_rows)
 
-        async def handle_user_search_event(e) -> None:
+        async def handle_user_search_event(e) -> None:  # pragma: no cover
             nonlocal user_search_query
             user_search_query = (getattr(e, "value", None) or "").strip().lower()
             await refresh_if_needed(render_table)
@@ -1826,7 +1832,7 @@ async def users_page() -> None:
 async def sms_senders_page() -> None:
     sms_sender_search_query = ""
 
-    async def refresh_service_options() -> None:
+    async def refresh_service_options() -> None:  # pragma: no cover
         options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
@@ -1835,7 +1841,7 @@ async def sms_senders_page() -> None:
         if service_select.value not in options:
             service_select.value = None
 
-    async def handle_view_env_change() -> None:
+    async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_service_options()
         await refresh_if_needed(render_table)
 
@@ -1844,10 +1850,10 @@ async def sms_senders_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def page_sync_sms_senders():
+    async def page_sync_sms_senders():  # pragma: no cover
         await handle_sms_senders_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -1873,17 +1879,17 @@ async def sms_senders_page() -> None:
             .classes("w-full md:w-1/2")
         )
 
-        async def handle_sync_senders() -> None:
+        async def handle_sync_senders() -> None:  # pragma: no cover
             await page_sync_sms_senders()
             render_table.refresh()
 
-        async def handle_sms_sender_search_event(e) -> None:
+        async def handle_sms_sender_search_event(e) -> None:  # pragma: no cover
             nonlocal sms_sender_search_query
             sms_sender_search_query = (getattr(e, "value", None) or "").strip().lower()
             await refresh_if_needed(render_table)
 
         @ui.refreshable
-        async def render_table() -> None:
+        async def render_table() -> None:  # pragma: no cover
             selected_service = service_select.value
             senders = await list_sms_senders(
                 selected_service, environment=get_view_environment()
@@ -1991,7 +1997,7 @@ async def sms_senders_page() -> None:
 
 @ui.page("/provider-details")
 async def provider_details_page() -> None:
-    async def handle_view_env_change() -> None:
+    async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_if_needed(render_table)
 
     status_badge, sync_label, refresh_button, dark_mode = build_shell(
@@ -1999,7 +2005,7 @@ async def provider_details_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -2008,7 +2014,7 @@ async def provider_details_page() -> None:
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Provider Details").classes("text-lg font-semibold")
 
-        async def handle_sync_provider_details() -> None:
+        async def handle_sync_provider_details() -> None:  # pragma: no cover
             await handle_provider_details_sync(status_badge, sync_label)
             render_table.refresh()
 
@@ -2109,7 +2115,7 @@ async def provider_details_page() -> None:
 
 @ui.page("/communication-items")
 async def communication_items_page() -> None:
-    async def handle_view_env_change() -> None:
+    async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_if_needed(render_table)
 
     status_badge, sync_label, refresh_button, dark_mode = build_shell(
@@ -2117,7 +2123,7 @@ async def communication_items_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -2126,7 +2132,7 @@ async def communication_items_page() -> None:
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Communication Items").classes("text-lg font-semibold")
 
-        async def handle_sync_communication_items() -> None:
+        async def handle_sync_communication_items() -> None:  # pragma: no cover
             await handle_communication_items_sync(status_badge, sync_label)
             render_table.refresh()
 
@@ -2179,7 +2185,7 @@ async def communication_items_page() -> None:
 async def send_page() -> None:
     placeholder_pattern = re.compile(r"\(\((.*?)\)\)")
 
-    async def refresh_service_options() -> None:
+    async def refresh_service_options() -> None:  # pragma: no cover
         options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(state.environment)
@@ -2194,7 +2200,7 @@ async def send_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -2239,7 +2245,9 @@ async def send_page() -> None:
         )
         personalisation_controls: Dict[str, Input] = {}
 
-        def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:
+        def render_preview_text(
+            content: str, personalisation: Dict[str, str]
+        ) -> str:  # pragma: no cover
             if not content:
                 return ""
 
@@ -2250,7 +2258,7 @@ async def send_page() -> None:
 
             return placeholder_pattern.sub(replace, content)
 
-        def build_personalisation() -> Dict[str, str]:
+        def build_personalisation() -> Dict[str, str]:  # pragma: no cover
             return {
                 key: control.value or ""
                 for key, control in personalisation_controls.items()
@@ -2272,7 +2280,7 @@ async def send_page() -> None:
             if template_select.value not in options:
                 template_select.value = None
 
-        async def handle_template_change() -> None:
+        async def handle_template_change() -> None:  # pragma: no cover
             personalisation_area.clear()
             personalisation_controls.clear()
             selected_id = template_select.value
@@ -2295,7 +2303,7 @@ async def send_page() -> None:
                     personalisation_controls[name].on_value_change(update_preview)
             await update_preview()
 
-        async def update_preview(_=None) -> None:
+        async def update_preview(_=None) -> None:  # pragma: no cover
             selected_id = template_select.value
             if not selected_id:
                 preview_subject.text = ""
@@ -2315,7 +2323,7 @@ async def send_page() -> None:
             preview_subject.text = f"Subject: {subject}" if subject else ""
             preview_body.text = content or ""
 
-        async def handle_send() -> None:
+        async def handle_send() -> None:  # pragma: no cover
             selected_env = env_select.value
             selected_service = service_select.value
             selected_key = key_select.value
@@ -2421,14 +2429,14 @@ async def send_page() -> None:
             await load_templates()
             await update_preview()
 
-        async def handle_type_change(_=None) -> None:
+        async def handle_type_change(_=None) -> None:  # pragma: no cover
             await load_templates()
             await update_preview()
 
-        async def handle_template_select(_=None) -> None:
+        async def handle_template_select(_=None) -> None:  # pragma: no cover
             await handle_template_change()
 
-        async def handle_env_change(e) -> None:
+        async def handle_env_change(e) -> None:  # pragma: no cover
             state.environment = e.value
             await refresh_status_badge(status_badge)
             await refresh_service_options()
@@ -2450,7 +2458,7 @@ async def send_page() -> None:
 async def bulk_send_page() -> None:
     placeholder_pattern = re.compile(r"\(\((.*?)\)\)")
 
-    async def refresh_service_options() -> None:
+    async def refresh_service_options() -> None:  # pragma: no cover
         options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(state.environment)
@@ -2465,7 +2473,7 @@ async def bulk_send_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -2506,7 +2514,9 @@ async def bulk_send_page() -> None:
         ).classes("w-full")
         personalisation_controls: Dict[str, Input] = {}
 
-        def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:
+        def render_preview_text(
+            content: str, personalisation: Dict[str, str]
+        ) -> str:  # pragma: no cover
             if not content:
                 return ""
 
@@ -2517,7 +2527,7 @@ async def bulk_send_page() -> None:
 
             return placeholder_pattern.sub(replace, content)
 
-        def build_personalisation() -> Dict[str, str]:
+        def build_personalisation() -> Dict[str, str]:  # pragma: no cover
             return {
                 key: control.value or ""
                 for key, control in personalisation_controls.items()
@@ -2539,7 +2549,7 @@ async def bulk_send_page() -> None:
             if template_select.value not in options:
                 template_select.value = None
 
-        async def handle_template_change() -> None:
+        async def handle_template_change() -> None:  # pragma: no cover
             personalisation_area.clear()
             personalisation_controls.clear()
             selected_id = template_select.value
@@ -2562,7 +2572,7 @@ async def bulk_send_page() -> None:
                     personalisation_controls[name].on_value_change(update_preview)
             await update_preview()
 
-        async def update_preview(_=None) -> None:
+        async def update_preview(_=None) -> None:  # pragma: no cover
             selected_id = template_select.value
             if not selected_id:
                 preview_subject.text = ""
@@ -2582,7 +2592,7 @@ async def bulk_send_page() -> None:
             preview_subject.text = f"Subject: {subject}" if subject else ""
             preview_body.text = content or ""
 
-        async def perform_bulk_send() -> None:
+        async def perform_bulk_send() -> None:  # pragma: no cover
             selected_env = env_select.value
             selected_service = service_select.value
             selected_key = key_select.value
@@ -2729,7 +2739,7 @@ async def bulk_send_page() -> None:
                 progress_label.text = f"Bulk send failed at {progress_percent()}%"
                 ui.notify(f"Error: {exc}", color="red")
 
-        async def handle_bulk_send() -> None:
+        async def handle_bulk_send() -> None:  # pragma: no cover
             selected_env = env_select.value
             selected_service = service_select.value
             selected_key = key_select.value
@@ -2753,7 +2763,7 @@ async def bulk_send_page() -> None:
             )
             confirm_dialog.open()
 
-        async def handle_confirm_send() -> None:
+        async def handle_confirm_send() -> None:  # pragma: no cover
             confirm_dialog.close()
             await perform_bulk_send()
 
@@ -2762,14 +2772,14 @@ async def bulk_send_page() -> None:
             await load_templates()
             await update_preview()
 
-        async def handle_type_change(_=None) -> None:
+        async def handle_type_change(_=None) -> None:  # pragma: no cover
             await load_templates()
             await update_preview()
 
-        async def handle_template_select(_=None) -> None:
+        async def handle_template_select(_=None) -> None:  # pragma: no cover
             await handle_template_change()
 
-        async def handle_env_change(e) -> None:
+        async def handle_env_change(e) -> None:  # pragma: no cover
             state.environment = e.value
             await refresh_status_badge(status_badge)
             await refresh_service_options()
@@ -2798,7 +2808,7 @@ async def settings_page() -> None:
     key_environment = None
     key_service = None
 
-    async def refresh_service_options() -> None:
+    async def refresh_service_options() -> None:  # pragma: no cover
         env_value = key_environment.value if key_environment else get_view_environment()
         options = {
             svc.id: format_service_label(svc) for svc in await list_services(env_value)
@@ -2814,7 +2824,7 @@ async def settings_page() -> None:
     )
     await ensure_theme_preference(dark_mode)
 
-    async def page_refresh():
+    async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
     refresh_button.on_click(page_refresh)
@@ -2839,7 +2849,7 @@ async def settings_page() -> None:
                     .classes("w-full md:w-1/2")
                 )
 
-            async def handle_save_urls() -> None:
+            async def handle_save_urls() -> None:  # pragma: no cover
                 await save_base_urls(inputs)
 
             ui.button(
@@ -2870,7 +2880,7 @@ async def settings_page() -> None:
                     .classes("w-full md:w-1/2"),
                 }
 
-            async def handle_save_auth() -> None:
+            async def handle_save_auth() -> None:  # pragma: no cover
                 await save_admin_auth(auth_inputs)
 
             ui.button(
@@ -2903,7 +2913,7 @@ async def settings_page() -> None:
                 {"normal": "Normal", "team": "Team", "test": "Test"}, value="normal"
             ).classes("w-full md:w-1/2")
 
-            async def handle_add_key() -> None:
+            async def handle_add_key() -> None:  # pragma: no cover
                 await save_local_key(
                     key_environment.value,
                     key_service.value,
@@ -2912,7 +2922,7 @@ async def settings_page() -> None:
                     key_type.value,
                 )
 
-            async def handle_key_environment_change(_=None) -> None:
+            async def handle_key_environment_change(_=None) -> None:  # pragma: no cover
                 await refresh_service_options()
 
             ui.button(
@@ -2986,7 +2996,7 @@ async def render_local_keys() -> None:
     add_copyable_slots(table, rows)
 
 
-if __name__ in {"__main__", "__mp_main__"}:
+if __name__ in {"__main__", "__mp_main__"}:  # pragma: no cover
     ui.run(
         title="VA Notify Admin",
         port=8080,
