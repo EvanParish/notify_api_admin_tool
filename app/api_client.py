@@ -47,6 +47,9 @@ class NotificationAPI:
     async def get_communication_items(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+    async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
     async def send_notification(
         self,
         template_id: str,
@@ -167,6 +170,16 @@ class HttpNotificationAPI(NotificationAPI):
     async def get_communication_items(self) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/communication-item", auth=self._basic_auth
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, list):
+            return payload
+        return payload.get("data") or []
+
+    async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
+        resp = await self.client.get(
+            f"{self.base_url}/inbound-number", auth=self._basic_auth
         )
         resp.raise_for_status()
         payload = resp.json()
@@ -381,6 +394,34 @@ class MockNotificationAPI(NotificationAPI):
                 "id": "8bc5e318-b316-49aa-8cb1-68e48fc3b086",
                 "name": "COVID-19 Updates",
                 "va_profile_item_id": 2,
+            },
+        ]
+
+    async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
+        await asyncio.sleep(self._sleep)
+        return [
+            {
+                "id": "inbound-1",
+                "number": "+18337021549",
+                "provider": "pinpoint",
+                "active": True,
+                "self_managed": False,
+                "service": {
+                    "id": "svc-1",
+                    "name": "Test Service",
+                },
+                "auth_parameter": None,
+                "url_endpoint": None,
+            },
+            {
+                "id": "inbound-2",
+                "number": "+16506288615",
+                "provider": "pinpoint",
+                "active": True,
+                "self_managed": False,
+                "service": None,
+                "auth_parameter": "/dev/test/parameter",
+                "url_endpoint": "https://staging.api.vetext.va.gov/api/vetext/pub/inbound-message/aws",
             },
         ]
 

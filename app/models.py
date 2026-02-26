@@ -186,6 +186,23 @@ class CommunicationItem(Base):
     default_send_indicator: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class InboundNumber(Base):
+    __tablename__ = "inbound_numbers"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    environment: Mapped[str] = mapped_column(
+        String, primary_key=True, default="unknown", index=True
+    )
+    number: Mapped[str] = mapped_column(String)
+    provider: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    self_managed: Mapped[bool] = mapped_column(Boolean, default=False)
+    service_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    service_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    auth_parameter: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    url_endpoint: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
 class LocalApiKey(Base):
     __tablename__ = "local_api_keys"
 

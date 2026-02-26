@@ -11,11 +11,12 @@ from app.repository import (
     add_local_key,
     resolve_local_key,
     list_api_keys,
+    list_inbound_numbers,
     update_api_key_expiry,
     mark_api_key_revoked,
 )
 from app.crypto import EncryptionManager
-from app.models import Service, Template, LocalApiKey, ApiKey, Setting
+from app.models import Service, Template, LocalApiKey, ApiKey, InboundNumber, Setting
 from app.db import get_session
 
 
@@ -691,3 +692,27 @@ async def test_list_api_keys_by_service_id(initialized_db):
     keys = await list_api_keys(service_id="svc-1")
     assert len(keys) == 1
     assert keys[0].id == "key-1"
+
+
+@pytest.mark.asyncio
+async def test_list_inbound_numbers_by_service_id(initialized_db):
+    async with get_session() as session:
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
+        session.add(InboundNumber(id="n2", environment="dev", number="+2222", service_id="svc-2"))
+        await session.commit()
+
+    numbers = await list_inbound_numbers(service_id="svc-1")
+    assert len(numbers) == 1
+    assert numbers[0].id == "n1"
+
+
+@pytest.mark.asyncio
+async def test_list_inbound_numbers_by_environment(initialized_db):
+    async with get_session() as session:
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111"))
+        session.add(InboundNumber(id="n2", environment="staging", number="+2222"))
+        await session.commit()
+
+    numbers = await list_inbound_numbers(environment="dev")
+    assert len(numbers) == 1
+    assert numbers[0].id == "n1"

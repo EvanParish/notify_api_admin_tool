@@ -593,6 +593,50 @@ async def test_http_api_get_communication_items_data_key():
         assert result == [{"id": "c2"}]
 
 
+# --- get_inbound_numbers ---
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_inbound_numbers_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_inbound_numbers()
+
+
+@pytest.mark.asyncio
+async def test_mock_api_get_inbound_numbers():
+    api = MockNotificationAPI()
+    numbers = await api.get_inbound_numbers()
+    assert len(numbers) == 2
+    assert numbers[0]["id"] == "inbound-1"
+    assert numbers[0]["number"] == "+18337021549"
+    assert numbers[1]["service"] is None
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_inbound_numbers_direct_list():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = [{"id": "n1"}]
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_inbound_numbers()
+        assert result == [{"id": "n1"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_inbound_numbers_data_key():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": [{"id": "n2"}]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        result = await api.get_inbound_numbers()
+        assert result == [{"id": "n2"}]
+
+
 # --- aclose ---
 
 

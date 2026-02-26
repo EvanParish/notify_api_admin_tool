@@ -9,6 +9,7 @@ from .db import get_session
 from .models import (
     ApiKey,
     CommunicationItem,
+    InboundNumber,
     LocalApiKey,
     ProviderDetail,
     Service,
@@ -258,3 +259,21 @@ async def list_users(environment: Optional[str] = None) -> List[User]:
             for row in rows
             if not (row.email_address or "").lower().startswith("_archived")
         ]
+
+
+async def list_inbound_numbers(
+    service_id: Optional[str] = None, environment: Optional[str] = None
+) -> List[InboundNumber]:
+    async with get_session() as session:
+        query = select(InboundNumber)
+        if service_id:
+            query = query.where(InboundNumber.service_id == service_id)
+        if environment:
+            query = query.where(
+                or_(
+                    InboundNumber.environment == environment,
+                    InboundNumber.environment.is_(None),
+                )
+            )
+        rows = list((await session.execute(query)).scalars().all())
+        return rows

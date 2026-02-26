@@ -33,6 +33,7 @@ class SyncManager:
         await self.sync_users(progress)
         await self.sync_communication_items(progress)
         await self.sync_provider_details(progress)
+        await self.sync_inbound_numbers(progress)
 
     async def sync_services(self, progress: ProgressCallback = None) -> None:
         if progress:
@@ -264,6 +265,28 @@ class SyncManager:
                     name=item.get("name", ""),
                     va_profile_item_id=item.get("va_profile_item_id"),
                     default_send_indicator=item.get("default_send_indicator", False),
+                )
+                await session.merge(record)
+            await session.commit()
+
+    async def sync_inbound_numbers(self, progress: ProgressCallback = None) -> None:
+        if progress:
+            await progress("Syncing inbound numbers")
+        inbound_numbers = await self.api.get_inbound_numbers()
+        async with get_session() as session:
+            for item in inbound_numbers:
+                service = item.get("service") or {}
+                record = models.InboundNumber(
+                    id=item.get("id"),
+                    environment=self.environment,
+                    number=item.get("number", ""),
+                    provider=item.get("provider"),
+                    active=item.get("active", True),
+                    self_managed=item.get("self_managed", False),
+                    service_id=service.get("id") if service else None,
+                    service_name=service.get("name") if service else None,
+                    auth_parameter=item.get("auth_parameter"),
+                    url_endpoint=item.get("url_endpoint"),
                 )
                 await session.merge(record)
             await session.commit()
