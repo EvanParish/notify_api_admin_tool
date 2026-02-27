@@ -53,7 +53,8 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 
 ### Core layers
 
-- **`main.py`** (~3000 lines) — The entire NiceGUI UI: pages, components, event handlers, and app lifecycle. All UI code lives in this single file.
+- **`main.py`** (~2950 lines) — The entire NiceGUI UI: pages, components, event handlers, and app lifecycle. All UI code lives in this single file.
+- **`app/ui/sync_handlers.py`** — Generic `handle_entity_sync()` function that consolidates all per-entity sync handlers. Uses late import of `main` to access globals (will be cleaned up in later phases).
 - **`app/api_client.py`** — `NotificationAPI` base class with `HttpNotificationAPI` (real) and `MockNotificationAPI` (dev/test) implementations. HTTP client uses `httpx`. Notification sending uses JWT auth (HS256, signed with service API secret).
 - **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment.
 - **`app/models.py`** — SQLAlchemy ORM models. Most entities use composite keys of `(id, environment)` to store data from multiple environments in one database.

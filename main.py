@@ -40,8 +40,12 @@ from app.repository import (
     set_setting,
     update_api_key_expiry,
 )
-from app.sync import SyncManager
+from app.ui.sync_handlers import handle_entity_sync
 from app.utils import extract_placeholders, validate_recipient
+
+# Ensure `import main` resolves to this module even when run as __main__.
+# app/ui/sync_handlers.py uses a late `import main` to avoid circular imports.
+sys.modules.setdefault("main", sys.modules[__name__])
 
 logger = logging.getLogger(__name__)
 _original_client_delete = Client.delete
@@ -224,246 +228,8 @@ async def ensure_sync_enabled(sync_label) -> bool:
 
 
 async def handle_full_sync(status_badge, sync_label) -> None:
-    # Check if current environment is enabled for syncing
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    if not await ensure_admin_auth(state.environment, sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Starting sync..."
-    try:
-        await manager.sync_all(progress=progress)
-    except httpx.HTTPStatusError as exc:
-        if exc.response and exc.response.status_code == 401:
-            handle_unauthorized(sync_label, state.environment)
-            return
-        raise
-    sync_label.text = "Sync complete"
-    await refresh_tables()
-    await refresh_status_badge(status_badge)
-
-
-async def handle_services_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    if not await ensure_admin_auth(state.environment, sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing services..."
-    try:
-        await manager.sync_services(progress=progress)
-    except httpx.HTTPStatusError as exc:
-        if exc.response and exc.response.status_code == 401:
-            handle_unauthorized(sync_label, state.environment)
-            return
-        raise
-    sync_label.text = "Sync complete"
-    await refresh_if_needed(services_table)
-    await refresh_status_badge(status_badge)
-
-
-async def handle_templates_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    if not await ensure_admin_auth(state.environment, sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing services..."
-    try:
-        await manager.sync_services(progress=progress)
-        sync_label.text = "Syncing templates..."
-        await manager.sync_templates(progress=progress)
-    except httpx.HTTPStatusError as exc:
-        if exc.response and exc.response.status_code == 401:
-            handle_unauthorized(sync_label, state.environment)
-            return
-        raise
-    sync_label.text = "Sync complete"
-    await refresh_status_badge(status_badge)
-
-
-async def handle_api_keys_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    if not await ensure_admin_auth(state.environment, sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing services..."
-    try:
-        await manager.sync_services(progress=progress)
-        sync_label.text = "Syncing API keys..."
-        await manager.sync_api_keys(progress=progress)
-    except httpx.HTTPStatusError as exc:
-        if exc.response and exc.response.status_code == 401:
-            handle_unauthorized(sync_label, state.environment)
-            return
-        raise
-    sync_label.text = "Sync complete"
-    await refresh_status_badge(status_badge)
-
-
-async def handle_sms_senders_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    if not await ensure_admin_auth(state.environment, sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing services..."
-    try:
-        await manager.sync_services(progress=progress)
-        sync_label.text = "Syncing SMS senders..."
-        await manager.sync_sms_senders(progress=progress)
-    except httpx.HTTPStatusError as exc:
-        if exc.response and exc.response.status_code == 401:
-            handle_unauthorized(sync_label, state.environment)
-            return
-        raise
-    sync_label.text = "Sync complete"
-    await refresh_status_badge(status_badge)
-
-
-async def handle_users_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    if not await ensure_admin_auth(state.environment, sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing users..."
-    try:
-        await manager.sync_users(progress=progress)
-    except httpx.HTTPStatusError as exc:
-        if exc.response and exc.response.status_code == 401:
-            handle_unauthorized(sync_label, state.environment)
-            return
-        raise
-    sync_label.text = "Sync complete"
-    await refresh_status_badge(status_badge)
-
-
-async def handle_provider_details_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    if not await ensure_admin_auth(state.environment, sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing provider details..."
-    try:
-        await manager.sync_provider_details(progress=progress)
-    except httpx.HTTPStatusError as exc:
-        if exc.response and exc.response.status_code == 401:
-            handle_unauthorized(sync_label, state.environment)
-            return
-        raise
-    sync_label.text = "Sync complete"
-    await refresh_status_badge(status_badge)
-
-
-async def handle_communication_items_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    if not await ensure_admin_auth(state.environment, sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing communication items..."
-    try:
-        await manager.sync_communication_items(progress=progress)
-    except httpx.HTTPStatusError as exc:
-        if exc.response and exc.response.status_code == 401:
-            handle_unauthorized(sync_label, state.environment)
-            return
-        raise
-    sync_label.text = "Sync complete"
-    await refresh_status_badge(status_badge)
-
-
-async def handle_inbound_numbers_sync(status_badge, sync_label) -> None:
-    if not await ensure_sync_enabled(sync_label):
-        return
-
-    if not await ensure_admin_auth(state.environment, sync_label):
-        return
-
-    api = await build_api_client(state.environment)
-    manager = SyncManager(api, config.max_concurrency, environment=state.environment)
-
-    async def progress(msg: str):
-        state.sync_message = msg
-        sync_label.text = msg
-
-    sync_label.text = "Syncing inbound numbers..."
-    try:
-        await manager.sync_inbound_numbers(progress=progress)
-    except httpx.HTTPStatusError as exc:
-        if exc.response and exc.response.status_code == 401:
-            handle_unauthorized(sync_label, state.environment)
-            return
-        raise
-    sync_label.text = "Sync complete"
-    await refresh_status_badge(status_badge)
+    if await handle_entity_sync(["sync_all"], status_badge, sync_label, "all data"):
+        await refresh_tables()
 
 
 async def refresh_tables() -> None:
@@ -896,7 +662,10 @@ async def services_page() -> None:
         await handle_full_sync(status_badge, sync_label)
 
     async def page_sync_services():  # pragma: no cover
-        await handle_services_sync(status_badge, sync_label)
+        if await handle_entity_sync(
+            ["sync_services"], status_badge, sync_label, "services"
+        ):
+            await refresh_if_needed(services_table)
 
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
@@ -996,7 +765,13 @@ async def templates_page() -> None:
         await handle_full_sync(status_badge, sync_label)
 
     async def page_sync_templates():  # pragma: no cover
-        await handle_templates_sync(status_badge, sync_label)
+        await handle_entity_sync(
+            ["sync_templates"],
+            status_badge,
+            sync_label,
+            "templates",
+            pre_sync=["sync_services"],
+        )
 
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
@@ -1008,7 +783,7 @@ async def templates_page() -> None:
             .props("clearable")
             .classes("w-full md:w-1/2")
         )
-        filter_row = ui.row().classes("gap-2")
+        filter_row = ui.row().classes("gap-2")  # noqa: F841
         service_options = {
             svc.id: format_service_label(svc)
             for svc in await list_services(get_view_environment())
@@ -1135,7 +910,13 @@ async def api_keys_page() -> None:
         await handle_full_sync(status_badge, sync_label)
 
     async def page_sync_api_keys():  # pragma: no cover
-        await handle_api_keys_sync(status_badge, sync_label)
+        await handle_entity_sync(
+            ["sync_api_keys"],
+            status_badge,
+            sync_label,
+            "API keys",
+            pre_sync=["sync_services"],
+        )
 
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
@@ -1733,8 +1514,10 @@ async def users_page() -> None:
             )
 
         async def handle_sync_users() -> None:  # pragma: no cover
-            await handle_users_sync(status_badge, sync_label)
-            render_table.refresh()
+            if await handle_entity_sync(
+                ["sync_users"], status_badge, sync_label, "users"
+            ):
+                render_table.refresh()
 
         @ui.refreshable
         async def render_table() -> None:  # pragma: no cover
@@ -1885,7 +1668,13 @@ async def sms_senders_page() -> None:
         await handle_full_sync(status_badge, sync_label)
 
     async def page_sync_sms_senders():  # pragma: no cover
-        await handle_sms_senders_sync(status_badge, sync_label)
+        await handle_entity_sync(
+            ["sync_sms_senders"],
+            status_badge,
+            sync_label,
+            "SMS senders",
+            pre_sync=["sync_services"],
+        )
 
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
@@ -2046,8 +1835,10 @@ async def provider_details_page() -> None:
         ui.label("Provider Details").classes("text-lg font-semibold")
 
         async def handle_sync_provider_details() -> None:  # pragma: no cover
-            await handle_provider_details_sync(status_badge, sync_label)
-            render_table.refresh()
+            if await handle_entity_sync(
+                ["sync_provider_details"], status_badge, sync_label, "provider details"
+            ):
+                render_table.refresh()
 
         @ui.refreshable
         async def render_table() -> None:
@@ -2164,8 +1955,13 @@ async def communication_items_page() -> None:
         ui.label("Communication Items").classes("text-lg font-semibold")
 
         async def handle_sync_communication_items() -> None:  # pragma: no cover
-            await handle_communication_items_sync(status_badge, sync_label)
-            render_table.refresh()
+            if await handle_entity_sync(
+                ["sync_communication_items"],
+                status_badge,
+                sync_label,
+                "communication items",
+            ):
+                render_table.refresh()
 
         @ui.refreshable
         async def render_table() -> None:
@@ -2238,7 +2034,9 @@ async def inbound_numbers_page() -> None:
         await handle_full_sync(status_badge, sync_label)
 
     async def page_sync_inbound_numbers():  # pragma: no cover
-        await handle_inbound_numbers_sync(status_badge, sync_label)
+        await handle_entity_sync(
+            ["sync_inbound_numbers"], status_badge, sync_label, "inbound numbers"
+        )
 
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)

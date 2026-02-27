@@ -90,7 +90,7 @@ def test_pytest_environment_variable_is_set():
 
 def test_main_module_skips_db_init_during_tests():
     """Verify main.py doesn't initialize database when imported during tests."""
-    import main
+    import main  # noqa: F401 — side-effect import under test
 
     # During tests, main.py should not have called init_engine with app.db
     # Instead, the test fixture will have initialized it with a temp db

@@ -1,6 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock
-from sqlalchemy import select, delete
+from sqlalchemy import select
 
 from app.db import create_all, get_session, init_engine
 from app.models import Service, Template, User
@@ -375,7 +374,6 @@ async def test_sync_api_keys_handles_404(initialized_db):
     from app.api_client import MockNotificationAPI
     from app.models import Service
     from app.db import get_session
-    from sqlalchemy import select
     import httpx
 
     # Create a service

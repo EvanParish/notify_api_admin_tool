@@ -6,8 +6,6 @@ This script copies settings from old keys (dev, prod) to new keys (development, 
 """
 
 import asyncio
-import sqlite3
-from pathlib import Path
 
 from app.config import load_config
 from app.db import init_engine
@@ -47,13 +45,13 @@ async def migrate_settings():
         old_user = await get_secure_setting(f"basic_username_{old_key}", encryption)
         if old_user:
             await set_secure_setting(f"basic_username_{new_key}", old_user, encryption)
-            print(f"  ✓ basic_username: [configured]")
+            print("  ✓ basic_username: [configured]")
 
         # Copy basic auth password
         old_pass = await get_secure_setting(f"basic_password_{old_key}", encryption)
         if old_pass:
             await set_secure_setting(f"basic_password_{new_key}", old_pass, encryption)
-            print(f"  ✓ basic_password: [configured]")
+            print("  ✓ basic_password: [configured]")
 
         print()
 

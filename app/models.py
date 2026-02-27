@@ -3,7 +3,6 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean,
-    Column,
     DateTime,
     Enum,
     ForeignKey,

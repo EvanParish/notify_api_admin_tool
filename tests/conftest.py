@@ -4,11 +4,14 @@ from pathlib import Path
 
 import pytest
 
+from app.config import AppConfig
+from app.crypto import EncryptionManager
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.db import init_engine, create_all
+from app.db import init_engine, create_all  # noqa: E402
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -54,3 +57,24 @@ async def initialized_db(temp_db):
     """Create and initialize a temporary database with tables."""
     await create_all()
     return temp_db
+
+
+@pytest.fixture
+def mock_config():
+    """Create a mock config for testing."""
+    return AppConfig(
+        master_key="test-key-for-main",
+        api_hosts={
+            "development": "http://dev.test.com",
+            "staging": "http://staging.test.com",
+        },
+        use_mock_api=True,
+        database_path=":memory:",
+        max_concurrency=5,
+    )
+
+
+@pytest.fixture
+def mock_encryption(mock_config):
+    """Create a mock encryption manager."""
+    return EncryptionManager(mock_config.master_key)

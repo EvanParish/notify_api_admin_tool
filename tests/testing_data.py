@@ -1,5 +1,4 @@
 # the GET /service endpoint returns a list of services in this format
-from sqlalchemy import null
 
 
 service_data = {

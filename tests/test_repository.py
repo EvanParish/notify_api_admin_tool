@@ -12,11 +12,26 @@ from app.repository import (
     resolve_local_key,
     list_api_keys,
     list_inbound_numbers,
+    list_sms_senders,
+    list_provider_details,
+    list_communication_items,
+    list_users,
     update_api_key_expiry,
     mark_api_key_revoked,
 )
 from app.crypto import EncryptionManager
-from app.models import Service, Template, LocalApiKey, ApiKey, InboundNumber, Setting
+from app.models import (
+    Service,
+    Template,
+    LocalApiKey,
+    ApiKey,
+    InboundNumber,
+    Setting,
+    SmsSender,
+    ProviderDetail,
+    CommunicationItem,
+    User,
+)
 from app.db import get_session
 
 
@@ -458,14 +473,6 @@ async def test_multiple_operations(initialized_db):
 
 # --- Additional coverage tests ---
 
-from app.repository import (
-    list_sms_senders,
-    list_provider_details,
-    list_communication_items,
-    list_users,
-)
-from app.models import SmsSender, ProviderDetail, CommunicationItem, User
-
 
 @pytest.mark.asyncio
 async def test_list_services_with_environment(initialized_db):
@@ -697,8 +704,16 @@ async def test_list_api_keys_by_service_id(initialized_db):
 @pytest.mark.asyncio
 async def test_list_inbound_numbers_by_service_id(initialized_db):
     async with get_session() as session:
-        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
-        session.add(InboundNumber(id="n2", environment="dev", number="+2222", service_id="svc-2"))
+        session.add(
+            InboundNumber(
+                id="n1", environment="dev", number="+1111", service_id="svc-1"
+            )
+        )
+        session.add(
+            InboundNumber(
+                id="n2", environment="dev", number="+2222", service_id="svc-2"
+            )
+        )
         await session.commit()
 
     numbers = await list_inbound_numbers(service_id="svc-1")

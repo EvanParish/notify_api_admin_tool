@@ -30,7 +30,7 @@ async def test_get_session_before_init(tmp_path):
     db.SessionLocal = None
 
     with pytest.raises(RuntimeError, match="SessionLocal not initialized"):
-        async with get_session() as session:
+        async with get_session() as session:  # noqa: F841
             pass
 
 

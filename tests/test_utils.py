@@ -1,4 +1,3 @@
-import pytest
 from app.utils import extract_placeholders, validate_recipient
 
 
