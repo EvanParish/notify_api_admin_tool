@@ -53,8 +53,8 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 
 ### Core layers
 
-- **`main.py`** (~1590 lines) — Complex NiceGUI UI pages (API keys, send, bulk send, settings), route handlers, and page-level helpers.
-- **`app/ui/pages/`** — Extracted simple page modules. Each file contains one `@ui.page` route:
+- **`main.py`** (~83 lines) — Application entry point: CSS/JS head HTML, imports `app.ui.pages` to register routes, and calls `ui.run()`.
+- **`app/ui/pages/`** — All page modules. Each file contains one `@ui.page` route:
   - `dashboard.py` — Dashboard with metrics (`/`)
   - `services.py` — Services page with search filter (`/services`)
   - `templates.py` — Templates page with search/type/service filters (`/templates`)
@@ -63,6 +63,11 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
   - `provider_details.py` — Provider Details page (`/provider-details`)
   - `comm_items.py` — Communication Items page (`/communication-items`)
   - `inbound_numbers.py` — Inbound Numbers page (`/inbound-numbers`)
+  - `api_keys.py` — API Keys page with create/revoke dialogs (`/api-keys`)
+  - `api_key_service.py` — API Key Email Generator (`/api-key-service`)
+  - `send.py` — Send Notification page (`/send`)
+  - `bulk_send.py` — Bulk Send Notification page (`/bulk-send`)
+  - `settings_page.py` — Settings page with URL/auth/key forms (`/settings`)
   - `__init__.py` — Imports all page modules to trigger `@ui.page` registration
 - **`app/ui/state.py`** — Application state globals (`config`, `encryption`, `state`), `AppState` dataclass, `build_api_client()`, auth helpers, startup/shutdown handlers.
 - **`app/ui/helpers.py`** — Reusable UI utilities: `metric_card`, `make_sortable`, copyable slots, formatting functions, `parse_recipients`.

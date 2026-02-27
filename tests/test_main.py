@@ -21,17 +21,22 @@ from app.ui import email_helpers
 from app.ui import shell
 from app.ui import sync_handlers
 from app.ui.pages import (
+    api_key_service as page_api_key_service,
+    api_keys as page_api_keys,
+    bulk_send as page_bulk_send,
     comm_items as page_comm_items,
     dashboard as page_dashboard,
     inbound_numbers as page_inbound_numbers,
     provider_details as page_provider_details,
+    send as page_send,
     services as page_services,
+    settings_page as page_settings,
     sms_senders as page_sms_senders,
     templates as page_templates,
     users as page_users,
 )
 
-import main  # noqa: E402
+import main  # noqa: E402, F401 — triggers sys.modules['main'] registration
 
 
 @pytest.mark.asyncio
@@ -296,8 +301,8 @@ async def test_save_base_urls(initialized_db):
     }
 
     # Mock ui.notify to avoid NiceGUI context issues
-    with patch("main.ui.notify"):
-        await main.save_base_urls(mock_inputs)
+    with patch("app.ui.pages.settings_page.ui.notify"):
+        await page_settings.save_base_urls(mock_inputs)
 
     # Verify non-empty values were saved
     assert await get_setting("base_url_dev") == "http://dev.new.com"
@@ -325,8 +330,8 @@ async def test_save_admin_auth(initialized_db, mock_encryption):
         }
 
         # Mock ui.notify to avoid NiceGUI context issues
-        with patch("main.ui.notify"):
-            await main.save_admin_auth(mock_auth_inputs)
+        with patch("app.ui.pages.settings_page.ui.notify"):
+            await page_settings.save_admin_auth(mock_auth_inputs)
 
         # Verify only complete pairs were saved
         dev_user = await get_secure_setting("basic_username_dev", mock_encryption)
@@ -352,12 +357,16 @@ async def test_save_local_key_success(initialized_db, mock_encryption):
     try:
         # Mock ui.notify and render_local_keys.refresh()
         with (
-            patch("main.ui.notify"),
-            patch.object(main, "render_local_keys", create=True) as mock_render,
+            patch("app.ui.pages.settings_page.ui.notify"),
+            patch.object(
+                page_settings, "render_local_keys", create=True
+            ) as mock_render,
         ):
             mock_render.refresh = AsyncMock()
 
-            await main.save_local_key("dev", "svc-1", "Test Key", "secret123", "normal")
+            await page_settings.save_local_key(
+                "dev", "svc-1", "Test Key", "secret123", "normal"
+            )
 
             # Verify key was saved
             keys = await list_local_keys(service_id="svc-1", environment="dev")
@@ -378,16 +387,20 @@ async def test_save_local_key_missing_params(initialized_db, mock_encryption):
     try:
         # Mock ui.notify and render_local_keys.refresh()
         with (
-            patch("main.ui.notify"),
-            patch.object(main, "render_local_keys", create=True) as mock_render,
+            patch("app.ui.pages.settings_page.ui.notify"),
+            patch.object(
+                page_settings, "render_local_keys", create=True
+            ) as mock_render,
         ):
             mock_render.refresh = AsyncMock()
 
             # Should not raise error, just notify user
-            await main.save_local_key(None, "svc-1", "name", "secret", "normal")
-            await main.save_local_key("dev", None, "name", "secret", "normal")
-            await main.save_local_key("dev", "svc-1", "", "secret", "normal")
-            await main.save_local_key("dev", "svc-1", "name", "", "normal")
+            await page_settings.save_local_key(
+                None, "svc-1", "name", "secret", "normal"
+            )
+            await page_settings.save_local_key("dev", None, "name", "secret", "normal")
+            await page_settings.save_local_key("dev", "svc-1", "", "secret", "normal")
+            await page_settings.save_local_key("dev", "svc-1", "name", "", "normal")
 
             # Verify no keys were saved
             from app.repository import list_local_keys
@@ -482,7 +495,7 @@ def test_build_shell():
         patch("app.ui.shell.ui.label") as mock_label,
         patch("app.ui.shell.ui.button") as mock_button,
         patch("app.ui.shell.ui.dark_mode") as mock_dark_mode,
-        patch("main.ui.link"),
+        patch("app.ui.shell.ui.link"),
         patch("app.ui.shell.ui.select") as mock_select,
         patch("app.ui.shell.ui.dropdown_button") as mock_dropdown,
         patch("app.ui.shell.ui.checkbox") as mock_checkbox,
@@ -1004,13 +1017,13 @@ class TestGetViewEnvironment:
 class TestSafeNotify:
     def test_calls_ui_notify(self):
 
-        with patch("main.ui.notify") as mock_notify:
+        with patch("app.ui.state.ui.notify") as mock_notify:
             _st.safe_notify("hello", color="green")
             mock_notify.assert_called_once_with("hello", color="green")
 
     def test_catches_runtime_error(self):
 
-        with patch("main.ui.notify", side_effect=RuntimeError("no slot")):
+        with patch("app.ui.state.ui.notify", side_effect=RuntimeError("no slot")):
             _st.safe_notify("hello")
 
 
@@ -1058,53 +1071,65 @@ class TestParseRecipients:
 class TestParseFilterDate:
     def test_none(self):
 
-        assert main._parse_filter_date(None) is None
+        assert page_api_keys._parse_filter_date(None) is None
 
     def test_empty(self):
 
-        assert main._parse_filter_date("") is None
+        assert page_api_keys._parse_filter_date("") is None
 
     def test_valid_date(self):
         from datetime import date
 
-        assert main._parse_filter_date("2025-06-15") == date(2025, 6, 15)
+        assert page_api_keys._parse_filter_date("2025-06-15") == date(2025, 6, 15)
 
     def test_valid_iso_datetime(self):
         from datetime import date
 
-        assert main._parse_filter_date("2025-06-15T12:00:00Z") == date(2025, 6, 15)
+        assert page_api_keys._parse_filter_date("2025-06-15T12:00:00Z") == date(
+            2025, 6, 15
+        )
 
     def test_invalid_date(self):
 
-        assert main._parse_filter_date("not-a-date") is None
+        assert page_api_keys._parse_filter_date("not-a-date") is None
 
 
 class TestMatchesExpiryRange:
     def test_no_range_returns_true(self):
 
-        assert main._matches_expiry_range("2025-06-15", None, None) is True
+        assert page_api_keys._matches_expiry_range("2025-06-15", None, None) is True
 
     def test_no_expiry_with_range_returns_false(self):
         from datetime import date
 
-        assert main._matches_expiry_range(None, date(2025, 1, 1), None) is False
-        assert main._matches_expiry_range("", None, date(2025, 12, 31)) is False
+        assert (
+            page_api_keys._matches_expiry_range(None, date(2025, 1, 1), None) is False
+        )
+        assert (
+            page_api_keys._matches_expiry_range("", None, date(2025, 12, 31)) is False
+        )
 
     def test_before_start_returns_false(self):
         from datetime import date
 
-        assert main._matches_expiry_range("2025-01-01", date(2025, 6, 1), None) is False
+        assert (
+            page_api_keys._matches_expiry_range("2025-01-01", date(2025, 6, 1), None)
+            is False
+        )
 
     def test_after_end_returns_false(self):
         from datetime import date
 
-        assert main._matches_expiry_range("2025-12-31", None, date(2025, 6, 1)) is False
+        assert (
+            page_api_keys._matches_expiry_range("2025-12-31", None, date(2025, 6, 1))
+            is False
+        )
 
     def test_within_range_returns_true(self):
         from datetime import date
 
         assert (
-            main._matches_expiry_range(
+            page_api_keys._matches_expiry_range(
                 "2025-06-15", date(2025, 1, 1), date(2025, 12, 31)
             )
             is True
@@ -1115,28 +1140,30 @@ class TestExtractApiKeySecret:
     def test_non_dict_raises(self):
 
         with pytest.raises(ValueError, match="Unexpected API response"):
-            main._extract_api_key_secret("not a dict")
+            page_api_keys._extract_api_key_secret("not a dict")
 
     def test_missing_data_raises(self):
 
         with pytest.raises(ValueError, match="API key secret missing"):
-            main._extract_api_key_secret({})
+            page_api_keys._extract_api_key_secret({})
 
     def test_empty_data_raises(self):
 
         with pytest.raises(ValueError, match="API key secret missing"):
-            main._extract_api_key_secret({"data": ""})
+            page_api_keys._extract_api_key_secret({"data": ""})
 
     def test_valid_data(self):
 
-        assert main._extract_api_key_secret({"data": "my-secret"}) == "my-secret"
+        assert (
+            page_api_keys._extract_api_key_secret({"data": "my-secret"}) == "my-secret"
+        )
 
 
 class TestCopyToClipboard:
     def test_calls_run_javascript(self):
 
         with (
-            patch("main.ui.run_javascript") as mock_js,
+            patch("app.ui.helpers.ui.run_javascript") as mock_js,
             patch("app.ui.state.safe_notify"),
         ):
             helpers.copy_to_clipboard("hello")
@@ -1146,7 +1173,7 @@ class TestCopyToClipboard:
     def test_none_value(self):
 
         with (
-            patch("main.ui.run_javascript") as mock_js,
+            patch("app.ui.helpers.ui.run_javascript") as mock_js,
             patch("app.ui.state.safe_notify"),
         ):
             helpers.copy_to_clipboard(None)
@@ -1595,126 +1622,12 @@ async def test_has_admin_auth_real_with_creds(
 # ===================================================================
 
 
-@contextmanager
-def mock_ui():
-    """Mock all NiceGUI UI components needed for page handlers."""
-    mock_obj = MagicMock()
-    mock_obj.__enter__ = Mock(return_value=mock_obj)
-    mock_obj.__exit__ = Mock(return_value=False)
-    mock_obj.classes = MagicMock(return_value=mock_obj)
-    mock_obj.props = MagicMock(return_value=mock_obj)
-    mock_obj.style = MagicMock(return_value=mock_obj)
-    mock_obj.on_click = MagicMock(return_value=mock_obj)
-    mock_obj.on_value_change = MagicMock(return_value=mock_obj)
-    mock_obj.set_options = MagicMock(return_value=mock_obj)
-    mock_obj.on = MagicMock(return_value=mock_obj)
-    mock_obj.add_slot = MagicMock(return_value=mock_obj)
-    mock_obj.refresh = MagicMock()
-    mock_obj.open = MagicMock()
-    mock_obj.close = MagicMock()
-    mock_obj.toggle = MagicMock()
-    mock_obj.clear = MagicMock()
-    mock_obj.set_content = MagicMock()
-    mock_obj.value = None
-    mock_obj.text = ""
-    mock_obj.visible = True
-    mock_obj.selection = []
-    mock_obj.on_select = MagicMock()
-
-    def _make_mock(*args, **kwargs):
-        new_mock = MagicMock()
-        new_mock.__enter__ = Mock(return_value=new_mock)
-        new_mock.__exit__ = Mock(return_value=False)
-        new_mock.classes = MagicMock(return_value=new_mock)
-        new_mock.props = MagicMock(return_value=new_mock)
-        new_mock.style = MagicMock(return_value=new_mock)
-        new_mock.on_click = MagicMock(return_value=new_mock)
-        new_mock.on_value_change = MagicMock(return_value=new_mock)
-        new_mock.set_options = MagicMock(return_value=new_mock)
-        new_mock.on = MagicMock(return_value=new_mock)
-        new_mock.add_slot = MagicMock(return_value=new_mock)
-        new_mock.refresh = MagicMock()
-        new_mock.open = MagicMock()
-        new_mock.close = MagicMock()
-        new_mock.toggle = MagicMock()
-        new_mock.clear = MagicMock()
-        new_mock.set_content = MagicMock()
-        new_mock.value = kwargs.get("value", None)
-        new_mock.text = ""
-        new_mock.visible = True
-        new_mock.selection = []
-        new_mock.on_select = MagicMock()
-        return new_mock
-
-    from contextlib import ExitStack
-
-    patches = [
-        patch(
-            "main.build_shell",
-            return_value=(MagicMock(), MagicMock(), MagicMock(), MagicMock()),
-        ),
-        patch("main.ensure_theme_preference", new_callable=AsyncMock),
-        patch("main.refresh_status_badge", new_callable=AsyncMock),
-        patch("main.refresh_if_needed", new_callable=AsyncMock),
-        patch("main.ui.column", side_effect=_make_mock),
-        patch("main.ui.card", side_effect=_make_mock),
-        patch("main.ui.row", side_effect=_make_mock),
-        patch("main.ui.label", side_effect=_make_mock),
-        patch("main.ui.button", side_effect=_make_mock),
-        patch("main.ui.select", side_effect=_make_mock),
-        patch("main.ui.input", side_effect=_make_mock),
-        patch("main.ui.table", side_effect=_make_mock),
-        patch("main.ui.textarea", side_effect=_make_mock),
-        patch("main.ui.checkbox", side_effect=_make_mock),
-        patch("main.ui.markdown", side_effect=_make_mock),
-        patch("main.ui.dialog", side_effect=_make_mock),
-        patch("main.ui.notify"),
-        patch("main.ui.dropdown_button", side_effect=_make_mock),
-        patch("main.ui.refreshable", lambda fn: fn),
-        patch("main.ui.run_javascript"),
-        patch("main.ui.link"),
-        patch("main.ui.separator"),
-        patch("main.ui.switch", side_effect=_make_mock),
-        patch("main.ui.expansion", side_effect=_make_mock),
-        patch("main.ui.badge", side_effect=_make_mock),
-        patch("main.ui.scroll_area", side_effect=_make_mock),
-        patch("main.ui.upload", side_effect=_make_mock),
-        patch("main.ui.linear_progress", side_effect=_make_mock),
-        patch("main.ui.toggle", side_effect=_make_mock),
-        patch("main.ui.code", side_effect=_make_mock),
-        patch("main.ui.page", lambda *a, **kw: lambda fn: fn),
-        patch("main.add_copyable_slots"),
-        patch("main.list_services", new_callable=AsyncMock, return_value=[]),
-        patch("main.list_templates", new_callable=AsyncMock, return_value=[]),
-        patch("main.list_api_keys", new_callable=AsyncMock, return_value=[]),
-        patch("main.list_users", new_callable=AsyncMock, return_value=[]),
-        patch("main.list_local_keys", new_callable=AsyncMock, return_value=[]),
-        patch("main.get_setting", new_callable=AsyncMock, return_value=None),
-        patch("main.get_secure_setting", new_callable=AsyncMock, return_value=None),
-        patch("main.resolve_local_key", new_callable=AsyncMock, return_value=None),
-        patch("main.handle_full_sync", new_callable=AsyncMock),
-        patch("main.handle_entity_sync", new_callable=AsyncMock),
-        patch("main.render_local_keys", new_callable=AsyncMock),
-    ]
-    with ExitStack() as stack:
-        for p in patches:
-            stack.enter_context(p)
-        yield mock_obj
-
-
 def _ui_patches(mod_path, _make_mock):
     """Build common patches for a page module."""
     import importlib
 
     module = importlib.import_module(mod_path)
     patches = [
-        patch(
-            f"{mod_path}.build_shell",
-            return_value=(MagicMock(), MagicMock(), MagicMock(), MagicMock()),
-        ),
-        patch(f"{mod_path}.ensure_theme_preference", new_callable=AsyncMock),
-        patch(f"{mod_path}.refresh_status_badge", new_callable=AsyncMock),
-        patch(f"{mod_path}.refresh_if_needed", new_callable=AsyncMock),
         patch(f"{mod_path}.ui.column", side_effect=_make_mock),
         patch(f"{mod_path}.ui.card", side_effect=_make_mock),
         patch(f"{mod_path}.ui.row", side_effect=_make_mock),
@@ -1745,6 +1658,19 @@ def _ui_patches(mod_path, _make_mock):
     ]
     # Optional patches — only add if the page module imports the name
     optional = {
+        "build_shell": patch(
+            f"{mod_path}.build_shell",
+            return_value=(MagicMock(), MagicMock(), MagicMock(), MagicMock()),
+        ),
+        "ensure_theme_preference": patch(
+            f"{mod_path}.ensure_theme_preference", new_callable=AsyncMock
+        ),
+        "refresh_status_badge": patch(
+            f"{mod_path}.refresh_status_badge", new_callable=AsyncMock
+        ),
+        "refresh_if_needed": patch(
+            f"{mod_path}.refresh_if_needed", new_callable=AsyncMock
+        ),
         "add_copyable_slots": patch(f"{mod_path}.add_copyable_slots"),
         "handle_full_sync": patch(
             f"{mod_path}.handle_full_sync", new_callable=AsyncMock
@@ -1783,6 +1709,41 @@ def _ui_patches(mod_path, _make_mock):
             new_callable=AsyncMock,
             return_value=[],
         ),
+        "list_local_keys": patch(
+            f"{mod_path}.list_local_keys",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        "get_setting": patch(
+            f"{mod_path}.get_setting",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        "get_secure_setting": patch(
+            f"{mod_path}.get_secure_setting",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        "set_setting": patch(f"{mod_path}.set_setting", new_callable=AsyncMock),
+        "set_secure_setting": patch(
+            f"{mod_path}.set_secure_setting", new_callable=AsyncMock
+        ),
+        "resolve_local_key": patch(
+            f"{mod_path}.resolve_local_key",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        "mark_api_key_revoked": patch(
+            f"{mod_path}.mark_api_key_revoked", new_callable=AsyncMock
+        ),
+        "update_api_key_expiry": patch(
+            f"{mod_path}.update_api_key_expiry", new_callable=AsyncMock
+        ),
+        "add_local_key": patch(f"{mod_path}.add_local_key", new_callable=AsyncMock),
+        "render_local_keys": patch(
+            f"{mod_path}.render_local_keys", new_callable=AsyncMock
+        ),
+        "make_sortable": patch(f"{mod_path}.make_sortable"),
     }
     for attr, p in optional.items():
         if hasattr(module, attr):
@@ -1913,8 +1874,8 @@ async def test_api_keys_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.api_keys_page()
+        with mock_page_ui("app.ui.pages.api_keys"):
+            await page_api_keys.api_keys_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1928,8 +1889,8 @@ async def test_api_key_emails_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.api_key_emails_page()
+        with mock_page_ui("app.ui.pages.api_key_service"):
+            await page_api_key_service.api_key_emails_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -2018,8 +1979,8 @@ async def test_send_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.send_page()
+        with mock_page_ui("app.ui.pages.send"):
+            await page_send.send_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -2033,8 +1994,8 @@ async def test_bulk_send_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.bulk_send_page()
+        with mock_page_ui("app.ui.pages.bulk_send"):
+            await page_bulk_send.bulk_send_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -2050,8 +2011,8 @@ async def test_settings_page(initialized_db, mock_config):
     _st.state = SharedTestState(environment="development")
     _st.encryption = EncryptionManager(mock_config.master_key)
     try:
-        with mock_ui():
-            await main.settings_page()
+        with mock_page_ui("app.ui.pages.settings_page"):
+            await page_settings.settings_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -2074,19 +2035,24 @@ async def test_render_local_keys_func(initialized_db, mock_config):
 
     try:
         with (
-            patch("main.list_local_keys", new_callable=AsyncMock, return_value=[]),
-            patch("main.ui.table", return_value=mock_obj),
-            patch("main.add_copyable_slots"),
+            patch(
+                "app.ui.pages.settings_page.list_local_keys",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("app.ui.pages.settings_page.ui.table", return_value=mock_obj),
+            patch("app.ui.pages.settings_page.add_copyable_slots"),
         ):
-            await main.render_local_keys.func()
+            await page_settings.render_local_keys.func()
     finally:
         _st.config = original
 
 
 def test_ui_run_guard():
-    """Test that ui.run is called when __name__ == '__main__'."""
+    """Test that main module imports correctly and pages are registered."""
 
-    assert hasattr(main, "api_keys_page")
+    # After Phase 3B, pages live in app.ui.pages.*; main.py is just the entry point.
+    assert hasattr(page_api_keys, "api_keys_page")
 
 
 # ===================================================================
