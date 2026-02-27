@@ -81,7 +81,7 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 - **`app/models.py`** — SQLAlchemy ORM models. Most entities use composite keys of `(id, environment)` to store data from multiple environments in one database.
 - **`app/repository.py`** — Async CRUD functions using `get_session()` context manager. Includes bulk `upsert_*` functions for sync and `list_service_ids()`. Archived records (names starting with `_archive`) are filtered out automatically.
 - **`app/db.py`** — Async SQLAlchemy engine setup with `aiosqlite`. Module-level globals `engine` and `SessionLocal` are initialized via `init_engine()`.
-- **`app/crypto.py`** — `EncryptionManager` uses Fernet encryption with PBKDF2-derived key from `MASTER_KEY` env var. Salt is stored in the `settings` table.
+- **`app/crypto.py`** — `EncryptionManager` uses Fernet encryption with PBKDF2-derived key from `MASTER_KEY` env var. Accepts a `SaltProvider` protocol for salt storage (decoupled from DB). `DbSaltProvider` in `repository.py` provides the DB-backed implementation.
 - **`app/config.py`** — Pydantic `AppConfig` loaded from environment variables via `python-dotenv`.
 
 ### Multi-environment design

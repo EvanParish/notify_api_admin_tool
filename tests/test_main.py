@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from app.api_client import MockNotificationAPI, HttpNotificationAPI
 from app.config import AppConfig
 from app.crypto import EncryptionManager
+from app.repository import DbSaltProvider
 from app.ui import state as _st
 from app.ui import helpers
 from app.ui import email_helpers
@@ -1933,7 +1934,9 @@ async def test_settings_page(initialized_db, mock_config):
     original_encryption = _st.encryption
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
-    _st.encryption = EncryptionManager(mock_config.master_key)
+    _st.encryption = EncryptionManager(
+        mock_config.master_key, salt_provider=DbSaltProvider()
+    )
     try:
         with mock_page_ui("app.ui.pages.settings_page"):
             await page_settings.settings_page()

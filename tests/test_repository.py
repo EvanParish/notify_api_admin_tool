@@ -20,6 +20,7 @@ from app.repository import (
     mark_api_key_revoked,
 )
 from app.crypto import EncryptionManager
+from app.repository import DbSaltProvider
 from app.models import (
     Service,
     Template,
@@ -68,14 +69,14 @@ async def test_set_setting_update_existing(initialized_db):
 
 @pytest.mark.asyncio
 async def test_get_secure_setting_not_exists(initialized_db):
-    encryption = EncryptionManager("test-key")
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
     result = await get_secure_setting("nonexistent", encryption)
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_set_and_get_secure_setting(initialized_db):
-    encryption = EncryptionManager("test-master-key")
+    encryption = EncryptionManager("test-master-key", salt_provider=DbSaltProvider())
 
     await set_secure_setting("secret_key", "secret_value", encryption)
     result = await get_secure_setting("secret_key", encryption)
@@ -316,7 +317,7 @@ async def test_list_local_keys_by_service(initialized_db):
 
 @pytest.mark.asyncio
 async def test_add_local_key(initialized_db):
-    encryption = EncryptionManager("test-key")
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
 
     await add_local_key(
         encryption=encryption,
@@ -336,7 +337,7 @@ async def test_add_local_key(initialized_db):
 
 @pytest.mark.asyncio
 async def test_resolve_local_key(initialized_db):
-    encryption = EncryptionManager("test-key")
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
 
     await add_local_key(
         encryption=encryption,
@@ -435,7 +436,7 @@ async def test_mark_api_key_revoked(initialized_db):
 
 @pytest.mark.asyncio
 async def test_multiple_operations(initialized_db):
-    encryption = EncryptionManager("master-key")
+    encryption = EncryptionManager("master-key", salt_provider=DbSaltProvider())
 
     # Add services
     async with get_session() as session:

@@ -6,6 +6,7 @@ import pytest
 
 from app.config import AppConfig
 from app.crypto import EncryptionManager
+from app.repository import DbSaltProvider
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -77,4 +78,4 @@ def mock_config():
 @pytest.fixture
 def mock_encryption(mock_config):
     """Create a mock encryption manager."""
-    return EncryptionManager(mock_config.master_key)
+    return EncryptionManager(mock_config.master_key, salt_provider=DbSaltProvider())

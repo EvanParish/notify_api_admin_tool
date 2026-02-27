@@ -19,7 +19,7 @@ from app.api_client import HttpNotificationAPI, MockNotificationAPI, Notificatio
 from app.config import AppConfig, load_config
 from app.crypto import EncryptionManager
 from app.db import create_all, dispose_engine, init_engine
-from app.repository import get_secure_setting, get_setting, set_setting
+from app.repository import DbSaltProvider, get_secure_setting, get_setting, set_setting
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,9 @@ class AppState:
 # Module-level globals (canonical location)
 # ---------------------------------------------------------------------------
 config: AppConfig = load_config()
-encryption: EncryptionManager = EncryptionManager(config.master_key)
+encryption: EncryptionManager = EncryptionManager(
+    config.master_key, salt_provider=DbSaltProvider()
+)
 state: AppState = AppState(environment=next(iter(config.api_hosts.keys()), "dev"))
 service_search_query: str = ""
 _active_api_clients: list[NotificationAPI] = []

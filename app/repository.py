@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from typing import Dict, List, Optional
 
@@ -19,6 +20,17 @@ from .models import (
     Template,
     User,
 )
+
+
+class DbSaltProvider:
+    """SaltProvider implementation backed by the settings table."""
+
+    async def get_salt(self) -> Optional[bytes]:
+        value = await get_setting("encryption_salt")
+        return base64.urlsafe_b64decode(value) if value else None
+
+    async def store_salt(self, salt: bytes) -> None:
+        await set_setting("encryption_salt", base64.urlsafe_b64encode(salt).decode())
 
 
 def _is_archived_value(value: Optional[str]) -> bool:

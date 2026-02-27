@@ -1,10 +1,15 @@
 import pytest
 from app.crypto import EncryptionManager
+from app.repository import DbSaltProvider
+
+
+def _mgr(key: str, **kw) -> EncryptionManager:
+    return EncryptionManager(key, salt_provider=DbSaltProvider(), **kw)
 
 
 @pytest.mark.asyncio
 async def test_encryption_manager_encrypt_decrypt(initialized_db):
-    manager = EncryptionManager("test-master-key-123")
+    manager = _mgr("test-master-key-123")
 
     plaintext = "secret-api-key-12345"
     encrypted = await manager.encrypt(plaintext)
@@ -18,7 +23,7 @@ async def test_encryption_manager_encrypt_decrypt(initialized_db):
 
 @pytest.mark.asyncio
 async def test_encryption_manager_multiple_encryptions_differ(initialized_db):
-    manager = EncryptionManager("test-master-key-123")
+    manager = _mgr("test-master-key-123")
 
     plaintext = "same-secret"
     encrypted1 = await manager.encrypt(plaintext)
@@ -34,8 +39,8 @@ async def test_encryption_manager_multiple_encryptions_differ(initialized_db):
 
 @pytest.mark.asyncio
 async def test_encryption_manager_wrong_master_key(initialized_db):
-    manager1 = EncryptionManager("master-key-1")
-    manager2 = EncryptionManager("master-key-2")
+    manager1 = _mgr("master-key-1")
+    manager2 = _mgr("master-key-2")
 
     plaintext = "secret"
     encrypted = await manager1.encrypt(plaintext)
@@ -47,7 +52,7 @@ async def test_encryption_manager_wrong_master_key(initialized_db):
 
 @pytest.mark.asyncio
 async def test_encryption_manager_invalid_token(initialized_db):
-    manager = EncryptionManager("test-master-key")
+    manager = _mgr("test-master-key")
 
     with pytest.raises(ValueError, match="Failed to decrypt"):
         await manager.decrypt("not-a-valid-token")
@@ -55,7 +60,7 @@ async def test_encryption_manager_invalid_token(initialized_db):
 
 @pytest.mark.asyncio
 async def test_encryption_manager_empty_string(initialized_db):
-    manager = EncryptionManager("test-master-key")
+    manager = _mgr("test-master-key")
 
     encrypted = await manager.encrypt("")
     decrypted = await manager.decrypt(encrypted)
@@ -64,7 +69,7 @@ async def test_encryption_manager_empty_string(initialized_db):
 
 @pytest.mark.asyncio
 async def test_encryption_manager_unicode(initialized_db):
-    manager = EncryptionManager("test-master-key")
+    manager = _mgr("test-master-key")
 
     plaintext = "Hello 世界 🌍"
     encrypted = await manager.encrypt(plaintext)
@@ -74,7 +79,7 @@ async def test_encryption_manager_unicode(initialized_db):
 
 @pytest.mark.asyncio
 async def test_encryption_manager_reuses_fernet(initialized_db):
-    manager = EncryptionManager("test-master-key")
+    manager = _mgr("test-master-key")
 
     # First encryption builds the Fernet instance
     await manager.encrypt("test1")
@@ -90,20 +95,28 @@ async def test_encryption_manager_reuses_fernet(initialized_db):
 @pytest.mark.asyncio
 async def test_encryption_manager_salt_persistence(initialized_db):
     # First manager creates salt
-    manager1 = EncryptionManager("master-key", iterations=100000)
+    manager1 = _mgr("master-key", iterations=100000)
     encrypted = await manager1.encrypt("test-value")
 
     # Second manager with same master key should decrypt successfully
-    manager2 = EncryptionManager("master-key", iterations=100000)
+    manager2 = _mgr("master-key", iterations=100000)
     decrypted = await manager2.decrypt(encrypted)
     assert decrypted == "test-value"
 
 
 @pytest.mark.asyncio
 async def test_encryption_manager_custom_iterations(initialized_db):
-    manager = EncryptionManager("test-key", iterations=50000)
+    manager = _mgr("test-key", iterations=50000)
 
     plaintext = "test-secret"
     encrypted = await manager.encrypt(plaintext)
     decrypted = await manager.decrypt(encrypted)
     assert decrypted == plaintext
+
+
+@pytest.mark.asyncio
+async def test_encryption_manager_no_salt_provider(initialized_db):
+    manager = EncryptionManager("test-key")
+
+    with pytest.raises(RuntimeError, match="No SaltProvider configured"):
+        await manager.encrypt("test")

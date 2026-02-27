@@ -1,38 +1,41 @@
 import base64
 import os
-from typing import Optional
+from typing import Optional, Protocol, runtime_checkable
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from sqlalchemy import select
 
-from .db import get_session
-from .models import Setting
+
+@runtime_checkable
+class SaltProvider(Protocol):
+    """Async interface for retrieving/storing the encryption salt."""
+
+    async def get_salt(self) -> Optional[bytes]: ...
+    async def store_salt(self, salt: bytes) -> None: ...
 
 
 class EncryptionManager:
-    def __init__(self, master_key: str, iterations: int = 390000) -> None:
+    def __init__(
+        self,
+        master_key: str,
+        iterations: int = 390000,
+        salt_provider: Optional[SaltProvider] = None,
+    ) -> None:
         self.master_key = master_key.encode()
         self.iterations = iterations
+        self._salt_provider = salt_provider
         self._fernet: Optional[Fernet] = None
 
     async def _get_or_create_salt(self) -> bytes:
-        async with get_session() as session:
-            result = await session.execute(
-                select(Setting).where(Setting.key == "encryption_salt")
-            )
-            setting: Setting | None = result.scalar_one_or_none()
-            if setting:
-                return base64.urlsafe_b64decode(setting.value)
-
-            salt = os.urandom(16)
-            setting = Setting(
-                key="encryption_salt", value=base64.urlsafe_b64encode(salt).decode()
-            )
-            session.add(setting)
-            await session.commit()
-            return salt
+        if self._salt_provider is None:
+            raise RuntimeError("No SaltProvider configured for EncryptionManager")
+        existing = await self._salt_provider.get_salt()
+        if existing is not None:
+            return existing
+        salt = os.urandom(16)
+        await self._salt_provider.store_salt(salt)
+        return salt
 
     async def _build_fernet(self) -> Fernet:
         if self._fernet:
