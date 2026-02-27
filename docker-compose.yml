@@ -4,13 +4,7 @@ services:
     container_name: admin-app
     env_file:
       - .env
-    environment:
-      - DATABASE_PATH=/data/app.db
     ports:
       - "8080:8080"
     volumes:
-      - db-data:/data
-
-volumes:
-  db-data:
-    name: admin-db-data
+      - ./data:/app/data
