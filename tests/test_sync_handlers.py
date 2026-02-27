@@ -8,6 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from app.ui import state as _st
+from app.ui.sync_handlers import handle_entity_sync
+
 
 @dataclass
 class _SyncTestState:
@@ -29,70 +32,62 @@ def _make_mock_badges():
 @pytest.mark.asyncio
 async def test_handle_entity_sync_success(initialized_db, mock_config):
     """Calls the specified SyncManager method and returns True."""
-    import main
-    from app.ui.sync_handlers import handle_entity_sync
 
-    original_config, original_state = main.config, main.state
-    main.config = mock_config
-    main.config.use_mock_api = True
-    main.state = _SyncTestState()
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
     badge, label = _make_mock_badges()
 
     try:
-        with patch.object(main, "refresh_status_badge", new_callable=AsyncMock):
+        with patch.object(_st, "refresh_status_badge", new_callable=AsyncMock):
             result = await handle_entity_sync(
                 ["sync_services"], badge, label, "services"
             )
             assert result is True
             assert label.text == "Sync complete"
     finally:
-        main.config, main.state = original_config, original_state
+        _st.config, _st.state = original_config, original_state
 
 
 @pytest.mark.asyncio
 async def test_handle_entity_sync_disabled(initialized_db, mock_config):
     """Returns False when sync is disabled for the environment."""
-    import main
-    from app.ui.sync_handlers import handle_entity_sync
 
-    original_config, original_state = main.config, main.state
-    main.config = mock_config
-    main.state = _SyncTestState(environment="staging")
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.state = _SyncTestState(environment="staging")
     badge, label = _make_mock_badges()
 
     try:
-        with patch("main.ui.notify"):
+        with patch("app.ui.state.ui.notify"):
             result = await handle_entity_sync(
                 ["sync_services"], badge, label, "services"
             )
             assert result is False
             assert "Sync disabled" in label.text
     finally:
-        main.config, main.state = original_config, original_state
+        _st.config, _st.state = original_config, original_state
 
 
 @pytest.mark.asyncio
 async def test_handle_entity_sync_auth_missing(initialized_db, mock_config):
     """Returns False and skips build_api_client when auth is missing."""
-    import main
-    from app.ui.sync_handlers import handle_entity_sync
 
-    original_config, original_state = main.config, main.state
-    main.config = mock_config
-    main.state = _SyncTestState()
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.state = _SyncTestState()
     badge, label = _make_mock_badges()
 
     try:
         with (
             patch.object(
-                main,
+                _st,
                 "ensure_admin_auth",
                 new_callable=AsyncMock,
                 return_value=False,
             ),
-            patch.object(
-                main, "build_api_client", new_callable=AsyncMock
-            ) as mock_build,
+            patch.object(_st, "build_api_client", new_callable=AsyncMock) as mock_build,
         ):
             result = await handle_entity_sync(
                 ["sync_services"], badge, label, "services"
@@ -100,19 +95,17 @@ async def test_handle_entity_sync_auth_missing(initialized_db, mock_config):
             assert result is False
             mock_build.assert_not_called()
     finally:
-        main.config, main.state = original_config, original_state
+        _st.config, _st.state = original_config, original_state
 
 
 @pytest.mark.asyncio
 async def test_handle_entity_sync_unauthorized(initialized_db, mock_config):
     """Returns False and calls handle_unauthorized on 401."""
-    import main
-    from app.ui.sync_handlers import handle_entity_sync
 
-    original_config, original_state = main.config, main.state
-    main.config = mock_config
-    main.config.use_mock_api = True
-    main.state = _SyncTestState()
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
     badge, label = _make_mock_badges()
 
     mock_response = MagicMock()
@@ -124,8 +117,8 @@ async def test_handle_entity_sync_unauthorized(initialized_db, mock_config):
 
     try:
         with (
-            patch.object(main, "build_api_client", new_callable=AsyncMock),
-            patch("main.safe_notify"),
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch("app.ui.state.safe_notify"),
             patch(
                 "app.ui.sync_handlers.SyncManager",
                 return_value=MagicMock(sync_services=AsyncMock(side_effect=exc)),
@@ -137,19 +130,17 @@ async def test_handle_entity_sync_unauthorized(initialized_db, mock_config):
             assert result is False
             assert "Unauthorized" in label.text
     finally:
-        main.config, main.state = original_config, original_state
+        _st.config, _st.state = original_config, original_state
 
 
 @pytest.mark.asyncio
 async def test_handle_entity_sync_reraises_non_401(initialized_db, mock_config):
     """Re-raises HTTPStatusError for non-401 status codes."""
-    import main
-    from app.ui.sync_handlers import handle_entity_sync
 
-    original_config, original_state = main.config, main.state
-    main.config = mock_config
-    main.config.use_mock_api = True
-    main.state = _SyncTestState()
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
     badge, label = _make_mock_badges()
 
     mock_response = MagicMock()
@@ -160,7 +151,7 @@ async def test_handle_entity_sync_reraises_non_401(initialized_db, mock_config):
 
     try:
         with (
-            patch.object(main, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
             patch(
                 "app.ui.sync_handlers.SyncManager",
                 return_value=MagicMock(sync_users=AsyncMock(side_effect=exc)),
@@ -169,19 +160,17 @@ async def test_handle_entity_sync_reraises_non_401(initialized_db, mock_config):
             with pytest.raises(httpx.HTTPStatusError):
                 await handle_entity_sync(["sync_users"], badge, label, "users")
     finally:
-        main.config, main.state = original_config, original_state
+        _st.config, _st.state = original_config, original_state
 
 
 @pytest.mark.asyncio
 async def test_handle_entity_sync_with_pre_sync(initialized_db, mock_config):
     """Calls pre_sync methods before main sync methods."""
-    import main
-    from app.ui.sync_handlers import handle_entity_sync
 
-    original_config, original_state = main.config, main.state
-    main.config = mock_config
-    main.config.use_mock_api = True
-    main.state = _SyncTestState()
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
     badge, label = _make_mock_badges()
 
     call_order = []
@@ -195,8 +184,8 @@ async def test_handle_entity_sync_with_pre_sync(initialized_db, mock_config):
 
     try:
         with (
-            patch.object(main, "build_api_client", new_callable=AsyncMock),
-            patch.object(main, "refresh_status_badge", new_callable=AsyncMock),
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
             patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
         ):
             result = await handle_entity_sync(
@@ -209,19 +198,17 @@ async def test_handle_entity_sync_with_pre_sync(initialized_db, mock_config):
             assert result is True
             assert call_order == ["sync_services", "sync_templates"]
     finally:
-        main.config, main.state = original_config, original_state
+        _st.config, _st.state = original_config, original_state
 
 
 @pytest.mark.asyncio
 async def test_handle_entity_sync_progress_callback(initialized_db, mock_config):
     """Progress callback updates state.sync_message and sync_label.text."""
-    import main
-    from app.ui.sync_handlers import handle_entity_sync
 
-    original_config, original_state = main.config, main.state
-    main.config = mock_config
-    main.config.use_mock_api = True
-    main.state = _SyncTestState()
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
     badge, label = _make_mock_badges()
 
     captured_messages = []
@@ -229,18 +216,18 @@ async def test_handle_entity_sync_progress_callback(initialized_db, mock_config)
     async def fake_sync(progress=None):
         if progress:
             await progress("Syncing item 1/3")
-            captured_messages.append(main.state.sync_message)
+            captured_messages.append(_st.state.sync_message)
 
     mock_manager = MagicMock()
     mock_manager.sync_users = fake_sync
 
     try:
         with (
-            patch.object(main, "build_api_client", new_callable=AsyncMock),
-            patch.object(main, "refresh_status_badge", new_callable=AsyncMock),
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
             patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
         ):
             await handle_entity_sync(["sync_users"], badge, label, "users")
             assert "Syncing item 1/3" in captured_messages
     finally:
-        main.config, main.state = original_config, original_state
+        _st.config, _st.state = original_config, original_state

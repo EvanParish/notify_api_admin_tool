@@ -1,26 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-import gzip
-import inspect
 import json
 import logging
 import os
 import re
 import sys
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
-from nicegui import app, ui
-from nicegui.client import Client
+from nicegui import ui
 from nicegui.elements.input import Input
 
-from app.api_client import HttpNotificationAPI, MockNotificationAPI, NotificationAPI
-from app.config import AppConfig, load_config
-from app.crypto import EncryptionManager
-from app.db import create_all, init_engine, dispose_engine
 from app.repository import (
     add_local_key,
     get_secure_setting,
@@ -40,69 +32,44 @@ from app.repository import (
     set_setting,
     update_api_key_expiry,
 )
+from app.ui import state as _st
+from app.ui.email_helpers import (
+    UUID_SECRET_TYPE,
+    _build_key_email,
+    _normalize_email_env,
+    _select_latest_key,
+)
+from app.ui.helpers import (
+    add_copyable_slots,
+    copy_to_clipboard,
+    find_missing_personalisation,
+    format_environment,
+    format_service_label,
+    make_sortable,
+    metric_card,
+    parse_recipients,
+    refresh_if_needed,
+    truncate_text,
+)
+from app.ui.shell import (
+    build_shell,
+    ensure_theme_preference,
+)
+from app.ui.state import (
+    build_api_client,
+    ensure_admin_auth,
+    get_view_environment,
+    handle_unauthorized,
+    refresh_status_badge,
+    safe_notify,
+)
 from app.ui.sync_handlers import handle_entity_sync
 from app.utils import extract_placeholders, validate_recipient
 
 # Ensure `import main` resolves to this module even when run as __main__.
-# app/ui/sync_handlers.py uses a late `import main` to avoid circular imports.
 sys.modules.setdefault("main", sys.modules[__name__])
 
 logger = logging.getLogger(__name__)
-_original_client_delete = Client.delete
-
-_active_api_clients: list[NotificationAPI] = []
-
-
-# NiceGUI adds GZipMiddleware which can raise during cleanup when a client
-# disconnects before the compressed response is fully flushed.  The error is
-# harmless so we silence it instead of printing a traceback to stderr.
-_original_unraisablehook = sys.unraisablehook
-
-
-def _suppress_gzip_close_error(unraisable: sys.UnraisableHookArgs) -> None:
-    if (
-        isinstance(unraisable.exc_value, ValueError)
-        and "I/O operation on closed file" in str(unraisable.exc_value)
-        and isinstance(unraisable.object, gzip.GzipFile)
-    ):
-        return
-    _original_unraisablehook(unraisable)
-
-
-sys.unraisablehook = _suppress_gzip_close_error
-
-
-def _safe_client_delete(self) -> None:
-    try:
-        _original_client_delete(self)
-    except KeyError:
-        logger.warning("NiceGUI client already deleted: %s", self.id)
-        self._deleted = True
-
-
-Client.delete = _safe_client_delete
-
-
-@dataclass
-class AppState:
-    environment: str
-    view_environment: str = "all"
-    api_status: str = "unknown"
-    sync_message: str = ""
-    dev_only_mode: bool = True
-    enabled_sync_environments: set = None
-
-    def __post_init__(self):
-        if self.enabled_sync_environments is None:
-            self.enabled_sync_environments = {"dev"}
-        if not self.view_environment:
-            self.view_environment = "all"
-
-
-config: AppConfig = load_config()
-encryption = EncryptionManager(config.master_key)
-state = AppState(environment=next(iter(config.api_hosts.keys()), "dev"))
-service_search_query = ""
 
 ui.add_head_html(
     """
@@ -161,71 +128,6 @@ ui.add_head_html(
         """
 )
 
-# Only initialize database if not in test mode
-# Tests will call init_engine with their own temporary database
-if not os.getenv("PYTEST_CURRENT_TEST"):
-    init_engine(config.database_path)  # pragma: no cover
-
-
-@app.on_startup
-async def startup() -> None:
-    await create_all()
-    await ensure_default_hosts()
-
-
-@app.on_shutdown
-async def shutdown() -> None:
-    for c in _active_api_clients:
-        await c.aclose()
-    _active_api_clients.clear()
-    await dispose_engine()
-
-
-async def ensure_default_hosts() -> None:
-    for env, url in config.api_hosts.items():
-        existing = await get_setting(f"base_url_{env}")
-        if not existing:
-            await set_setting(f"base_url_{env}", url)
-
-
-async def build_api_client(env: str) -> NotificationAPI:
-    if config.use_mock_api:
-        return MockNotificationAPI()
-    base_url = await get_setting(f"base_url_{env}") or config.api_hosts.get(env)
-    if not base_url:
-        raise RuntimeError(f"Base URL missing for environment {env}")
-    basic_user = await get_secure_setting(f"basic_username_{env}", encryption)
-    basic_pass = await get_secure_setting(f"basic_password_{env}", encryption)
-    client = HttpNotificationAPI(
-        base_url=base_url, basic_username=basic_user, basic_password=basic_pass
-    )
-    _active_api_clients.append(client)
-    return client
-
-
-async def refresh_status_badge(badge) -> None:
-    if not await has_admin_auth(state.environment):
-        state.api_status = "auth missing"
-        badge.text = "API Status: Auth Missing"
-        badge.props("color=pink")
-        return
-    api = await build_api_client(state.environment)
-    ok = await api.healthcheck()
-    state.api_status = "online" if ok else "offline"
-    badge.text = f"API Status: {state.api_status.title()}"
-    badge.props(f"color={'green' if ok else 'red'}")
-
-
-async def ensure_sync_enabled(sync_label) -> bool:
-    if state.environment not in state.enabled_sync_environments:
-        sync_label.text = f"Sync disabled for {state.environment}"
-        ui.notify(
-            f"Syncing is not enabled for {state.environment} environment",
-            color="warning",
-        )
-        return False
-    return True
-
 
 async def handle_full_sync(status_badge, sync_label) -> None:
     if await handle_entity_sync(["sync_all"], status_badge, sync_label, "all data"):
@@ -236,119 +138,48 @@ async def refresh_tables() -> None:
     await refresh_if_needed(services_table)
 
 
-def set_theme_preference(is_dark: bool) -> None:
-    app.storage.user["theme"] = "dark" if is_dark else "light"
+def _parse_filter_date(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value.split("T", 1)[0])
+    except ValueError:
+        return None
 
 
-def toggle_theme(dark_mode) -> None:
-    dark_mode.toggle()
-    set_theme_preference(dark_mode.value)
+def _matches_expiry_range(
+    expiry_value: Optional[str], start_date: Optional[date], end_date: Optional[date]
+) -> bool:
+    if not start_date and not end_date:
+        return True
+    expiry_date = _parse_filter_date(expiry_value)
+    if not expiry_date:
+        return False
+    if start_date and expiry_date < start_date:
+        return False
+    if end_date and expiry_date > end_date:
+        return False
+    return True
 
 
-async def ensure_theme_preference(dark_mode) -> None:
-    stored_theme = app.storage.user.get("theme")
-    if stored_theme not in {"light", "dark"}:
-        stored_theme = "light"
-        app.storage.user["theme"] = stored_theme
-    dark_mode.value = stored_theme == "dark"
+def _extract_api_key_secret(payload: Dict[str, Any]) -> str:
+    if not isinstance(payload, dict):
+        raise ValueError("Unexpected API response when creating API key")
+    data = payload.get("data")
+    if isinstance(data, str) and data.strip():
+        return data
+    raise ValueError("API key secret missing in response; expected data string")
 
 
-def build_shell(on_view_env_change=None) -> tuple:
-    drawer = (
-        ui.left_drawer(value=True)
-        .props("show-if-above bordered")
-        .classes("bg-slate-50 dark:bg-slate-900")
-    )
-    with drawer:
-        ui.link("Dashboard", "/")
-        ui.link("Send Notification", "/send")
-        ui.link("Bulk Send", "/bulk-send")
-        ui.link("Services", "/services")
-        ui.link("Templates", "/templates")
-        ui.link("API Keys", "/api-keys")
-        ui.link("Create Service API Key", "/api-key-service")
-        ui.link("Users", "/users")
-        ui.link("SMS Senders", "/sms-senders")
-        ui.link("Communication Items", "/communication-items")
-        ui.link("Inbound Numbers", "/inbound-numbers")
-        ui.link("Provider Details", "/provider-details")
-        ui.link("Settings", "/settings")
-
-    dark_mode = ui.dark_mode()
-    with ui.header().classes(
-        "items-center justify-between bg-gray-200 dark:bg-slate-800"
-    ):
-        with ui.row().classes("items-center gap-3"):
-            ui.button(icon="menu", on_click=drawer.toggle).props("flat round dense")
-            ui.label("Notification Admin Dashboard").classes(
-                "text-xl font-medium text-slate-900 dark:text-white"
-            )
-        with ui.row().classes("items-center gap-4"):
-            status_badge = ui.badge("API Status: Unknown", color="gray")
-            sync_label = ui.label("").classes("text-slate-900 dark:text-white")
-            env_options = {"all": "All"}
-            env_options.update({env: env.title() for env in config.api_hosts})
-            env_select = ui.select(
-                env_options, value=state.view_environment, label="View Env"
-            ).classes("w-36")
-            sync_env_select = ui.select(
-                {env: env.title() for env in config.api_hosts},
-                value=state.environment,
-                label="Sync Env",
-            ).classes("w-32")
-            refresh_button = ui.button("Refresh All Data")
-            theme_button = ui.button(icon="dark_mode").props("flat round dense")
-            theme_button.on_click(lambda: toggle_theme(dark_mode))
-            if on_view_env_change:
-
-                async def handle_env_change(e):  # pragma: no cover
-                    state.view_environment = e.value
-                    result = on_view_env_change()
-                    if inspect.isawaitable(result):
-                        await result
-
-                env_select.on_value_change(handle_env_change)  # pragma: no cover
-            else:
-                env_select.on_value_change(
-                    lambda e: setattr(state, "view_environment", e.value)
-                )
-
-            async def handle_sync_env_change(e):  # pragma: no cover
-                state.environment = e.value
-                await refresh_status_badge(status_badge)
-                ui.notify(f"Switched to {e.value} environment", color="info")
-
-            sync_env_select.on_value_change(handle_sync_env_change)
-
-            with ui.dropdown_button("Sync Settings", auto_close=False).props("flat"):
-                ui.label("Allowed sync environments").classes("text-sm mb-2")
-                env_checkboxes: Dict[str, ui.checkbox] = {}
-                for env in config.api_hosts:
-                    is_enabled = env in state.enabled_sync_environments
-                    checkbox = ui.checkbox(env.title(), value=is_enabled)
-                    env_checkboxes[env] = checkbox
-
-                    def make_handler(environment):  # pragma: no cover
-                        def handler(e):
-                            if e.value:
-                                state.enabled_sync_environments.add(environment)
-                                ui.notify(
-                                    f"Syncing enabled for {environment}",
-                                    color="positive",
-                                )
-                            else:
-                                state.enabled_sync_environments.discard(environment)
-                                ui.notify(
-                                    f"Syncing disabled for {environment}", color="info"
-                                )
-
-                        return handler
-
-                    checkbox.on_value_change(make_handler(env))
-    return status_badge, sync_label, refresh_button, dark_mode
+async def handle_service_search(value: Optional[str]) -> None:
+    _st.service_search_query = (value or "").strip().lower()
+    await refresh_if_needed(services_table)
 
 
-# Pages
+async def handle_service_search_event(e) -> None:
+    await handle_service_search(getattr(e, "value", None))
+
+
 @ui.page("/")
 async def dashboard_page() -> None:
     @ui.refreshable
@@ -399,258 +230,6 @@ async def dashboard_page() -> None:
     await render_dashboard()
 
 
-def metric_card(title: str, value: int) -> None:
-    with ui.card().classes("flex-1 min-w-[240px]"):
-        ui.label(title).classes("text-sm text-gray-600 dark:text-slate-300")
-        ui.label(str(value)).classes("text-3xl font-bold")
-
-
-async def refresh_if_needed(refreshable) -> None:
-    result = refreshable.refresh()
-    if inspect.isawaitable(result):
-        await result
-
-
-def make_sortable(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [{**column, "sortable": True} for column in columns]
-
-
-COPYABLE_FIELDS = ("id", "service_id", "name", "key_name", "sms_sender")
-COPYABLE_CELL_SLOT = """
-<q-td :props="props">
-  <span
-    class="cursor-pointer text-primary"
-    title="Click to copy"
-    @click="$parent.$emit('copy', props.value)"
-  >{{ props.value }}</span>
-</q-td>
-"""
-
-
-def copy_to_clipboard(text: Any) -> None:
-    value = "" if text is None else str(text)
-    ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(value)})")
-    safe_notify(f'Copied "{value}" to clipboard!', color="green")
-
-
-def get_copyable_fields(rows: List[Dict[str, Any]]) -> List[str]:
-    if not rows:
-        return []
-    return [field for field in COPYABLE_FIELDS if field in rows[0]]
-
-
-def add_copyable_slots(table, rows: List[Dict[str, Any]]) -> None:
-    copyable_fields = get_copyable_fields(rows)
-    for field in copyable_fields:
-        table.add_slot(f"body-cell-{field}", COPYABLE_CELL_SLOT)
-    if copyable_fields:
-        table.on("copy", lambda e: copy_to_clipboard(e.args))
-
-
-EMAIL_ENV_ALIASES = {"development": "dev", "production": "prod"}
-EMAIL_PUBLIC_ENDPOINTS = {
-    "local": "http://localhost:6011",
-    "dev": "https://dev-api.va.gov/vanotify",
-    "perf": "https://sandbox-api.va.gov/vanotify",
-    "staging": "https://staging-api.va.gov/vanotify",
-    "prod": "https://api.va.gov/vanotify",
-}
-EMAIL_PRIVATE_ENDPOINTS = {
-    "local": "http://priv-localhost:6011",
-    "dev": "https://dev.api.notifications.va.gov",
-    "perf": "https://perf.api.notifications.va.gov",
-    "staging": "https://staging.api.notifications.va.gov",
-    "prod": "https://api.notifications.va.gov",
-}
-UUID_SECRET_TYPE = "uuid"
-
-
-def _normalize_email_env(env: str) -> str:
-    return EMAIL_ENV_ALIASES.get(env, env)
-
-
-def _format_email_env_label(env: str) -> str:
-    normalized = _normalize_email_env(env)
-    return "Production" if normalized in {"prod", "production"} else normalized.title()
-
-
-def _resolve_email_endpoints(env: str) -> tuple[str, str]:
-    normalized = _normalize_email_env(env)
-    public_url = EMAIL_PUBLIC_ENDPOINTS.get(normalized)
-    private_url = EMAIL_PRIVATE_ENDPOINTS.get(normalized)
-    if public_url and private_url:
-        return public_url, private_url
-    fallback = config.api_hosts.get(env) or config.api_hosts.get(normalized)
-    if fallback:
-        fallback = fallback.rstrip("/")
-        return fallback, fallback
-    raise ValueError(f"No email endpoints configured for environment {env}")
-
-
-def _format_expiry_date(value: Optional[str]) -> str:
-    if not value:
-        return "unknown"
-    return value.split("T", 1)[0]
-
-
-def _select_latest_key(keys: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
-    matches = [key for key in keys if key.get("name") == name]
-    if not matches:
-        raise ValueError(f"No keys found with name: {name}")
-    if len(matches) == 1:
-        return matches[0]
-    return max(matches, key=lambda key: key.get("created_at") or "")
-
-
-def _build_key_email(
-    key_secret: str,
-    created_key: Dict[str, Any],
-    env: str,
-    service_name: str,
-    service_id: str,
-) -> str:
-    env_label = _format_email_env_label(env)
-    public_url, private_url = _resolve_email_endpoints(env)
-    expiry_date = _format_expiry_date(created_key.get("expiry_date"))
-    rotation_date = datetime.now(timezone.utc).date() + timedelta(days=30)
-    key_name = created_key.get("name") or ""
-    key_id = created_key.get("id") or ""
-    return (
-        "\nHello,\n\n"
-        "Please see the details below regarding your key(s) for the VA Notify API.\n\n"
-        "Action items:\n"
-        "1. Please confirm receipt of this email.\n"
-        "2. Please confirm when you have implemented the new key(s) in your application.\n\n"
-        f"{env_label} Details\n"
-        f"Key Secret: {key_secret}\n"
-        f"Expiration Date: {expiry_date}\n"
-        f"Key Name: {key_name}\n"
-        f"Key ID: {key_id}\n\n"
-        f"{env_label} Service\n"
-        f"Service Name: {service_name}\n"
-        f"Service ID: {service_id}\n\n"
-        f"{env_label} VA Notify Endpoints:\n"
-        "You would use this endpoint for email POST within the VA Network:\n"
-        f"{private_url}/v2/notifications/email\n"
-        "or if outside the VA Network:\n"
-        f"{public_url}/v2/notifications/email\n\n"
-        "If you need anything else, please don't hesitate to reach out - contact us via email "
-        "oitoctovanotify@va.gov or Slack #va-notify-public channel!\n\n"
-        "--- Only include for API key rotation notices ---\n"
-        f"Your current keys will expire in 30 days ({rotation_date}).\n"
-    )
-
-
-def format_environment(value: Optional[str]) -> str:
-    return value or "unknown"
-
-
-def format_service_label(service) -> str:
-    return f"{service.name} ({format_environment(service.environment)})"
-
-
-def truncate_text(value: Optional[str], limit: int = 50) -> Optional[str]:
-    if not value:
-        return value
-    return value[:limit] + "..." if len(value) > limit else value
-
-
-def get_view_environment() -> Optional[str]:
-    return (
-        None if state.view_environment in {"all", None, ""} else state.view_environment
-    )
-
-
-def safe_notify(message: str, color: str = "warning") -> None:
-    try:
-        ui.notify(message, color=color)
-    except RuntimeError:
-        logger.warning("UI notify skipped: %s", message)
-
-
-def find_missing_personalisation(personalisation: Dict[str, Any]) -> Optional[str]:
-    for key, value in personalisation.items():
-        if value is None or str(value).strip() == "":
-            return key
-    return None
-
-
-def parse_recipients(value: str) -> List[str]:
-    if not value:
-        return []
-    parts = re.split(r"[;,]", value)
-    return [part.strip() for part in parts if part.strip()]
-
-
-async def has_admin_auth(env: str) -> bool:
-    if config.use_mock_api or os.getenv("PYTEST_CURRENT_TEST"):
-        return True
-    basic_user = await get_secure_setting(f"basic_username_{env}", encryption)
-    basic_pass = await get_secure_setting(f"basic_password_{env}", encryption)
-    return bool(basic_user and basic_pass)
-
-
-async def ensure_admin_auth(env: str, sync_label) -> bool:
-    if await has_admin_auth(env):
-        return True
-    message = (
-        f"Missing admin auth for {env}. "
-        "Set credentials in Settings > Global Admin Auth."
-    )
-    sync_label.text = message
-    safe_notify(message, color="warning")
-    return False
-
-
-def handle_unauthorized(sync_label, env: str) -> None:
-    message = f"Unauthorized for {env}. Check Global Admin Auth settings."
-    sync_label.text = message
-    safe_notify(message, color="warning")
-
-
-def _parse_filter_date(value: Optional[str]) -> Optional[date]:
-    if not value:
-        return None
-    try:
-        return date.fromisoformat(value.split("T", 1)[0])
-    except ValueError:
-        return None
-
-
-def _matches_expiry_range(
-    expiry_value: Optional[str], start_date: Optional[date], end_date: Optional[date]
-) -> bool:
-    if not start_date and not end_date:
-        return True
-    expiry_date = _parse_filter_date(expiry_value)
-    if not expiry_date:
-        return False
-    if start_date and expiry_date < start_date:
-        return False
-    if end_date and expiry_date > end_date:
-        return False
-    return True
-
-
-def _extract_api_key_secret(payload: Dict[str, Any]) -> str:
-    if not isinstance(payload, dict):
-        raise ValueError("Unexpected API response when creating API key")
-    data = payload.get("data")
-    if isinstance(data, str) and data.strip():
-        return data
-    raise ValueError("API key secret missing in response; expected data string")
-
-
-async def handle_service_search(value: Optional[str]) -> None:
-    global service_search_query
-    service_search_query = (value or "").strip().lower()
-    await refresh_if_needed(services_table)
-
-
-async def handle_service_search_event(e) -> None:
-    await handle_service_search(getattr(e, "value", None))
-
-
 @ui.page("/services")
 async def services_page() -> None:
     status_badge, sync_label, refresh_button, dark_mode = build_shell(
@@ -685,12 +264,12 @@ async def services_page() -> None:
 @ui.refreshable
 async def services_table() -> None:
     rows = await list_services(get_view_environment())
-    if service_search_query:
+    if _st.service_search_query:
         rows = [
             row
             for row in rows
-            if service_search_query in (row.id or "").lower()
-            or service_search_query in (row.name or "").lower()
+            if _st.service_search_query in (row.id or "").lower()
+            or _st.service_search_query in (row.name or "").lower()
         ]
     table_rows: List[Dict[str, Any]] = [
         {
@@ -929,8 +508,8 @@ async def api_keys_page() -> None:
         with ui.dialog() as create_dialog, ui.card().classes("p-6 w-full max-w-3xl"):
             ui.label("Create Personal API Key").classes("text-md font-semibold")
             create_env = ui.select(
-                {env: env.title() for env in config.api_hosts},
-                value=state.environment,
+                {env: env.title() for env in _st.config.api_hosts},
+                value=_st.state.environment,
                 label="Environment",
             ).classes("w-full md:w-1/2")
             create_service = (
@@ -994,7 +573,7 @@ async def api_keys_page() -> None:
                 data.get("key_type") if isinstance(data, dict) else None
             ) or key_type
             await add_local_key(
-                encryption,
+                _st.encryption,
                 service_id,
                 environment,
                 stored_name,
@@ -1006,7 +585,7 @@ async def api_keys_page() -> None:
             create_dialog.close()
 
         async def handle_open_create_dialog() -> None:  # pragma: no cover
-            create_env.value = state.environment
+            create_env.value = _st.state.environment
             await refresh_create_service_options()
             create_dialog.open()
 
@@ -1309,9 +888,9 @@ async def api_key_emails_page() -> None:
         )
 
         with ui.card().classes("p-6 w-full"):
-            env_options = {env: env.title() for env in config.api_hosts}
+            env_options = {env: env.title() for env in _st.config.api_hosts}
             env_select = ui.select(
-                env_options, value=state.environment, label="Environment"
+                env_options, value=_st.state.environment, label="Environment"
             ).classes("w-full md:w-1/2")
             service_select = (
                 ui.select({}, label="Service", with_input=True)
@@ -2160,7 +1739,7 @@ async def send_page() -> None:
     async def refresh_service_options() -> None:  # pragma: no cover
         options = {
             svc.id: format_service_label(svc)
-            for svc in await list_services(state.environment)
+            for svc in await list_services(_st.state.environment)
         }
         service_select.set_options(options)
         if service_select.value not in options:
@@ -2180,14 +1759,14 @@ async def send_page() -> None:
 
     service_options = {
         svc.id: format_service_label(svc)
-        for svc in await list_services(state.environment)
+        for svc in await list_services(_st.state.environment)
     }
-    env_options = list(config.api_hosts.keys())
+    env_options = list(_st.config.api_hosts.keys())
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Send Notification").classes("text-lg font-semibold")
         env_select = ui.select(
-            env_options, value=state.environment, label="Environment"
+            env_options, value=_st.state.environment, label="Environment"
         ).classes("w-full md:w-1/2")
         service_select = (
             ui.select(service_options, label="Service", with_input=True)
@@ -2245,7 +1824,7 @@ async def send_page() -> None:
             selected_service = service_select.value
             t_type = type_toggle.value
             templates = await list_templates(
-                selected_service, t_type, environment=state.environment
+                selected_service, t_type, environment=_st.state.environment
             )
             options = {t.id: t.name for t in templates}
             template_select.set_options(options)
@@ -2257,7 +1836,9 @@ async def send_page() -> None:
             personalisation_controls.clear()
             selected_id = template_select.value
             templates = await list_templates(
-                service_select.value, type_toggle.value, environment=state.environment
+                service_select.value,
+                type_toggle.value,
+                environment=_st.state.environment,
             )
             tmpl = next((t for t in templates if t.id == selected_id), None)
             if not tmpl:
@@ -2282,7 +1863,9 @@ async def send_page() -> None:
                 preview_body.text = "Select a template to see the preview."
                 return
             templates = await list_templates(
-                service_select.value, type_toggle.value, environment=state.environment
+                service_select.value,
+                type_toggle.value,
+                environment=_st.state.environment,
             )
             tmpl = next((t for t in templates if t.id == selected_id), None)
             if not tmpl:
@@ -2333,9 +1916,9 @@ async def send_page() -> None:
                 return
 
             try:
-                api_key_secret = await resolve_local_key(encryption, selected_key)
+                api_key_secret = await resolve_local_key(_st.encryption, selected_key)
                 api = await build_api_client(selected_env)
-                semaphore = asyncio.Semaphore(config.max_concurrency)
+                semaphore = asyncio.Semaphore(_st.config.max_concurrency)
 
                 async def send_to_recipient(recipient: str, index: int):
                     async with semaphore:
@@ -2409,7 +1992,7 @@ async def send_page() -> None:
             await handle_template_change()
 
         async def handle_env_change(e) -> None:  # pragma: no cover
-            state.environment = e.value
+            _st.state.environment = e.value
             await refresh_status_badge(status_badge)
             await refresh_service_options()
 
@@ -2433,7 +2016,7 @@ async def bulk_send_page() -> None:
     async def refresh_service_options() -> None:  # pragma: no cover
         options = {
             svc.id: format_service_label(svc)
-            for svc in await list_services(state.environment)
+            for svc in await list_services(_st.state.environment)
         }
         service_select.set_options(options)
         if service_select.value not in options:
@@ -2453,14 +2036,14 @@ async def bulk_send_page() -> None:
 
     service_options = {
         svc.id: format_service_label(svc)
-        for svc in await list_services(state.environment)
+        for svc in await list_services(_st.state.environment)
     }
-    env_options = list(config.api_hosts.keys())
+    env_options = list(_st.config.api_hosts.keys())
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Bulk Send Notification").classes("text-lg font-semibold")
         env_select = ui.select(
-            env_options, value=state.environment, label="Environment"
+            env_options, value=_st.state.environment, label="Environment"
         ).classes("w-full md:w-1/2")
         service_select = (
             ui.select(service_options, label="Service", with_input=True)
@@ -2514,7 +2097,7 @@ async def bulk_send_page() -> None:
             selected_service = service_select.value
             t_type = type_toggle.value
             templates = await list_templates(
-                selected_service, t_type, environment=state.environment
+                selected_service, t_type, environment=_st.state.environment
             )
             options = {t.id: t.name for t in templates}
             template_select.set_options(options)
@@ -2526,7 +2109,9 @@ async def bulk_send_page() -> None:
             personalisation_controls.clear()
             selected_id = template_select.value
             templates = await list_templates(
-                service_select.value, type_toggle.value, environment=state.environment
+                service_select.value,
+                type_toggle.value,
+                environment=_st.state.environment,
             )
             tmpl = next((t for t in templates if t.id == selected_id), None)
             if not tmpl:
@@ -2551,7 +2136,9 @@ async def bulk_send_page() -> None:
                 preview_body.text = "Select a template to see the preview."
                 return
             templates = await list_templates(
-                service_select.value, type_toggle.value, environment=state.environment
+                service_select.value,
+                type_toggle.value,
+                environment=_st.state.environment,
             )
             tmpl = next((t for t in templates if t.id == selected_id), None)
             if not tmpl:
@@ -2609,9 +2196,9 @@ async def bulk_send_page() -> None:
             progress_label.text = "Sending 0%"
 
             try:
-                api_key_secret = await resolve_local_key(encryption, selected_key)
+                api_key_secret = await resolve_local_key(_st.encryption, selected_key)
                 api = await build_api_client(selected_env)
-                semaphore = asyncio.Semaphore(config.max_concurrency)
+                semaphore = asyncio.Semaphore(_st.config.max_concurrency)
 
                 async def send_for_user(user, index: int):
                     recipient = (
@@ -2752,7 +2339,7 @@ async def bulk_send_page() -> None:
             await handle_template_change()
 
         async def handle_env_change(e) -> None:  # pragma: no cover
-            state.environment = e.value
+            _st.state.environment = e.value
             await refresh_status_badge(status_badge)
             await refresh_service_options()
 
@@ -2808,10 +2395,10 @@ async def settings_page() -> None:
         with ui.card().classes("p-6 w-full"):
             ui.label("API Configuration").classes("text-md font-semibold")
             rows = []
-            for env in config.api_hosts:
+            for env in _st.config.api_hosts:
                 current_url = await get_setting(
                     f"base_url_{env}"
-                ) or config.api_hosts.get(env)
+                ) or _st.config.api_hosts.get(env)
                 rows.append((env, current_url))
             inputs: Dict[str, ui.input] = {}
             for env, url in rows:
@@ -2834,12 +2421,14 @@ async def settings_page() -> None:
                 "text-md font-semibold"
             )
             auth_inputs: Dict[str, Dict[str, ui.input]] = {}
-            for env in config.api_hosts:
+            for env in _st.config.api_hosts:
                 user_val = (
-                    await get_secure_setting(f"basic_username_{env}", encryption) or ""
+                    await get_secure_setting(f"basic_username_{env}", _st.encryption)
+                    or ""
                 )
                 pass_val = (
-                    await get_secure_setting(f"basic_password_{env}", encryption) or ""
+                    await get_secure_setting(f"basic_password_{env}", _st.encryption)
+                    or ""
                 )
                 auth_inputs[env] = {
                     "user": ui.input(label=f"{env.title()} Username", value=user_val)
@@ -2862,9 +2451,9 @@ async def settings_page() -> None:
 
         with ui.card().classes("p-6 w-full"):
             ui.label("Local API Keys").classes("text-md font-semibold")
-            env_options = {env: env.title() for env in config.api_hosts}
+            env_options = {env: env.title() for env in _st.config.api_hosts}
             key_environment = ui.select(
-                env_options, value=state.environment, label="Environment"
+                env_options, value=_st.state.environment, label="Environment"
             ).classes("w-full md:w-1/2")
             service_options = {
                 svc.id: format_service_label(svc)
@@ -2918,8 +2507,8 @@ async def save_admin_auth(auth_inputs: Dict[str, Dict[str, ui.input]]) -> None:
         user = pair["user"].value or ""
         password = pair["pass"].value or ""
         if user and password:
-            await set_secure_setting(f"basic_username_{env}", user, encryption)
-            await set_secure_setting(f"basic_password_{env}", password, encryption)
+            await set_secure_setting(f"basic_username_{env}", user, _st.encryption)
+            await set_secure_setting(f"basic_password_{env}", password, _st.encryption)
     ui.notify("Admin credentials saved", color="green")
 
 
@@ -2933,7 +2522,7 @@ async def save_local_key(
     if not (environment and service_id and name and secret):
         ui.notify("Environment, service, name, and secret are required", color="red")
         return
-    await add_local_key(encryption, service_id, environment, name, secret, key_type)
+    await add_local_key(_st.encryption, service_id, environment, name, secret, key_type)
     ui.notify("Key saved", color="green")
     await refresh_if_needed(render_local_keys)
 
@@ -2973,6 +2562,6 @@ if __name__ in {"__main__", "__mp_main__"}:  # pragma: no cover
         title="VA Notify Admin",
         port=8080,
         reload=True,
-        storage_secret=config.master_key,
+        storage_secret=_st.config.master_key,
         show=False,
     )

@@ -53,8 +53,12 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 
 ### Core layers
 
-- **`main.py`** (~2950 lines) — The entire NiceGUI UI: pages, components, event handlers, and app lifecycle. All UI code lives in this single file.
-- **`app/ui/sync_handlers.py`** — Generic `handle_entity_sync()` function that consolidates all per-entity sync handlers. Uses late import of `main` to access globals (will be cleaned up in later phases).
+- **`main.py`** (~2570 lines) — NiceGUI UI pages, route handlers, and page-level helpers. All 13 `@ui.page` functions live here.
+- **`app/ui/state.py`** — Application state globals (`config`, `encryption`, `state`), `AppState` dataclass, `build_api_client()`, auth helpers, startup/shutdown handlers.
+- **`app/ui/helpers.py`** — Reusable UI utilities: `metric_card`, `make_sortable`, copyable slots, formatting functions, `parse_recipients`.
+- **`app/ui/email_helpers.py`** — Email rotation constants and `_build_key_email()` for API key email generation.
+- **`app/ui/shell.py`** — Monkey-patches for NiceGUI edge cases, theme helpers, and `build_shell()` sidebar/header builder.
+- **`app/ui/sync_handlers.py`** — Generic `handle_entity_sync()` that consolidates all per-entity sync dispatch.
 - **`app/api_client.py`** — `NotificationAPI` base class with `HttpNotificationAPI` (real) and `MockNotificationAPI` (dev/test) implementations. HTTP client uses `httpx`. Notification sending uses JWT auth (HS256, signed with service API secret).
 - **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment.
 - **`app/models.py`** — SQLAlchemy ORM models. Most entities use composite keys of `(id, environment)` to store data from multiple environments in one database.

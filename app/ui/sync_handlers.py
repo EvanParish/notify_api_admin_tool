@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 
 from app.sync import SyncManager
+from app.ui import state as _st
 
 
 async def handle_entity_sync(
@@ -22,23 +23,18 @@ async def handle_entity_sync(
         pre_sync: Optional SyncManager methods to call first
             (e.g. ``["sync_services"]`` before syncing templates).
     """
-    # Late import to avoid circular dependency with main.py.
-    # Phase 2 will move these globals to app/ui/state.py, eliminating
-    # the need for this late import.
-    import main
-
-    if not await main.ensure_sync_enabled(sync_label):
+    if not await _st.ensure_sync_enabled(sync_label):
         return False
-    if not await main.ensure_admin_auth(main.state.environment, sync_label):
+    if not await _st.ensure_admin_auth(_st.state.environment, sync_label):
         return False
 
-    api = await main.build_api_client(main.state.environment)
+    api = await _st.build_api_client(_st.state.environment)
     manager = SyncManager(
-        api, main.config.max_concurrency, environment=main.state.environment
+        api, _st.config.max_concurrency, environment=_st.state.environment
     )
 
     async def progress(msg: str):
-        main.state.sync_message = msg
+        _st.state.sync_message = msg
         sync_label.text = msg
 
     sync_label.text = f"Syncing {label}..."
@@ -50,9 +46,9 @@ async def handle_entity_sync(
             await getattr(manager, method)(progress=progress)
     except httpx.HTTPStatusError as exc:
         if exc.response and exc.response.status_code == 401:
-            main.handle_unauthorized(sync_label, main.state.environment)
+            _st.handle_unauthorized(sync_label, _st.state.environment)
             return False
         raise
     sync_label.text = "Sync complete"
-    await main.refresh_status_badge(status_badge)
+    await _st.refresh_status_badge(status_badge)
     return True
