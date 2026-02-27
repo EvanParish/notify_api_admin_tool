@@ -47,6 +47,8 @@ ruff check .
 ruff format .
 ```
 
+This repo uses python 3.13+ features, so ensure your environment is set up with Python 3.10 or higher to avoid syntax errors and take advantage of the latest language features.
+
 ## Architecture
 
 This is an admin dashboard for the [VA Notification API](https://github.com/department-of-veterans-affairs/notification-api). It provides a NiceGUI web UI for managing services, templates, API keys, users, providers, and sending test notifications across multiple VA environments (dev, perf, staging, prod).
@@ -75,9 +77,9 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 - **`app/ui/shell.py`** — Monkey-patches for NiceGUI edge cases, theme helpers, and `build_shell()` sidebar/header builder.
 - **`app/ui/sync_handlers.py`** — Generic `handle_entity_sync()` and `handle_full_sync()` that consolidate all sync dispatch.
 - **`app/api_client.py`** — `NotificationAPI` base class with `HttpNotificationAPI` (real) and `MockNotificationAPI` (dev/test) implementations. HTTP client uses `httpx`. Notification sending uses JWT auth (HS256, signed with service API secret).
-- **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment.
+- **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment. Delegates all DB writes to `repository.py` upsert functions.
 - **`app/models.py`** — SQLAlchemy ORM models. Most entities use composite keys of `(id, environment)` to store data from multiple environments in one database.
-- **`app/repository.py`** — Async CRUD functions using `get_session()` context manager. Archived records (names starting with `_archive`) are filtered out automatically.
+- **`app/repository.py`** — Async CRUD functions using `get_session()` context manager. Includes bulk `upsert_*` functions for sync and `list_service_ids()`. Archived records (names starting with `_archive`) are filtered out automatically.
 - **`app/db.py`** — Async SQLAlchemy engine setup with `aiosqlite`. Module-level globals `engine` and `SessionLocal` are initialized via `init_engine()`.
 - **`app/crypto.py`** — `EncryptionManager` uses Fernet encryption with PBKDF2-derived key from `MASTER_KEY` env var. Salt is stored in the `settings` table.
 - **`app/config.py`** — Pydantic `AppConfig` loaded from environment variables via `python-dotenv`.

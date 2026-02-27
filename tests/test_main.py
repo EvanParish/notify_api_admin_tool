@@ -771,7 +771,6 @@ class TestSuppressGzipCloseError:
         assert result is None
 
     def test_passes_through_non_valueerror(self):
-
         args = MagicMock(spec=["exc_type", "exc_value", "exc_traceback", "object"])
         args.exc_value = RuntimeError("something else")
         args.object = MagicMock()
@@ -781,7 +780,6 @@ class TestSuppressGzipCloseError:
             mock_hook.assert_called_once_with(args)
 
     def test_passes_through_valueerror_not_gzipfile(self):
-
         args = MagicMock(spec=["exc_type", "exc_value", "exc_traceback", "object"])
         args.exc_value = ValueError("I/O operation on closed file")
         args.object = "not a gzip file"
@@ -795,14 +793,12 @@ class TestSafeClientDelete:
     """Tests for _safe_client_delete."""
 
     def test_successful_delete(self):
-
         mock_self = MagicMock()
         with patch.object(shell, "_original_client_delete") as mock_delete:
             shell._safe_client_delete(mock_self)
             mock_delete.assert_called_once_with(mock_self)
 
     def test_keyerror_sets_deleted(self):
-
         mock_self = MagicMock()
         mock_self.id = "test-id"
         with patch.object(
@@ -830,40 +826,33 @@ class TestAppStateViewEnvironmentFallback:
 
 class TestNormalizeEmailEnv:
     def test_development_maps_to_dev(self):
-
         assert email_helpers._normalize_email_env("development") == "dev"
 
     def test_production_maps_to_prod(self):
-
         assert email_helpers._normalize_email_env("production") == "prod"
 
     def test_other_passes_through(self):
-
         assert email_helpers._normalize_email_env("staging") == "staging"
         assert email_helpers._normalize_email_env("dev") == "dev"
 
 
 class TestFormatEmailEnvLabel:
     def test_prod_returns_production(self):
-
         assert email_helpers._format_email_env_label("prod") == "Production"
         assert email_helpers._format_email_env_label("production") == "Production"
 
     def test_other_returns_title_case(self):
-
         assert email_helpers._format_email_env_label("dev") == "Dev"
         assert email_helpers._format_email_env_label("staging") == "Staging"
 
 
 class TestResolveEmailEndpoints:
     def test_known_env(self):
-
         public_url, private_url = email_helpers._resolve_email_endpoints("dev")
         assert public_url == "https://dev-api.va.gov/vanotify"
         assert private_url == "https://dev.api.notifications.va.gov"
 
     def test_unknown_env_with_config_fallback(self):
-
         original_config = _st.config
         _st.config = AppConfig(
             master_key="k",
@@ -880,7 +869,6 @@ class TestResolveEmailEndpoints:
             _st.config = original_config
 
     def test_unknown_env_no_config_raises(self):
-
         original_config = _st.config
         _st.config = AppConfig(
             master_key="k",
@@ -898,24 +886,20 @@ class TestResolveEmailEndpoints:
 
 class TestFormatExpiryDate:
     def test_empty_returns_unknown(self):
-
         assert email_helpers._format_expiry_date("") == "unknown"
         assert email_helpers._format_expiry_date(None) == "unknown"
 
     def test_iso_date_splits(self):
-
         assert email_helpers._format_expiry_date("2025-01-15T12:00:00Z") == "2025-01-15"
         assert email_helpers._format_expiry_date("2025-01-15") == "2025-01-15"
 
 
 class TestSelectLatestKey:
     def test_single_match(self):
-
         keys = [{"name": "key1", "created_at": "2025-01-01"}]
         assert email_helpers._select_latest_key(keys, "key1") == keys[0]
 
     def test_multiple_matches_returns_latest(self):
-
         keys = [
             {"name": "key1", "created_at": "2025-01-01"},
             {"name": "key1", "created_at": "2025-06-01"},
@@ -925,14 +909,12 @@ class TestSelectLatestKey:
         assert result["created_at"] == "2025-06-01"
 
     def test_no_match_raises(self):
-
         with pytest.raises(ValueError, match="No keys found"):
             email_helpers._select_latest_key([{"name": "other"}], "missing")
 
 
 class TestBuildKeyEmail:
     def test_contains_key_parts(self):
-
         created_key = {
             "name": "my-key",
             "id": "key-id-123",
@@ -952,18 +934,15 @@ class TestBuildKeyEmail:
 
 class TestFormatEnvironment:
     def test_returns_value(self):
-
         assert helpers.format_environment("dev") == "dev"
 
     def test_none_returns_unknown(self):
-
         assert helpers.format_environment(None) == "unknown"
         assert helpers.format_environment("") == "unknown"
 
 
 class TestFormatServiceLabel:
     def test_returns_label(self):
-
         svc = MagicMock()
         svc.name = "My Service"
         svc.environment = "dev"
@@ -972,22 +951,18 @@ class TestFormatServiceLabel:
 
 class TestTruncateText:
     def test_none_returns_none(self):
-
         assert helpers.truncate_text(None) is None
 
     def test_short_text_unchanged(self):
-
         assert helpers.truncate_text("hello", 50) == "hello"
 
     def test_long_text_truncated(self):
-
         result = helpers.truncate_text("a" * 60, 50)
         assert result == "a" * 50 + "..."
 
 
 class TestGetViewEnvironment:
     def test_all_returns_none(self):
-
         original_state = _st.state
         _st.state = SharedTestState(environment="dev", view_environment="all")
         try:
@@ -996,7 +971,6 @@ class TestGetViewEnvironment:
             _st.state = original_state
 
     def test_empty_returns_none(self):
-
         original_state = _st.state
         _st.state = SharedTestState(environment="dev", view_environment="")
         try:
@@ -1005,7 +979,6 @@ class TestGetViewEnvironment:
             _st.state = original_state
 
     def test_specific_env_returns_it(self):
-
         original_state = _st.state
         _st.state = SharedTestState(environment="dev", view_environment="staging")
         try:
@@ -1016,46 +989,37 @@ class TestGetViewEnvironment:
 
 class TestSafeNotify:
     def test_calls_ui_notify(self):
-
         with patch("app.ui.state.ui.notify") as mock_notify:
             _st.safe_notify("hello", color="green")
             mock_notify.assert_called_once_with("hello", color="green")
 
     def test_catches_runtime_error(self):
-
         with patch("app.ui.state.ui.notify", side_effect=RuntimeError("no slot")):
             _st.safe_notify("hello")
 
 
 class TestFindMissingPersonalisation:
     def test_none_value(self):
-
         assert helpers.find_missing_personalisation({"a": None, "b": "ok"}) == "a"
 
     def test_empty_value(self):
-
         assert helpers.find_missing_personalisation({"a": "ok", "b": ""}) == "b"
 
     def test_all_present(self):
-
         assert helpers.find_missing_personalisation({"a": "ok", "b": "ok"}) is None
 
     def test_empty_dict(self):
-
         assert helpers.find_missing_personalisation({}) is None
 
 
 class TestParseRecipients:
     def test_semicolon_split(self):
-
         assert helpers.parse_recipients("a@b.com;c@d.com") == ["a@b.com", "c@d.com"]
 
     def test_comma_split(self):
-
         assert helpers.parse_recipients("a@b.com,c@d.com") == ["a@b.com", "c@d.com"]
 
     def test_mixed_split(self):
-
         assert helpers.parse_recipients("a@b.com;c@d.com,e@f.com") == [
             "a@b.com",
             "c@d.com",
@@ -1063,18 +1027,15 @@ class TestParseRecipients:
         ]
 
     def test_empty(self):
-
         assert helpers.parse_recipients("") == []
         assert helpers.parse_recipients(None) == []
 
 
 class TestParseFilterDate:
     def test_none(self):
-
         assert page_api_keys._parse_filter_date(None) is None
 
     def test_empty(self):
-
         assert page_api_keys._parse_filter_date("") is None
 
     def test_valid_date(self):
@@ -1090,13 +1051,11 @@ class TestParseFilterDate:
         )
 
     def test_invalid_date(self):
-
         assert page_api_keys._parse_filter_date("not-a-date") is None
 
 
 class TestMatchesExpiryRange:
     def test_no_range_returns_true(self):
-
         assert page_api_keys._matches_expiry_range("2025-06-15", None, None) is True
 
     def test_no_expiry_with_range_returns_false(self):
@@ -1138,22 +1097,18 @@ class TestMatchesExpiryRange:
 
 class TestExtractApiKeySecret:
     def test_non_dict_raises(self):
-
         with pytest.raises(ValueError, match="Unexpected API response"):
             page_api_keys._extract_api_key_secret("not a dict")
 
     def test_missing_data_raises(self):
-
         with pytest.raises(ValueError, match="API key secret missing"):
             page_api_keys._extract_api_key_secret({})
 
     def test_empty_data_raises(self):
-
         with pytest.raises(ValueError, match="API key secret missing"):
             page_api_keys._extract_api_key_secret({"data": ""})
 
     def test_valid_data(self):
-
         assert (
             page_api_keys._extract_api_key_secret({"data": "my-secret"}) == "my-secret"
         )
@@ -1161,7 +1116,6 @@ class TestExtractApiKeySecret:
 
 class TestCopyToClipboard:
     def test_calls_run_javascript(self):
-
         with (
             patch("app.ui.helpers.ui.run_javascript") as mock_js,
             patch("app.ui.state.safe_notify"),
@@ -1171,7 +1125,6 @@ class TestCopyToClipboard:
             assert "hello" in mock_js.call_args[0][0]
 
     def test_none_value(self):
-
         with (
             patch("app.ui.helpers.ui.run_javascript") as mock_js,
             patch("app.ui.state.safe_notify"),
@@ -1182,7 +1135,6 @@ class TestCopyToClipboard:
 
 class TestAddCopyableSlots:
     def test_adds_slots(self):
-
         mock_table = MagicMock()
         rows = [{"id": "svc-1", "name": "Test"}]
         helpers.add_copyable_slots(mock_table, rows)
@@ -1190,7 +1142,6 @@ class TestAddCopyableSlots:
         mock_table.on.assert_called_once()
 
     def test_empty_rows_no_slots(self):
-
         mock_table = MagicMock()
         helpers.add_copyable_slots(mock_table, [])
         mock_table.add_slot.assert_not_called()
@@ -1198,7 +1149,6 @@ class TestAddCopyableSlots:
 
 class TestMakeSortable:
     def test_adds_sortable(self):
-
         cols = [{"name": "id", "label": "ID"}, {"name": "name", "label": "Name"}]
         result = helpers.make_sortable(cols)
         assert all(c["sortable"] is True for c in result)
@@ -1242,7 +1192,6 @@ async def test_shutdown():
 
 class TestSetThemePreference:
     def test_dark(self):
-
         mock_storage = MagicMock()
         mock_storage.user = {"theme": "light"}
         with patch.object(shell, "app", **{"storage": mock_storage}):
@@ -1250,7 +1199,6 @@ class TestSetThemePreference:
             assert mock_storage.user["theme"] == "dark"
 
     def test_light(self):
-
         mock_storage = MagicMock()
         mock_storage.user = {"theme": "dark"}
         with patch.object(shell, "app", **{"storage": mock_storage}):
@@ -1260,7 +1208,6 @@ class TestSetThemePreference:
 
 class TestToggleTheme:
     def test_toggles_and_saves(self):
-
         mock_dark_mode = MagicMock()
         mock_dark_mode.value = True
         mock_storage = MagicMock()
@@ -1273,7 +1220,6 @@ class TestToggleTheme:
 
 @pytest.mark.asyncio
 async def test_ensure_theme_preference_dark():
-
     mock_dark_mode = MagicMock()
     mock_storage = MagicMock()
     mock_storage.user = {"theme": "dark"}
@@ -1284,7 +1230,6 @@ async def test_ensure_theme_preference_dark():
 
 @pytest.mark.asyncio
 async def test_ensure_theme_preference_light():
-
     mock_dark_mode = MagicMock()
     mock_storage = MagicMock()
     mock_storage.user = {"theme": "light"}
@@ -1295,7 +1240,6 @@ async def test_ensure_theme_preference_light():
 
 @pytest.mark.asyncio
 async def test_ensure_theme_preference_invalid_defaults_light():
-
     mock_dark_mode = MagicMock()
     mock_storage = MagicMock()
     mock_storage.user = {"theme": "banana"}
@@ -1369,7 +1313,6 @@ async def test_ensure_admin_auth_missing():
 
 class TestHandleUnauthorized:
     def test_sets_label_and_notifies(self):
-
         mock_sync_label = MagicMock()
         with patch("app.ui.state.safe_notify") as mock_notify:
             _st.handle_unauthorized(mock_sync_label, "dev")
@@ -1395,7 +1338,6 @@ async def test_handle_service_search():
 
 @pytest.mark.asyncio
 async def test_handle_service_search_none():
-
     original_query = _st.service_search_query
     try:
         with patch.object(page_services, "refresh_if_needed", new_callable=AsyncMock):
@@ -1420,7 +1362,6 @@ async def test_handle_service_search_event():
 
 @pytest.mark.asyncio
 async def test_handle_service_search_event_no_value():
-
     mock_event = MagicMock(spec=[])
     with patch.object(
         page_services, "handle_service_search", new_callable=AsyncMock
@@ -1498,7 +1439,6 @@ async def test_shutdown_via_handler(initialized_db):
 
 @pytest.mark.asyncio
 async def test_refresh_status_badge_auth_missing(initialized_db, mock_config):
-
     original_config = _st.config
     original_state = _st.state
     mock_config.use_mock_api = False
@@ -1528,7 +1468,6 @@ async def test_refresh_status_badge_auth_missing(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_handle_full_sync_auth_missing(initialized_db, mock_config):
-
     original_config = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1550,7 +1489,6 @@ async def test_handle_full_sync_auth_missing(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_handle_full_sync_unauthorized(initialized_db, mock_config):
-
     original_config = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1788,7 +1726,6 @@ def mock_page_ui(mod_path):
 
 @pytest.mark.asyncio
 async def test_dashboard_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1803,7 +1740,6 @@ async def test_dashboard_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_services_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1820,7 +1756,6 @@ async def test_services_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_services_table_func(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1853,7 +1788,6 @@ async def test_services_table_func(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_templates_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1868,7 +1802,6 @@ async def test_templates_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_api_keys_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1883,7 +1816,6 @@ async def test_api_keys_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_api_key_emails_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1898,7 +1830,6 @@ async def test_api_key_emails_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_users_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1913,7 +1844,6 @@ async def test_users_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_sms_senders_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1928,7 +1858,6 @@ async def test_sms_senders_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_provider_details_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1943,7 +1872,6 @@ async def test_provider_details_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_communication_items_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1958,7 +1886,6 @@ async def test_communication_items_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_inbound_numbers_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1973,7 +1900,6 @@ async def test_inbound_numbers_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_send_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -1988,7 +1914,6 @@ async def test_send_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_bulk_send_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     _st.config = mock_config
@@ -2003,7 +1928,6 @@ async def test_bulk_send_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_settings_page(initialized_db, mock_config):
-
     original = _st.config
     original_state = _st.state
     original_encryption = _st.encryption
@@ -2021,7 +1945,6 @@ async def test_settings_page(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_render_local_keys_func(initialized_db, mock_config):
-
     original = _st.config
     _st.config = mock_config
 
@@ -2062,7 +1985,6 @@ def test_ui_run_guard():
 
 @pytest.mark.asyncio
 async def test_handle_full_sync_reraises_non_401(initialized_db, mock_config):
-
     original_config = _st.config
     original_state = _st.state
     _st.config = mock_config

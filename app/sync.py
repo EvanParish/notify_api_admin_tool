@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Awaitable, Callable, Optional
 
-from sqlalchemy import select
-
-from . import models
 from .api_client import NotificationAPI
-from .db import get_session
+from .repository import (
+    list_service_ids,
+    upsert_api_keys,
+    upsert_communication_items,
+    upsert_inbound_numbers,
+    upsert_provider_details,
+    upsert_services,
+    upsert_sms_senders,
+    upsert_templates,
+    upsert_users,
+)
 
 ProgressCallback = Optional[Callable[[str], Awaitable[None]]]
 
@@ -39,44 +45,11 @@ class SyncManager:
         if progress:
             await progress("Syncing services")
         services = await self.api.get_services()
-        async with get_session() as session:
-            for svc in services:
-                # Convert permissions list to JSON string (including empty lists)
-                permissions = svc.get("permissions")
-                if isinstance(permissions, list):
-                    permissions = json.dumps(permissions)
-
-                record = models.Service(
-                    id=svc.get("id"),
-                    environment=self.environment,
-                    name=svc.get("name", ""),
-                    active=svc.get("active", True),
-                    restricted=svc.get("restricted", False),
-                    message_limit=svc.get("message_limit"),
-                    rate_limit=svc.get("rate_limit"),
-                    research_mode=svc.get("research_mode", False),
-                    count_as_live=svc.get("count_as_live", True),
-                    prefix_sms=svc.get("prefix_sms", False),
-                    email_from=svc.get("email_from"),
-                    permissions=permissions,
-                    organisation_type=svc.get("organisation_type"),
-                    crown=svc.get("crown"),
-                    go_live_at=svc.get("go_live_at"),
-                    created_by=svc.get("created_by"),
-                )
-                await session.merge(record)
-            await session.commit()
+        await upsert_services(services, self.environment)
 
     async def sync_templates(self, progress: ProgressCallback = None) -> None:
-        async with get_session() as session:
-            query = select(models.Service.id)
-            if self.environment:
-                query = query.where(models.Service.environment == self.environment)
-            service_rows = (await session.execute(query)).scalars().all()
-
-        tasks = [
-            self._sync_templates_for_service(sid, progress) for sid in service_rows
-        ]
+        service_ids = await list_service_ids(self.environment)
+        tasks = [self._sync_templates_for_service(sid, progress) for sid in service_ids]
         await asyncio.gather(*tasks)
 
     async def _sync_templates_for_service(
@@ -86,38 +59,11 @@ class SyncManager:
             if progress:
                 await progress(f"Templates for {service_id}")
             templates = await self.api.get_templates(service_id)
-            async with get_session() as session:
-                for tmpl in templates:
-                    record = models.Template(
-                        id=tmpl.get("id"),
-                        environment=self.environment,
-                        service_id=tmpl.get("service")
-                        or tmpl.get("service_id")
-                        or service_id,
-                        name=tmpl.get("name", ""),
-                        template_type=tmpl.get("type") or tmpl.get("template_type"),
-                        content=tmpl.get("content", ""),
-                        subject=tmpl.get("subject"),
-                        version=tmpl.get("version"),
-                        archived=tmpl.get("archived", False),
-                        hidden=tmpl.get("hidden", False),
-                        process_type=tmpl.get("process_type"),
-                        created_at=tmpl.get("created_at"),
-                        updated_at=tmpl.get("updated_at"),
-                        created_by=tmpl.get("created_by"),
-                        reply_to_email=tmpl.get("reply_to_email"),
-                    )
-                    await session.merge(record)
-                await session.commit()
+            await upsert_templates(templates, self.environment, service_id)
 
     async def sync_api_keys(self, progress: ProgressCallback = None) -> None:
-        async with get_session() as session:
-            query = select(models.Service.id)
-            if self.environment:
-                query = query.where(models.Service.environment == self.environment)
-            service_rows = (await session.execute(query)).scalars().all()
-
-        tasks = [self._sync_api_keys_for_service(sid, progress) for sid in service_rows]
+        service_ids = await list_service_ids(self.environment)
+        tasks = [self._sync_api_keys_for_service(sid, progress) for sid in service_ids]
         await asyncio.gather(*tasks)
 
     async def _sync_api_keys_for_service(
@@ -129,41 +75,17 @@ class SyncManager:
             try:
                 api_keys = await self.api.get_api_keys(service_id)
             except Exception as e:
-                # Some services may not have API keys endpoint or return 404
-                # This is not an error - just skip and continue
                 if "404" in str(e) or "NOT FOUND" in str(e):
                     if progress:
                         await progress(f"No API keys for {service_id}")
                     return
-                # For other errors, re-raise
                 raise
-
-            async with get_session() as session:
-                for key in api_keys:
-                    record = models.ApiKey(
-                        id=key.get("id"),
-                        environment=self.environment,
-                        service_id=service_id,
-                        name=key.get("name", ""),
-                        key_type=key.get("key_type"),
-                        expiry_date=key.get("expiry_date"),
-                        created_by=key.get("created_by"),
-                        created_at=key.get("created_at"),
-                        revoked=key.get("revoked", False),
-                        version=key.get("version"),
-                    )
-                    await session.merge(record)
-                await session.commit()
+            await upsert_api_keys(api_keys, self.environment, service_id)
 
     async def sync_sms_senders(self, progress: ProgressCallback = None) -> None:
-        async with get_session() as session:
-            query = select(models.Service.id)
-            if self.environment:
-                query = query.where(models.Service.environment == self.environment)
-            service_rows = (await session.execute(query)).scalars().all()
-
+        service_ids = await list_service_ids(self.environment)
         tasks = [
-            self._sync_sms_senders_for_service(sid, progress) for sid in service_rows
+            self._sync_sms_senders_for_service(sid, progress) for sid in service_ids
         ]
         await asyncio.gather(*tasks)
 
@@ -174,119 +96,28 @@ class SyncManager:
             if progress:
                 await progress(f"SMS senders for {service_id}")
             sms_senders = await self.api.get_sms_senders(service_id)
-            async with get_session() as session:
-                for sender in sms_senders:
-                    record = models.SmsSender(
-                        id=sender.get("id"),
-                        environment=self.environment,
-                        service_id=sender.get("service_id") or service_id,
-                        sms_sender=sender.get("sms_sender", ""),
-                        is_default=sender.get("is_default", False),
-                        archived=sender.get("archived", False),
-                        description=sender.get("description"),
-                        provider_id=sender.get("provider_id"),
-                        provider_name=sender.get("provider_name"),
-                        inbound_number_id=sender.get("inbound_number_id"),
-                        rate_limit=sender.get("rate_limit"),
-                        rate_limit_interval=sender.get("rate_limit_interval"),
-                        sms_sender_specifics=sender.get("sms_sender_specifics"),
-                        created_at=sender.get("created_at"),
-                        updated_at=sender.get("updated_at"),
-                    )
-                    await session.merge(record)
-                await session.commit()
+            await upsert_sms_senders(sms_senders, self.environment, service_id)
 
     async def sync_users(self, progress: ProgressCallback = None) -> None:
         if progress:
             await progress("Syncing users")
         users = await self.api.get_users()
-        async with get_session() as session:
-            for user in users:
-                email = (user.get("email_address") or "").lower()
-                if email.startswith("_archived"):
-                    continue
-                record = models.User(
-                    id=user.get("id"),
-                    environment=self.environment,
-                    email_address=user.get("email_address"),
-                    name=user.get("name"),
-                    state=user.get("state"),
-                    platform_admin=user.get("platform_admin", False),
-                    blocked=user.get("blocked", False),
-                    auth_type=user.get("auth_type"),
-                    mobile_number=user.get("mobile_number"),
-                    failed_login_count=user.get("failed_login_count"),
-                    logged_in_at=user.get("logged_in_at"),
-                    password_changed_at=user.get("password_changed_at"),
-                    current_session_id=user.get("current_session_id"),
-                    identity_provider_user_id=user.get("identity_provider_user_id"),
-                    additional_information=user.get("additional_information"),
-                    permissions=user.get("permissions"),
-                    services=user.get("services"),
-                    organisations=user.get("organisations"),
-                )
-                await session.merge(record)
-            await session.commit()
+        await upsert_users(users, self.environment)
 
     async def sync_provider_details(self, progress: ProgressCallback = None) -> None:
         if progress:
             await progress("Syncing provider details")
         provider_details = await self.api.get_provider_details()
-        async with get_session() as session:
-            for provider in provider_details:
-                record = models.ProviderDetail(
-                    id=provider.get("id"),
-                    environment=self.environment,
-                    active=provider.get("active", False),
-                    created_by_name=provider.get("created_by_name"),
-                    current_month_billable_sms=provider.get(
-                        "current_month_billable_sms"
-                    ),
-                    display_name=provider.get("display_name"),
-                    identifier=provider.get("identifier"),
-                    load_balancing_weight=provider.get("load_balancing_weight"),
-                    notification_type=provider.get("notification_type"),
-                    priority=provider.get("priority"),
-                    supports_international=provider.get("supports_international"),
-                    updated_at=provider.get("updated_at"),
-                )
-                await session.merge(record)
-            await session.commit()
+        await upsert_provider_details(provider_details, self.environment)
 
     async def sync_communication_items(self, progress: ProgressCallback = None) -> None:
         if progress:
             await progress("Syncing communication items")
         communication_items = await self.api.get_communication_items()
-        async with get_session() as session:
-            for item in communication_items:
-                record = models.CommunicationItem(
-                    id=item.get("id"),
-                    environment=self.environment,
-                    name=item.get("name", ""),
-                    va_profile_item_id=item.get("va_profile_item_id"),
-                    default_send_indicator=item.get("default_send_indicator", False),
-                )
-                await session.merge(record)
-            await session.commit()
+        await upsert_communication_items(communication_items, self.environment)
 
     async def sync_inbound_numbers(self, progress: ProgressCallback = None) -> None:
         if progress:
             await progress("Syncing inbound numbers")
         inbound_numbers = await self.api.get_inbound_numbers()
-        async with get_session() as session:
-            for item in inbound_numbers:
-                service = item.get("service") or {}
-                record = models.InboundNumber(
-                    id=item.get("id"),
-                    environment=self.environment,
-                    number=item.get("number", ""),
-                    provider=item.get("provider"),
-                    active=item.get("active", True),
-                    self_managed=item.get("self_managed", False),
-                    service_id=service.get("id") if service else None,
-                    service_name=service.get("name") if service else None,
-                    auth_parameter=item.get("auth_parameter"),
-                    url_endpoint=item.get("url_endpoint"),
-                )
-                await session.merge(record)
-            await session.commit()
+        await upsert_inbound_numbers(inbound_numbers, self.environment)
