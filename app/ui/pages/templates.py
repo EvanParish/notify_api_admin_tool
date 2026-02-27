@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+from nicegui import ui
+
+from app.repository import list_services, list_templates
+from app.ui.helpers import (
+    add_copyable_slots,
+    format_environment,
+    format_service_label,
+    make_sortable,
+    refresh_if_needed,
+    truncate_text,
+)
+from app.ui.shell import build_shell, ensure_theme_preference
+from app.ui.state import get_view_environment, refresh_status_badge
+from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
+
+
+@ui.page("/templates")
+async def templates_page() -> None:
+    template_search_query = ""
+
+    async def refresh_service_options() -> None:  # pragma: no cover
+        options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
+        service_select.set_options(options)
+        if service_select.value not in options:
+            service_select.value = None
+
+    async def handle_view_env_change() -> None:  # pragma: no cover
+        await refresh_service_options()
+        await refresh_if_needed(render_table)
+
+    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+        on_view_env_change=handle_view_env_change
+    )
+    await ensure_theme_preference(dark_mode)
+
+    async def page_refresh():  # pragma: no cover
+        await handle_full_sync(status_badge, sync_label)
+
+    async def page_sync_templates():  # pragma: no cover
+        await handle_entity_sync(
+            ["sync_templates"],
+            status_badge,
+            sync_label,
+            "templates",
+            pre_sync=["sync_services"],
+        )
+
+    refresh_button.on_click(page_refresh)
+    await refresh_status_badge(status_badge)
+
+    with ui.column().classes("p-8 gap-6 w-full max-w-none"):
+        ui.label("Templates").classes("text-lg font-semibold")
+        template_search = (
+            ui.input(label="Search by Template ID or Name")
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
+        filter_row = ui.row().classes("gap-2")  # noqa: F841
+        service_options = {
+            svc.id: format_service_label(svc)
+            for svc in await list_services(get_view_environment())
+        }
+        type_options = {"email": "Email", "sms": "SMS"}
+        service_select = (
+            ui.select(service_options, label="Service", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
+        type_select = (
+            ui.select(type_options, label="Type", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
+
+        async def handle_sync_templates() -> None:  # pragma: no cover
+            await page_sync_templates()
+            render_table.refresh()
+
+        @ui.refreshable
+        async def render_table() -> None:  # pragma: no cover
+            selected_service = service_select.value
+            selected_type = type_select.value
+            rows = await list_templates(
+                selected_service, selected_type, environment=get_view_environment()
+            )
+            if template_search_query:
+                rows = [
+                    row
+                    for row in rows
+                    if template_search_query in (row.id or "").lower()
+                    or template_search_query in (row.name or "").lower()
+                ]
+            table_rows: List[Dict[str, Any]] = [
+                {
+                    "id": row.id,
+                    "environment": format_environment(row.environment),
+                    "service_id": row.service_id,
+                    "name": truncate_text(row.name),
+                    "template_type": row.template_type,
+                    "version": row.version,
+                    "archived": row.archived,
+                    "hidden": row.hidden,
+                    "updated_at": row.updated_at[:10]
+                    if row.updated_at
+                    else None,  # Show date only
+                    "subject": truncate_text(row.subject),
+                    "content": truncate_text(row.content),
+                }
+                for row in rows
+            ]
+            table = ui.table(
+                columns=make_sortable(
+                    [
+                        {"name": "id", "label": "ID", "field": "id"},
+                        {
+                            "name": "environment",
+                            "label": "Environment",
+                            "field": "environment",
+                        },
+                        {
+                            "name": "service_id",
+                            "label": "Service",
+                            "field": "service_id",
+                        },
+                        {"name": "name", "label": "Name", "field": "name"},
+                        {
+                            "name": "template_type",
+                            "label": "Type",
+                            "field": "template_type",
+                        },
+                        {"name": "version", "label": "Version", "field": "version"},
+                        {"name": "archived", "label": "Archived", "field": "archived"},
+                        {"name": "hidden", "label": "Hidden", "field": "hidden"},
+                        {
+                            "name": "updated_at",
+                            "label": "Updated",
+                            "field": "updated_at",
+                        },
+                        {"name": "subject", "label": "Subject", "field": "subject"},
+                        {"name": "content", "label": "Content", "field": "content"},
+                    ]
+                ),
+                rows=table_rows,
+                pagination={"rowsPerPage": 10},
+            )
+            table.props("row-key=id").classes("w-full")
+            add_copyable_slots(table, table_rows)
+
+        async def handle_template_search_event(e) -> None:  # pragma: no cover
+            nonlocal template_search_query
+            template_search_query = (getattr(e, "value", None) or "").strip().lower()
+            await refresh_if_needed(render_table)
+
+        service_select.on_value_change(lambda _: render_table.refresh())
+        type_select.on_value_change(lambda _: render_table.refresh())
+        template_search.on_value_change(handle_template_search_event)
+        ui.button("Sync Templates", on_click=handle_sync_templates)
+        await render_table()

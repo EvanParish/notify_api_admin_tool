@@ -53,12 +53,22 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 
 ### Core layers
 
-- **`main.py`** (~2570 lines) — NiceGUI UI pages, route handlers, and page-level helpers. All 13 `@ui.page` functions live here.
+- **`main.py`** (~1590 lines) — Complex NiceGUI UI pages (API keys, send, bulk send, settings), route handlers, and page-level helpers.
+- **`app/ui/pages/`** — Extracted simple page modules. Each file contains one `@ui.page` route:
+  - `dashboard.py` — Dashboard with metrics (`/`)
+  - `services.py` — Services page with search filter (`/services`)
+  - `templates.py` — Templates page with search/type/service filters (`/templates`)
+  - `users.py` — Users page with search/state filters (`/users`)
+  - `sms_senders.py` — SMS Senders page (`/sms-senders`)
+  - `provider_details.py` — Provider Details page (`/provider-details`)
+  - `comm_items.py` — Communication Items page (`/communication-items`)
+  - `inbound_numbers.py` — Inbound Numbers page (`/inbound-numbers`)
+  - `__init__.py` — Imports all page modules to trigger `@ui.page` registration
 - **`app/ui/state.py`** — Application state globals (`config`, `encryption`, `state`), `AppState` dataclass, `build_api_client()`, auth helpers, startup/shutdown handlers.
 - **`app/ui/helpers.py`** — Reusable UI utilities: `metric_card`, `make_sortable`, copyable slots, formatting functions, `parse_recipients`.
 - **`app/ui/email_helpers.py`** — Email rotation constants and `_build_key_email()` for API key email generation.
 - **`app/ui/shell.py`** — Monkey-patches for NiceGUI edge cases, theme helpers, and `build_shell()` sidebar/header builder.
-- **`app/ui/sync_handlers.py`** — Generic `handle_entity_sync()` that consolidates all per-entity sync dispatch.
+- **`app/ui/sync_handlers.py`** — Generic `handle_entity_sync()` and `handle_full_sync()` that consolidate all sync dispatch.
 - **`app/api_client.py`** — `NotificationAPI` base class with `HttpNotificationAPI` (real) and `MockNotificationAPI` (dev/test) implementations. HTTP client uses `httpx`. Notification sending uses JWT auth (HS256, signed with service API secret).
 - **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment.
 - **`app/models.py`** — SQLAlchemy ORM models. Most entities use composite keys of `(id, environment)` to store data from multiple environments in one database.

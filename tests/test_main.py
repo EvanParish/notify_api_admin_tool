@@ -19,6 +19,17 @@ from app.ui import state as _st
 from app.ui import helpers
 from app.ui import email_helpers
 from app.ui import shell
+from app.ui import sync_handlers
+from app.ui.pages import (
+    comm_items as page_comm_items,
+    dashboard as page_dashboard,
+    inbound_numbers as page_inbound_numbers,
+    provider_details as page_provider_details,
+    services as page_services,
+    sms_senders as page_sms_senders,
+    templates as page_templates,
+    users as page_users,
+)
 
 import main  # noqa: E402
 
@@ -260,17 +271,13 @@ async def test_handle_full_sync(initialized_db, mock_config):
     mock_sync_label.text = ""
 
     try:
-        # Mock refresh_tables since it depends on UI refreshables
-        with patch.object(
-            main, "refresh_tables", new_callable=AsyncMock
-        ) as mock_refresh:
-            await main.handle_full_sync(mock_status_badge, mock_sync_label)
+        result = await sync_handlers.handle_full_sync(
+            mock_status_badge, mock_sync_label
+        )
 
-            # Verify sync messages were set
-            assert mock_sync_label.text == "Sync complete"
-
-            # Verify refresh_tables was called
-            mock_refresh.assert_called_once()
+        # Verify sync messages were set
+        assert mock_sync_label.text == "Sync complete"
+        assert result is True
     finally:
         _st.config = original_config
         _st.state = original_state
@@ -538,18 +545,6 @@ def test_build_shell():
 
 
 @pytest.mark.asyncio
-async def test_refresh_tables():
-    """Test refresh_tables function."""
-
-    # Mock the table refresh functions
-    with patch.object(main, "services_table", create=True) as mock_services:
-        mock_services.refresh = AsyncMock()
-
-        await main.refresh_tables()
-
-        mock_services.refresh.assert_called_once()
-
-
 def test_module_level_initialization():
     """Test that module-level objects are initialized correctly."""
 
@@ -631,17 +626,15 @@ async def test_handle_full_sync_dev_only_mode_blocks_staging(
     mock_sync_label.text = ""
 
     try:
-        with patch.object(
-            main, "refresh_tables", new_callable=AsyncMock
-        ) as mock_refresh:
-            with patch("main.ui.notify") as mock_notify:
-                await main.handle_full_sync(mock_status_badge, mock_sync_label)
+        with patch("app.ui.state.ui.notify") as mock_notify:
+            result = await sync_handlers.handle_full_sync(
+                mock_status_badge, mock_sync_label
+            )
 
-                # Verify sync was blocked
-                assert mock_sync_label.text == "Sync disabled for staging"
-                mock_notify.assert_called_once()
-                # Refresh should not have been called
-                mock_refresh.assert_not_called()
+            # Verify sync was blocked
+            assert mock_sync_label.text == "Sync disabled for staging"
+            mock_notify.assert_called_once()
+            assert result is False
     finally:
         _st.config = original_config
         _st.state = original_state
@@ -676,15 +669,13 @@ async def test_handle_full_sync_dev_only_mode_allows_dev(initialized_db, mock_co
     mock_sync_label.text = ""
 
     try:
-        with patch.object(
-            main, "refresh_tables", new_callable=AsyncMock
-        ) as mock_refresh:
-            await main.handle_full_sync(mock_status_badge, mock_sync_label)
+        result = await sync_handlers.handle_full_sync(
+            mock_status_badge, mock_sync_label
+        )
 
-            # Verify sync completed
-            assert mock_sync_label.text == "Sync complete"
-            # Refresh should have been called
-            mock_refresh.assert_called_once()
+        # Verify sync completed
+        assert mock_sync_label.text == "Sync complete"
+        assert result is True
     finally:
         _st.config = original_config
         _st.state = original_state
@@ -721,15 +712,13 @@ async def test_handle_full_sync_dev_only_mode_disabled(initialized_db, mock_conf
     mock_sync_label.text = ""
 
     try:
-        with patch.object(
-            main, "refresh_tables", new_callable=AsyncMock
-        ) as mock_refresh:
-            await main.handle_full_sync(mock_status_badge, mock_sync_label)
+        result = await sync_handlers.handle_full_sync(
+            mock_status_badge, mock_sync_label
+        )
 
-            # Verify sync completed
-            assert mock_sync_label.text == "Sync complete"
-            # Refresh should have been called
-            mock_refresh.assert_called_once()
+        # Verify sync completed
+        assert mock_sync_label.text == "Sync complete"
+        assert result is True
     finally:
         _st.config = original_config
         _st.state = original_state
@@ -1368,9 +1357,9 @@ async def test_handle_service_search():
     original_query = _st.service_search_query
     try:
         with patch.object(
-            main, "refresh_if_needed", new_callable=AsyncMock
+            page_services, "refresh_if_needed", new_callable=AsyncMock
         ) as mock_refresh:
-            await main.handle_service_search("Test Query")
+            await page_services.handle_service_search("Test Query")
             assert _st.service_search_query == "test query"
             mock_refresh.assert_called_once()
     finally:
@@ -1382,8 +1371,8 @@ async def test_handle_service_search_none():
 
     original_query = _st.service_search_query
     try:
-        with patch.object(main, "refresh_if_needed", new_callable=AsyncMock):
-            await main.handle_service_search(None)
+        with patch.object(page_services, "refresh_if_needed", new_callable=AsyncMock):
+            await page_services.handle_service_search(None)
             assert _st.service_search_query == ""
     finally:
         _st.service_search_query = original_query
@@ -1396,9 +1385,9 @@ async def test_handle_service_search_event():
     mock_event = MagicMock()
     mock_event.value = "hello"
     with patch.object(
-        main, "handle_service_search", new_callable=AsyncMock
+        page_services, "handle_service_search", new_callable=AsyncMock
     ) as mock_search:
-        await main.handle_service_search_event(mock_event)
+        await page_services.handle_service_search_event(mock_event)
         mock_search.assert_called_once_with("hello")
 
 
@@ -1407,9 +1396,9 @@ async def test_handle_service_search_event_no_value():
 
     mock_event = MagicMock(spec=[])
     with patch.object(
-        main, "handle_service_search", new_callable=AsyncMock
+        page_services, "handle_service_search", new_callable=AsyncMock
     ) as mock_search:
-        await main.handle_service_search_event(mock_event)
+        await page_services.handle_service_search_event(mock_event)
         mock_search.assert_called_once_with(None)
 
 
@@ -1523,11 +1512,10 @@ async def test_handle_full_sync_auth_missing(initialized_db, mock_config):
         with patch.object(
             _st, "ensure_admin_auth", new_callable=AsyncMock, return_value=False
         ):
-            with patch.object(
-                main, "refresh_tables", new_callable=AsyncMock
-            ) as mock_refresh:
-                await main.handle_full_sync(mock_status_badge, mock_sync_label)
-                mock_refresh.assert_not_called()
+            result = await sync_handlers.handle_full_sync(
+                mock_status_badge, mock_sync_label
+            )
+            assert result is False
     finally:
         _st.config = original_config
         _st.state = original_state
@@ -1552,9 +1540,7 @@ async def test_handle_full_sync_unauthorized(initialized_db, mock_config):
 
     try:
         with (
-            patch.object(
-                main, "build_api_client", new_callable=AsyncMock
-            ) as mock_build,
+            patch.object(_st, "build_api_client", new_callable=AsyncMock) as mock_build,
             patch("app.ui.state.safe_notify"),
         ):
             mock_api = AsyncMock()
@@ -1562,7 +1548,7 @@ async def test_handle_full_sync_unauthorized(initialized_db, mock_config):
             mock_manager.sync_all = AsyncMock(side_effect=exc)
             mock_build.return_value = mock_api
             with patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager):
-                await main.handle_full_sync(mock_status_badge, mock_sync_label)
+                await sync_handlers.handle_full_sync(mock_status_badge, mock_sync_label)
                 assert "Unauthorized" in mock_sync_label.text
     finally:
         _st.config = original_config
@@ -1702,19 +1688,139 @@ def mock_ui():
         patch("main.list_templates", new_callable=AsyncMock, return_value=[]),
         patch("main.list_api_keys", new_callable=AsyncMock, return_value=[]),
         patch("main.list_users", new_callable=AsyncMock, return_value=[]),
-        patch("main.list_sms_senders", new_callable=AsyncMock, return_value=[]),
-        patch("main.list_provider_details", new_callable=AsyncMock, return_value=[]),
-        patch("main.list_communication_items", new_callable=AsyncMock, return_value=[]),
-        patch("main.list_inbound_numbers", new_callable=AsyncMock, return_value=[]),
         patch("main.list_local_keys", new_callable=AsyncMock, return_value=[]),
         patch("main.get_setting", new_callable=AsyncMock, return_value=None),
         patch("main.get_secure_setting", new_callable=AsyncMock, return_value=None),
         patch("main.resolve_local_key", new_callable=AsyncMock, return_value=None),
-        patch("main.services_table", new_callable=AsyncMock),
+        patch("main.handle_full_sync", new_callable=AsyncMock),
+        patch("main.handle_entity_sync", new_callable=AsyncMock),
         patch("main.render_local_keys", new_callable=AsyncMock),
     ]
     with ExitStack() as stack:
         for p in patches:
+            stack.enter_context(p)
+        yield mock_obj
+
+
+def _ui_patches(mod_path, _make_mock):
+    """Build common patches for a page module."""
+    import importlib
+
+    module = importlib.import_module(mod_path)
+    patches = [
+        patch(
+            f"{mod_path}.build_shell",
+            return_value=(MagicMock(), MagicMock(), MagicMock(), MagicMock()),
+        ),
+        patch(f"{mod_path}.ensure_theme_preference", new_callable=AsyncMock),
+        patch(f"{mod_path}.refresh_status_badge", new_callable=AsyncMock),
+        patch(f"{mod_path}.refresh_if_needed", new_callable=AsyncMock),
+        patch(f"{mod_path}.ui.column", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.card", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.row", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.label", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.button", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.select", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.input", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.table", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.textarea", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.checkbox", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.markdown", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.dialog", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.notify"),
+        patch(f"{mod_path}.ui.dropdown_button", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.refreshable", lambda fn: fn),
+        patch(f"{mod_path}.ui.run_javascript"),
+        patch(f"{mod_path}.ui.link"),
+        patch(f"{mod_path}.ui.separator"),
+        patch(f"{mod_path}.ui.switch", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.expansion", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.badge", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.scroll_area", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.upload", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.linear_progress", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.toggle", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.code", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.page", lambda *a, **kw: lambda fn: fn),
+    ]
+    # Optional patches — only add if the page module imports the name
+    optional = {
+        "add_copyable_slots": patch(f"{mod_path}.add_copyable_slots"),
+        "handle_full_sync": patch(
+            f"{mod_path}.handle_full_sync", new_callable=AsyncMock
+        ),
+        "handle_entity_sync": patch(
+            f"{mod_path}.handle_entity_sync", new_callable=AsyncMock
+        ),
+        "metric_card": patch(f"{mod_path}.metric_card"),
+        "list_services": patch(
+            f"{mod_path}.list_services", new_callable=AsyncMock, return_value=[]
+        ),
+        "list_templates": patch(
+            f"{mod_path}.list_templates", new_callable=AsyncMock, return_value=[]
+        ),
+        "list_api_keys": patch(
+            f"{mod_path}.list_api_keys", new_callable=AsyncMock, return_value=[]
+        ),
+        "list_users": patch(
+            f"{mod_path}.list_users", new_callable=AsyncMock, return_value=[]
+        ),
+        "list_sms_senders": patch(
+            f"{mod_path}.list_sms_senders", new_callable=AsyncMock, return_value=[]
+        ),
+        "list_provider_details": patch(
+            f"{mod_path}.list_provider_details",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        "list_communication_items": patch(
+            f"{mod_path}.list_communication_items",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        "list_inbound_numbers": patch(
+            f"{mod_path}.list_inbound_numbers",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    }
+    for attr, p in optional.items():
+        if hasattr(module, attr):
+            patches.append(p)
+    return patches
+
+
+@contextmanager
+def mock_page_ui(mod_path):
+    """Mock NiceGUI UI components for an extracted page module."""
+    mock_obj = MagicMock()
+    mock_obj.__enter__ = Mock(return_value=mock_obj)
+    mock_obj.__exit__ = Mock(return_value=False)
+    mock_obj.classes = MagicMock(return_value=mock_obj)
+    mock_obj.props = MagicMock(return_value=mock_obj)
+
+    def _make_mock(*args, **kwargs):
+        new_mock = MagicMock()
+        new_mock.__enter__ = Mock(return_value=new_mock)
+        new_mock.__exit__ = Mock(return_value=False)
+        new_mock.classes = MagicMock(return_value=new_mock)
+        new_mock.props = MagicMock(return_value=new_mock)
+        new_mock.style = MagicMock(return_value=new_mock)
+        new_mock.on_click = MagicMock(return_value=new_mock)
+        new_mock.on_value_change = MagicMock(return_value=new_mock)
+        new_mock.set_options = MagicMock(return_value=new_mock)
+        new_mock.on = MagicMock(return_value=new_mock)
+        new_mock.add_slot = MagicMock(return_value=new_mock)
+        new_mock.refresh = MagicMock()
+        new_mock.value = kwargs.get("value", None)
+        new_mock.text = ""
+        new_mock.visible = True
+        return new_mock
+
+    from contextlib import ExitStack
+
+    with ExitStack() as stack:
+        for p in _ui_patches(mod_path, _make_mock):
             stack.enter_context(p)
         yield mock_obj
 
@@ -1727,8 +1833,8 @@ async def test_dashboard_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.dashboard_page()
+        with mock_page_ui("app.ui.pages.dashboard"):
+            await page_dashboard.dashboard_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1743,8 +1849,9 @@ async def test_services_page(initialized_db, mock_config):
     _st.state = SharedTestState(environment="development")
     _st.service_search_query = ""
     try:
-        with mock_ui():
-            await main.services_page()
+        with mock_page_ui("app.ui.pages.services"):
+            with patch.object(page_services, "services_table", new_callable=AsyncMock):
+                await page_services.services_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1769,11 +1876,15 @@ async def test_services_table_func(initialized_db, mock_config):
 
     try:
         with (
-            patch("main.list_services", new_callable=AsyncMock, return_value=[]),
-            patch("main.ui.table", return_value=mock_obj),
-            patch("main.add_copyable_slots"),
+            patch(
+                "app.ui.pages.services.list_services",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("app.ui.pages.services.ui.table", return_value=mock_obj),
+            patch("app.ui.pages.services.add_copyable_slots"),
         ):
-            await main.services_table.func()
+            await page_services.services_table.func()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1787,8 +1898,8 @@ async def test_templates_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.templates_page()
+        with mock_page_ui("app.ui.pages.templates"):
+            await page_templates.templates_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1832,8 +1943,8 @@ async def test_users_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.users_page()
+        with mock_page_ui("app.ui.pages.users"):
+            await page_users.users_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1847,8 +1958,8 @@ async def test_sms_senders_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.sms_senders_page()
+        with mock_page_ui("app.ui.pages.sms_senders"):
+            await page_sms_senders.sms_senders_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1862,8 +1973,8 @@ async def test_provider_details_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.provider_details_page()
+        with mock_page_ui("app.ui.pages.provider_details"):
+            await page_provider_details.provider_details_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1877,8 +1988,8 @@ async def test_communication_items_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.communication_items_page()
+        with mock_page_ui("app.ui.pages.comm_items"):
+            await page_comm_items.communication_items_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1892,8 +2003,8 @@ async def test_inbound_numbers_page(initialized_db, mock_config):
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
     try:
-        with mock_ui():
-            await main.inbound_numbers_page()
+        with mock_page_ui("app.ui.pages.inbound_numbers"):
+            await page_inbound_numbers.inbound_numbers_page()
     finally:
         _st.config = original
         _st.state = original_state
@@ -1975,7 +2086,7 @@ async def test_render_local_keys_func(initialized_db, mock_config):
 def test_ui_run_guard():
     """Test that ui.run is called when __name__ == '__main__'."""
 
-    assert hasattr(main, "dashboard_page")
+    assert hasattr(main, "api_keys_page")
 
 
 # ===================================================================
@@ -2001,16 +2112,16 @@ async def test_handle_full_sync_reraises_non_401(initialized_db, mock_config):
 
     try:
         with (
-            patch.object(
-                main, "build_api_client", new_callable=AsyncMock
-            ) as mock_build,
+            patch.object(_st, "build_api_client", new_callable=AsyncMock) as mock_build,
         ):
             mock_manager = AsyncMock()
             mock_manager.sync_all = AsyncMock(side_effect=exc)
             mock_build.return_value = AsyncMock()
             with patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager):
                 with pytest.raises(httpx.HTTPStatusError):
-                    await main.handle_full_sync(mock_status_badge, mock_sync_label)
+                    await sync_handlers.handle_full_sync(
+                        mock_status_badge, mock_sync_label
+                    )
     finally:
         _st.config = original_config
         _st.state = original_state
@@ -2041,11 +2152,15 @@ async def test_services_table_with_search_query(initialized_db, mock_config):
 
     try:
         with (
-            patch("main.list_services", new_callable=AsyncMock, return_value=[]),
-            patch("main.ui.table", return_value=mock_obj),
-            patch("main.add_copyable_slots"),
+            patch(
+                "app.ui.pages.services.list_services",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("app.ui.pages.services.ui.table", return_value=mock_obj),
+            patch("app.ui.pages.services.add_copyable_slots"),
         ):
-            await main.services_table.func()
+            await page_services.services_table.func()
     finally:
         _st.config = original
         _st.state = original_state

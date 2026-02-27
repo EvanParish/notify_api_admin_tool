@@ -52,3 +52,11 @@ async def handle_entity_sync(
     sync_label.text = "Sync complete"
     await _st.refresh_status_badge(status_badge)
     return True
+
+
+async def handle_full_sync(status_badge, sync_label) -> bool:
+    """Run a full sync of all entities.
+
+    Returns True if sync succeeded, False otherwise.
+    """
+    return await handle_entity_sync(["sync_all"], status_badge, sync_label, "all data")
