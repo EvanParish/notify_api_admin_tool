@@ -1,11 +1,37 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any, Dict, List, Optional
 
 import httpx
 import jwt
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    before_sleep_log,
+)
+
+logger = logging.getLogger(__name__)
+
+# Retry decorator for transient network errors
+http_retry = retry(
+    retry=retry_if_exception_type(
+        (
+            httpx.ReadError,
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.ReadTimeout,
+        )
+    ),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
 
 
 class NotificationAPI:
@@ -82,11 +108,13 @@ class HttpNotificationAPI(NotificationAPI):
         if basic_username and basic_password:
             self._basic_auth = httpx.BasicAuth(basic_username, basic_password)
 
+    @http_retry
     async def get_services(self) -> List[Dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/service", auth=self._basic_auth)
         resp.raise_for_status()
         return resp.json().get("data", [])
 
+    @http_retry
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/service/{service_id}/template", auth=self._basic_auth
@@ -94,6 +122,7 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json().get("data", [])
 
+    @http_retry
     async def get_api_keys(self, service_id: str) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/service/{service_id}/api-keys", auth=self._basic_auth
@@ -101,6 +130,7 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json().get("apiKeys", [])
 
+    @http_retry
     async def create_api_key(
         self,
         service_id: str,
@@ -119,6 +149,7 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json()
 
+    @http_retry
     async def update_api_key_expiry(
         self, service_id: str, key_id: str, expiry_date: str
     ) -> Dict[str, Any]:
@@ -131,6 +162,7 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json()
 
+    @http_retry
     async def revoke_api_key(self, service_id: str, key_id: str) -> Dict[str, Any]:
         resp = await self.client.post(
             f"{self.base_url}/service/{service_id}/api-key/revoke/{key_id}",
@@ -139,6 +171,7 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json()
 
+    @http_retry
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/service/{service_id}/sms-sender", auth=self._basic_auth
@@ -149,6 +182,7 @@ class HttpNotificationAPI(NotificationAPI):
             return payload
         return payload.get("sms_senders") or payload.get("data") or []
 
+    @http_retry
     async def get_users(self) -> List[Dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/user", auth=self._basic_auth)
         resp.raise_for_status()
@@ -157,6 +191,7 @@ class HttpNotificationAPI(NotificationAPI):
             return payload
         return payload.get("data") or []
 
+    @http_retry
     async def get_provider_details(self) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/provider-details", auth=self._basic_auth
@@ -167,6 +202,7 @@ class HttpNotificationAPI(NotificationAPI):
             return payload
         return payload.get("provider_details") or payload.get("data") or []
 
+    @http_retry
     async def get_communication_items(self) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/communication-item", auth=self._basic_auth
@@ -177,6 +213,7 @@ class HttpNotificationAPI(NotificationAPI):
             return payload
         return payload.get("data") or []
 
+    @http_retry
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/inbound-number", auth=self._basic_auth
@@ -187,6 +224,7 @@ class HttpNotificationAPI(NotificationAPI):
             return payload
         return payload.get("data") or []
 
+    @http_retry
     async def send_notification(
         self,
         template_id: str,
@@ -215,6 +253,7 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json()
 
+    @http_retry
     async def healthcheck(self) -> bool:
         try:
             resp = await self.client.get(

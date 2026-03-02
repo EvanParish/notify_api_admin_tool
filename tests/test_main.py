@@ -558,7 +558,6 @@ def test_build_shell():
         assert len(result) == 4  # status_badge, sync_label, refresh_button, dark_mode
 
 
-@pytest.mark.asyncio
 def test_module_level_initialization():
     """Test that module-level objects are initialized correctly."""
 

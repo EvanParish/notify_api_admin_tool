@@ -647,3 +647,97 @@ async def test_http_api_aclose():
     with patch.object(api.client, "aclose", new_callable=AsyncMock) as mock_aclose:
         await api.aclose()
         mock_aclose.assert_called_once()
+
+
+# --- Retry decorator tests ---
+
+
+@pytest.mark.asyncio
+async def test_http_api_retries_on_read_error():
+    """Test that HTTP API retries on transient ReadError."""
+    api = HttpNotificationAPI("https://api.example.com")
+
+    call_count = 0
+
+    async def fail_then_succeed(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count < 3:
+            raise httpx.ReadError("Connection reset")
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": [{"id": "svc-1"}]}
+        mock_response.raise_for_status = MagicMock()
+        return mock_response
+
+    with patch.object(api.client, "get", side_effect=fail_then_succeed):
+        result = await api.get_services()
+
+    assert call_count == 3
+    assert result == [{"id": "svc-1"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_retries_on_connect_error():
+    """Test that HTTP API retries on ConnectError."""
+    api = HttpNotificationAPI("https://api.example.com")
+
+    call_count = 0
+
+    async def fail_then_succeed(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count < 2:
+            raise httpx.ConnectError("Connection refused")
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"apiKeys": [{"id": "key-1"}]}
+        mock_response.raise_for_status = MagicMock()
+        return mock_response
+
+    with patch.object(api.client, "get", side_effect=fail_then_succeed):
+        result = await api.get_api_keys("svc-1")
+
+    assert call_count == 2
+    assert result == [{"id": "key-1"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_exhausts_retries():
+    """Test that HTTP API raises after exhausting retries."""
+    api = HttpNotificationAPI("https://api.example.com")
+
+    call_count = 0
+
+    async def always_fail(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        raise httpx.ReadError("Connection permanently broken")
+
+    with patch.object(api.client, "get", side_effect=always_fail):
+        with pytest.raises(httpx.ReadError, match="Connection permanently broken"):
+            await api.get_services()
+
+    assert call_count == 3  # Default max retries
+
+
+@pytest.mark.asyncio
+async def test_http_api_no_retry_on_http_error():
+    """Test that HTTP API does not retry on HTTP status errors."""
+    api = HttpNotificationAPI("https://api.example.com")
+
+    call_count = 0
+
+    async def raise_http_error(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        mock_request = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        raise httpx.HTTPStatusError(
+            "Server Error", request=mock_request, response=mock_response
+        )
+
+    with patch.object(api.client, "get", side_effect=raise_http_error):
+        with pytest.raises(httpx.HTTPStatusError):
+            await api.get_services()
+
+    assert call_count == 1  # No retries for HTTP errors
