@@ -103,8 +103,6 @@ async def api_keys_page() -> None:
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("API Keys").classes("text-lg font-semibold")
 
-        create_button = ui.button("Create Personal API Key", color="green")
-
         with ui.dialog() as create_dialog, ui.card().classes("p-6 w-full max-w-3xl"):
             ui.label("Create Personal API Key").classes("text-md font-semibold")
             create_env = ui.select(
@@ -185,6 +183,8 @@ async def api_keys_page() -> None:
 
             await refresh_if_needed(render_local_keys)
             create_dialog.close()
+            await page_sync_api_keys()
+            await refresh_if_needed(render_table)
 
         async def handle_open_create_dialog() -> None:  # pragma: no cover
             create_env.value = _st.state.environment
@@ -192,7 +192,6 @@ async def api_keys_page() -> None:
             create_dialog.open()
 
         create_env.on_value_change(handle_create_env_change)
-        create_button.on_click(handle_open_create_dialog)
         submit_button.on_click(handle_create_api_key)
 
         selected_api_key: Dict[str, Any] = {}
@@ -467,4 +466,6 @@ async def api_keys_page() -> None:
                 on_click=handle_open_manage_dialog,
                 color="primary",
             )
+            create_button = ui.button("Create Personal API Key", color="green")
+        create_button.on_click(handle_open_create_dialog)
         await render_table()

@@ -26,7 +26,7 @@ from app.ui.state import (
     refresh_status_badge,
     safe_notify,
 )
-from app.ui.sync_handlers import handle_full_sync
+from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 
 @ui.page("/api-key-service")
@@ -36,6 +36,15 @@ async def api_key_emails_page() -> None:
 
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
+
+    async def sync_api_keys():  # pragma: no cover
+        await handle_entity_sync(
+            ["sync_api_keys"],
+            status_badge,
+            sync_label,
+            "API keys",
+            pre_sync=["sync_services"],
+        )
 
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
@@ -201,6 +210,7 @@ async def api_key_emails_page() -> None:
             secret, created_key, environment, service.name, service_id
         )
         ui.notify("Email content generated", color="green")
+        await sync_api_keys()
 
     def handle_copy_output() -> None:  # pragma: no cover
         if not output_area.value:
