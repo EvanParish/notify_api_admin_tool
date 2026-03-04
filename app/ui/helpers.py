@@ -44,7 +44,14 @@ def make_sortable(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Copyable cell slots
 # ---------------------------------------------------------------------------
-COPYABLE_FIELDS = ("id", "service_id", "name", "key_name", "sms_sender")
+COPYABLE_FIELDS = (
+    "id",
+    "email_address",
+    "key_name",
+    "name",
+    "service_id",
+    "sms_sender",
+)
 COPYABLE_CELL_SLOT = """
 <q-td :props="props">
   <span

@@ -18,7 +18,7 @@ from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 @ui.page("/users")
 async def users_page() -> None:
-    user_search_query = ""
+    search_query = ""
 
     async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_if_needed(render_table)
@@ -38,8 +38,8 @@ async def users_page() -> None:
         ui.label("Users").classes("text-lg font-semibold")
         filter_row = ui.row().classes("gap-2 w-full")
         with filter_row:
-            user_search = (
-                ui.input(label="Search by Name or Email")
+            search_input = (
+                ui.input(label="Search by ID, Name, or Email")
                 .props("clearable")
                 .classes("w-full md:w-1/2")
             )
@@ -80,12 +80,13 @@ async def users_page() -> None:
                     for user in users
                     if normalize_state(user.state) == selected_state
                 ]
-            if user_search_query:
+            if search_query:
                 users = [
                     user
                     for user in users
-                    if user_search_query in (user.name or "").lower()
-                    or user_search_query in (user.email_address or "").lower()
+                    if search_query in (user.id or "").lower()
+                    or search_query in (user.name or "").lower()
+                    or search_query in (user.email_address or "").lower()
                 ]
             table_rows: List[Dict[str, Any]] = [
                 {
@@ -167,12 +168,12 @@ async def users_page() -> None:
             table.props("row-key=id").classes("w-full")
             add_copyable_slots(table, table_rows)
 
-        async def handle_user_search_event(e) -> None:  # pragma: no cover
-            nonlocal user_search_query
-            user_search_query = (getattr(e, "value", None) or "").strip().lower()
+        async def handle_search_event(e) -> None:  # pragma: no cover
+            nonlocal search_query
+            search_query = (getattr(e, "value", None) or "").strip().lower()
             await refresh_if_needed(render_table)
 
         ui.button("Sync Users", on_click=handle_sync_users)
-        user_search.on_value_change(handle_user_search_event)
+        search_input.on_value_change(handle_search_event)
         state_select.on_value_change(lambda _: render_table.refresh())
         await render_table()
