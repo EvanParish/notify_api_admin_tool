@@ -72,27 +72,57 @@ async def ensure_theme_preference(dark_mode) -> None:
 # ---------------------------------------------------------------------------
 # Shell builder
 # ---------------------------------------------------------------------------
+def _nav_link(icon: str, label: str, href: str) -> None:
+    """Create a styled navigation link with icon."""
+    with ui.link(target=href).classes(
+        "flex items-center gap-3 px-4 py-2.5 rounded-lg no-underline "
+        "text-slate-600 dark:text-slate-300 "
+        "hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white "
+        "transition-colors duration-150"
+    ):
+        ui.icon(icon).classes("text-lg")
+        ui.label(label).classes("text-sm font-medium")
+
+
+def _nav_section(title: str) -> None:
+    """Create a section header in the navigation."""
+    ui.label(title).classes(
+        "text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 "
+        "px-4 pt-4 pb-2"
+    )
+
+
 def build_shell(on_view_env_change=None) -> tuple:
     """Build sidebar + header chrome.  Returns (status_badge, sync_label, refresh_button, dark_mode)."""
     drawer = (
         ui.left_drawer(value=True)
-        .props("show-if-above bordered")
-        .classes("bg-slate-50 dark:bg-slate-900")
+        .props("show-if-above bordered width=240")
+        .classes(
+            "bg-slate-100 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700"
+        )
     )
     with drawer:
-        ui.link("Dashboard", "/")
-        ui.link("Send Notification", "/send")
-        ui.link("Bulk Send", "/bulk-send")
-        ui.link("Services", "/services")
-        ui.link("Templates", "/templates")
-        ui.link("API Keys", "/api-keys")
-        ui.link("Create Service API Key", "/api-key-service")
-        ui.link("Users", "/users")
-        ui.link("SMS Senders", "/sms-senders")
-        ui.link("Communication Items", "/communication-items")
-        ui.link("Inbound Numbers", "/inbound-numbers")
-        ui.link("Provider Details", "/provider-details")
-        ui.link("Settings", "/settings")
+        with ui.column().classes("w-full py-4 gap-0.5"):
+            _nav_section("Overview")
+            _nav_link("dashboard", "Dashboard", "/")
+
+            _nav_section("Notifications")
+            _nav_link("send", "Send Notification", "/send")
+            _nav_link("dynamic_feed", "Bulk Send", "/bulk-send")
+
+            _nav_section("Resources")
+            _nav_link("business", "Services", "/services")
+            _nav_link("description", "Templates", "/templates")
+            _nav_link("vpn_key", "API Keys", "/api-keys")
+            _nav_link("add_circle", "Create API Key", "/api-key-service")
+            _nav_link("people", "Users", "/users")
+            _nav_link("sms", "SMS Senders", "/sms-senders")
+            _nav_link("forum", "Communication Items", "/communication-items")
+            _nav_link("call", "Inbound Numbers", "/inbound-numbers")
+            _nav_link("cloud", "Provider Details", "/provider-details")
+
+            _nav_section("Configuration")
+            _nav_link("settings", "Settings", "/settings")
 
     dark_mode = ui.dark_mode()
     with ui.header().classes(
