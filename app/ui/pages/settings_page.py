@@ -41,10 +41,10 @@ async def settings_page() -> None:
         if key_service.value not in options:
             key_service.value = None
 
-    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+    status_badge, sync_label, refresh_button, dark_mode, theme_button = build_shell(
         on_view_env_change=refresh_service_options
     )
-    await ensure_theme_preference(dark_mode)
+    await ensure_theme_preference(dark_mode, theme_button)
 
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)

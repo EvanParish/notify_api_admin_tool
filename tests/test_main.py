@@ -555,7 +555,7 @@ def test_build_shell():
 
         # Verify it returns a tuple
         assert isinstance(result, tuple)
-        assert len(result) == 4  # status_badge, sync_label, refresh_button, dark_mode
+        assert len(result) == 5  # status_badge, sync_label, refresh_button, dark_mode, theme_button
 
 
 def test_module_level_initialization():
@@ -1210,12 +1210,14 @@ class TestToggleTheme:
     def test_toggles_and_saves(self):
         mock_dark_mode = MagicMock()
         mock_dark_mode.value = True
+        mock_theme_button = MagicMock()
         mock_storage = MagicMock()
         mock_storage.user = {"theme": "light"}
         with patch.object(shell, "app", **{"storage": mock_storage}):
-            shell.toggle_theme(mock_dark_mode)
+            shell.toggle_theme(mock_dark_mode, mock_theme_button)
             mock_dark_mode.toggle.assert_called_once()
             assert mock_storage.user["theme"] == "dark"
+            mock_theme_button.props.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -1247,6 +1249,19 @@ async def test_ensure_theme_preference_invalid_defaults_light():
         await shell.ensure_theme_preference(mock_dark_mode)
         assert mock_storage.user["theme"] == "light"
         assert mock_dark_mode.value is False
+
+
+@pytest.mark.asyncio
+async def test_ensure_theme_preference_with_theme_button():
+    mock_dark_mode = MagicMock()
+    mock_dark_mode.value = True
+    mock_theme_button = MagicMock()
+    mock_storage = MagicMock()
+    mock_storage.user = {"theme": "dark"}
+    with patch.object(shell, "app", **{"storage": mock_storage}):
+        await shell.ensure_theme_preference(mock_dark_mode, mock_theme_button)
+        assert mock_dark_mode.value is True
+        mock_theme_button.props.assert_called_once_with("icon=light_mode")
 
 
 @pytest.mark.asyncio
@@ -1598,7 +1613,7 @@ def _ui_patches(mod_path, _make_mock):
     optional = {
         "build_shell": patch(
             f"{mod_path}.build_shell",
-            return_value=(MagicMock(), MagicMock(), MagicMock(), MagicMock()),
+            return_value=(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()),
         ),
         "ensure_theme_preference": patch(
             f"{mod_path}.ensure_theme_preference", new_callable=AsyncMock

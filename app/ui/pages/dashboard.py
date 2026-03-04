@@ -55,10 +55,10 @@ async def dashboard_page() -> None:
                 "This dashboard caches services, templates, API keys, users, SMS senders, provider details, and local API keys. Use the left navigation to manage data and send notifications."
             )
 
-    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+    status_badge, sync_label, refresh_button, dark_mode, theme_button = build_shell(
         on_view_env_change=lambda: refresh_if_needed(render_dashboard)
     )
-    await ensure_theme_preference(dark_mode)
+    await ensure_theme_preference(dark_mode, theme_button)
 
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)

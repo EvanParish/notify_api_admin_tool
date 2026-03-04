@@ -31,8 +31,8 @@ from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 @ui.page("/api-key-service")
 async def api_key_emails_page() -> None:
-    status_badge, sync_label, refresh_button, dark_mode = build_shell()
-    await ensure_theme_preference(dark_mode)
+    status_badge, sync_label, refresh_button, dark_mode, theme_button = build_shell()
+    await ensure_theme_preference(dark_mode, theme_button)
 
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)

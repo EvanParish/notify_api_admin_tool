@@ -23,10 +23,10 @@ async def users_page() -> None:
     async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_if_needed(render_table)
 
-    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+    status_badge, sync_label, refresh_button, dark_mode, theme_button = build_shell(
         on_view_env_change=handle_view_env_change
     )
-    await ensure_theme_preference(dark_mode)
+    await ensure_theme_preference(dark_mode, theme_button)
 
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)

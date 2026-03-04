@@ -41,10 +41,10 @@ async def bulk_send_page() -> None:
             service_select.value = None
         await handle_service_change()
 
-    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+    status_badge, sync_label, refresh_button, dark_mode, theme_button = build_shell(
         on_view_env_change=refresh_service_options
     )
-    await ensure_theme_preference(dark_mode)
+    await ensure_theme_preference(dark_mode, theme_button)
 
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)

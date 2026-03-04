@@ -28,10 +28,10 @@ async def handle_service_search_event(e) -> None:
 
 @ui.page("/services")
 async def services_page() -> None:
-    status_badge, sync_label, refresh_button, dark_mode = build_shell(
+    status_badge, sync_label, refresh_button, dark_mode, theme_button = build_shell(
         on_view_env_change=lambda: refresh_if_needed(services_table)
     )
-    await ensure_theme_preference(dark_mode)
+    await ensure_theme_preference(dark_mode, theme_button)
 
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)

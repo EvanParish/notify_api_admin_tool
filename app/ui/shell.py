@@ -56,17 +56,20 @@ def set_theme_preference(is_dark: bool) -> None:
     app.storage.user["theme"] = "dark" if is_dark else "light"
 
 
-def toggle_theme(dark_mode) -> None:
+def toggle_theme(dark_mode, theme_button) -> None:
     dark_mode.toggle()
     set_theme_preference(dark_mode.value)
+    theme_button.props(f"icon={'light_mode' if dark_mode.value else 'dark_mode'}")
 
 
-async def ensure_theme_preference(dark_mode) -> None:
+async def ensure_theme_preference(dark_mode, theme_button=None) -> None:
     stored_theme = app.storage.user.get("theme")
     if stored_theme not in {"light", "dark"}:
         stored_theme = "light"
         app.storage.user["theme"] = stored_theme
     dark_mode.value = stored_theme == "dark"
+    if theme_button:
+        theme_button.props(f"icon={'light_mode' if dark_mode.value else 'dark_mode'}")
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +96,7 @@ def _nav_section(title: str) -> None:
 
 
 def build_shell(on_view_env_change=None) -> tuple:
-    """Build sidebar + header chrome.  Returns (status_badge, sync_label, refresh_button, dark_mode)."""
+    """Build sidebar + header chrome.  Returns (status_badge, sync_label, refresh_button, dark_mode, theme_button)."""
     drawer = (
         ui.left_drawer(value=True)
         .props("show-if-above bordered width=240")
@@ -148,7 +151,7 @@ def build_shell(on_view_env_change=None) -> tuple:
             ).classes("w-32")
             refresh_button = ui.button("Refresh All Data")
             theme_button = ui.button(icon="dark_mode").props("flat round dense")
-            theme_button.on_click(lambda: toggle_theme(dark_mode))
+            theme_button.on_click(lambda: toggle_theme(dark_mode, theme_button))
             if on_view_env_change:
 
                 async def handle_env_change(e):  # pragma: no cover
@@ -195,4 +198,4 @@ def build_shell(on_view_env_change=None) -> tuple:
                         return handler
 
                     checkbox.on_value_change(make_handler(env))
-    return status_badge, sync_label, refresh_button, dark_mode
+    return status_badge, sync_label, refresh_button, dark_mode, theme_button
