@@ -8,6 +8,7 @@ from app.repository import list_communication_items
 from app.ui.helpers import (
     add_copyable_slots,
     format_environment,
+    make_row_key,
     make_sortable,
     refresh_if_needed,
 )
@@ -49,6 +50,7 @@ async def communication_items_page() -> None:
             items = await list_communication_items(get_view_environment())
             table_rows: List[Dict[str, Any]] = [
                 {
+                    "_row_key": make_row_key(item.id, item.environment),
                     "id": item.id,
                     "environment": format_environment(item.environment),
                     "name": item.name,
@@ -82,7 +84,7 @@ async def communication_items_page() -> None:
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
             )
-            table.props("row-key=id").classes("w-full")
+            table.props("row-key=_row_key").classes("w-full")
             add_copyable_slots(table, table_rows)
 
         ui.button("Sync Communication Items", on_click=handle_sync_communication_items)

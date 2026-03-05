@@ -41,6 +41,11 @@ def make_sortable(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [{**column, "sortable": True} for column in columns]
 
 
+def make_row_key(entity_id: Any, environment: Optional[str]) -> str:
+    """Create a unique row key combining id and environment for Quasar tables."""
+    return f"{entity_id or ''}:{environment or ''}"
+
+
 # ---------------------------------------------------------------------------
 # Copyable cell slots
 # ---------------------------------------------------------------------------

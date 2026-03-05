@@ -8,6 +8,7 @@ from app.repository import list_provider_details
 from app.ui.helpers import (
     add_copyable_slots,
     format_environment,
+    make_row_key,
     make_sortable,
     refresh_if_needed,
 )
@@ -46,6 +47,7 @@ async def provider_details_page() -> None:
             providers = await list_provider_details(get_view_environment())
             table_rows: List[Dict[str, Any]] = [
                 {
+                    "_row_key": make_row_key(provider.id, provider.environment),
                     "id": provider.id,
                     "environment": format_environment(provider.environment),
                     "name": provider.display_name,
@@ -129,7 +131,7 @@ async def provider_details_page() -> None:
                 rows=table_rows,
                 pagination={"rowsPerPage": 9},
             )
-            table.props("row-key=id").classes("w-full")
+            table.props("row-key=_row_key").classes("w-full")
             add_copyable_slots(table, table_rows)
 
         ui.button("Sync Provider Details", on_click=handle_sync_provider_details)

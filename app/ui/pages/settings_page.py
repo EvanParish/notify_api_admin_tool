@@ -17,6 +17,7 @@ from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     format_service_label,
+    make_row_key,
     make_sortable,
     refresh_if_needed,
 )
@@ -195,6 +196,7 @@ async def render_local_keys() -> None:
     keys = await list_local_keys()
     rows: List[Dict[str, Any]] = [
         {
+            "_row_key": make_row_key(k.id, k.environment),
             "id": k.id,
             "service_id": k.service_id,
             "environment": k.environment,
@@ -216,5 +218,5 @@ async def render_local_keys() -> None:
         rows=rows,
         pagination={"rowsPerPage": 5},
     )
-    table.props("row-key=id").classes("w-full")
+    table.props("row-key=_row_key").classes("w-full")
     add_copyable_slots(table, rows)

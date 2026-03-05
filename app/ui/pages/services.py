@@ -9,6 +9,7 @@ from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     format_environment,
+    make_row_key,
     make_sortable,
     refresh_if_needed,
 )
@@ -69,6 +70,7 @@ async def services_table() -> None:
         ]
     table_rows: List[Dict[str, Any]] = [
         {
+            "_row_key": make_row_key(row.id, row.environment),
             "id": row.id,
             "environment": format_environment(row.environment),
             "name": row.name,
@@ -110,5 +112,5 @@ async def services_table() -> None:
         rows=table_rows,
         pagination={"rowsPerPage": 10},
     )
-    table.props("row-key=id").classes("w-full")
+    table.props("row-key=_row_key").classes("w-full")
     add_copyable_slots(table, table_rows)

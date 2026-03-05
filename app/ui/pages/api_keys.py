@@ -18,6 +18,7 @@ from app.ui.helpers import (
     add_copyable_slots,
     format_environment,
     format_service_label,
+    make_row_key,
     make_sortable,
     refresh_if_needed,
 )
@@ -391,6 +392,7 @@ async def api_keys_page() -> None:
             )
             table_rows: List[Dict[str, Any]] = [
                 {
+                    "_row_key": make_row_key(key.id, key.environment),
                     "id": key.id,
                     "environment": format_environment(key.environment),
                     "environment_value": key.environment,
@@ -452,7 +454,7 @@ async def api_keys_page() -> None:
                 on_select=handle_table_selection,
                 pagination={"rowsPerPage": 10},
             )
-            table.props("row-key=id").classes("w-full")
+            table.props("row-key=_row_key").classes("w-full")
             add_copyable_slots(table, table_rows)
 
         search_input.on_value_change(lambda _: render_table.refresh())

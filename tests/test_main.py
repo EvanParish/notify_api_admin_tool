@@ -555,7 +555,9 @@ def test_build_shell():
 
         # Verify it returns a tuple
         assert isinstance(result, tuple)
-        assert len(result) == 5  # status_badge, sync_label, refresh_button, dark_mode, theme_button
+        assert (
+            len(result) == 5
+        )  # status_badge, sync_label, refresh_button, dark_mode, theme_button
 
 
 def test_module_level_initialization():
@@ -1155,6 +1157,20 @@ class TestMakeSortable:
         assert result[0]["name"] == "id"
 
 
+class TestMakeRowKey:
+    def test_make_row_key_with_both_values(self):
+        assert helpers.make_row_key("abc123", "dev") == "abc123:dev"
+
+    def test_make_row_key_with_none_id(self):
+        assert helpers.make_row_key(None, "dev") == ":dev"
+
+    def test_make_row_key_with_none_environment(self):
+        assert helpers.make_row_key("abc123", None) == "abc123:"
+
+    def test_make_row_key_with_both_none(self):
+        assert helpers.make_row_key(None, None) == ":"
+
+
 # ===================================================================
 # Async business logic tests
 # ===================================================================
@@ -1613,7 +1629,13 @@ def _ui_patches(mod_path, _make_mock):
     optional = {
         "build_shell": patch(
             f"{mod_path}.build_shell",
-            return_value=(MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()),
+            return_value=(
+                MagicMock(),
+                MagicMock(),
+                MagicMock(),
+                MagicMock(),
+                MagicMock(),
+            ),
         ),
         "ensure_theme_preference": patch(
             f"{mod_path}.ensure_theme_preference", new_callable=AsyncMock
