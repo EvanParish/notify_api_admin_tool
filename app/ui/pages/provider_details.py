@@ -7,6 +7,7 @@ from nicegui import ui
 from app.repository import list_provider_details
 from app.ui.helpers import (
     add_copyable_slots,
+    add_export_button,
     format_environment,
     make_row_key,
     make_sortable,
@@ -45,6 +46,40 @@ async def provider_details_page() -> None:
         @ui.refreshable
         async def render_table() -> None:
             providers = await list_provider_details(get_view_environment())
+            columns = [
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "environment", "label": "Environment", "field": "environment"},
+                {"name": "name", "label": "Display Name", "field": "name"},
+                {"name": "identifier", "label": "Identifier", "field": "identifier"},
+                {
+                    "name": "notification_type",
+                    "label": "Type",
+                    "field": "notification_type",
+                },
+                {"name": "priority", "label": "Priority", "field": "priority"},
+                {
+                    "name": "load_balancing_weight",
+                    "label": "Weight",
+                    "field": "load_balancing_weight",
+                },
+                {"name": "active", "label": "Active", "field": "active"},
+                {
+                    "name": "supports_international",
+                    "label": "International",
+                    "field": "supports_international",
+                },
+                {
+                    "name": "current_month_billable_sms",
+                    "label": "Billable SMS",
+                    "field": "current_month_billable_sms",
+                },
+                {
+                    "name": "created_by_name",
+                    "label": "Created By",
+                    "field": "created_by_name",
+                },
+                {"name": "updated_at", "label": "Updated", "field": "updated_at"},
+            ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(provider.id, provider.environment),
@@ -63,76 +98,18 @@ async def provider_details_page() -> None:
                 }
                 for provider in providers
             ]
+            with ui.row().classes("w-full items-center"):
+                ui.button(
+                    "Sync Provider Details", on_click=handle_sync_provider_details
+                )
+                ui.space()
+                add_export_button(table_rows, columns, "provider_details.csv")
             table = ui.table(
-                columns=make_sortable(
-                    [
-                        {
-                            "name": "id",
-                            "label": "ID",
-                            "field": "id",
-                        },
-                        {
-                            "name": "environment",
-                            "label": "Environment",
-                            "field": "environment",
-                        },
-                        {
-                            "name": "name",
-                            "label": "Display Name",
-                            "field": "name",
-                        },
-                        {
-                            "name": "identifier",
-                            "label": "Identifier",
-                            "field": "identifier",
-                        },
-                        {
-                            "name": "notification_type",
-                            "label": "Type",
-                            "field": "notification_type",
-                        },
-                        {
-                            "name": "priority",
-                            "label": "Priority",
-                            "field": "priority",
-                        },
-                        {
-                            "name": "load_balancing_weight",
-                            "label": "Weight",
-                            "field": "load_balancing_weight",
-                        },
-                        {
-                            "name": "active",
-                            "label": "Active",
-                            "field": "active",
-                        },
-                        {
-                            "name": "supports_international",
-                            "label": "International",
-                            "field": "supports_international",
-                        },
-                        {
-                            "name": "current_month_billable_sms",
-                            "label": "Billable SMS",
-                            "field": "current_month_billable_sms",
-                        },
-                        {
-                            "name": "created_by_name",
-                            "label": "Created By",
-                            "field": "created_by_name",
-                        },
-                        {
-                            "name": "updated_at",
-                            "label": "Updated",
-                            "field": "updated_at",
-                        },
-                    ]
-                ),
+                columns=make_sortable(columns),
                 rows=table_rows,
                 pagination={"rowsPerPage": 9},
             )
             table.props("row-key=_row_key").classes("w-full")
             add_copyable_slots(table, table_rows)
 
-        ui.button("Sync Provider Details", on_click=handle_sync_provider_details)
         await render_table()

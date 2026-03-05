@@ -7,6 +7,7 @@ from nicegui import ui
 from app.repository import list_communication_items
 from app.ui.helpers import (
     add_copyable_slots,
+    add_export_button,
     format_environment,
     make_row_key,
     make_sortable,
@@ -48,6 +49,21 @@ async def communication_items_page() -> None:
         @ui.refreshable
         async def render_table() -> None:
             items = await list_communication_items(get_view_environment())
+            columns = [
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "environment", "label": "Environment", "field": "environment"},
+                {"name": "name", "label": "Name", "field": "name"},
+                {
+                    "name": "va_profile_item_id",
+                    "label": "VA Profile Item ID",
+                    "field": "va_profile_item_id",
+                },
+                {
+                    "name": "default_send_indicator",
+                    "label": "Default Send",
+                    "field": "default_send_indicator",
+                },
+            ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(item.id, item.environment),
@@ -59,33 +75,18 @@ async def communication_items_page() -> None:
                 }
                 for item in items
             ]
+            with ui.row().classes("w-full items-center"):
+                ui.button(
+                    "Sync Communication Items", on_click=handle_sync_communication_items
+                )
+                ui.space()
+                add_export_button(table_rows, columns, "communication_items.csv")
             table = ui.table(
-                columns=make_sortable(
-                    [
-                        {"name": "id", "label": "ID", "field": "id"},
-                        {
-                            "name": "environment",
-                            "label": "Environment",
-                            "field": "environment",
-                        },
-                        {"name": "name", "label": "Name", "field": "name"},
-                        {
-                            "name": "va_profile_item_id",
-                            "label": "VA Profile Item ID",
-                            "field": "va_profile_item_id",
-                        },
-                        {
-                            "name": "default_send_indicator",
-                            "label": "Default Send",
-                            "field": "default_send_indicator",
-                        },
-                    ]
-                ),
+                columns=make_sortable(columns),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
             )
             table.props("row-key=_row_key").classes("w-full")
             add_copyable_slots(table, table_rows)
 
-        ui.button("Sync Communication Items", on_click=handle_sync_communication_items)
         await render_table()

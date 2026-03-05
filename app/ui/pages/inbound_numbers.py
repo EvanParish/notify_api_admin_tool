@@ -7,6 +7,7 @@ from nicegui import ui
 from app.repository import list_inbound_numbers, list_services
 from app.ui.helpers import (
     add_copyable_slots,
+    add_export_button,
     format_environment,
     format_service_label,
     make_row_key,
@@ -93,6 +94,34 @@ async def inbound_numbers_page() -> None:
                     if inbound_search_query in (n.number or "").lower()
                     or inbound_search_query in (n.id or "").lower()
                 ]
+            columns = [
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "environment", "label": "Environment", "field": "environment"},
+                {"name": "number", "label": "Number", "field": "number"},
+                {"name": "provider", "label": "Provider", "field": "provider"},
+                {"name": "active", "label": "Active", "field": "active"},
+                {
+                    "name": "self_managed",
+                    "label": "Self Managed",
+                    "field": "self_managed",
+                },
+                {"name": "service_id", "label": "Service ID", "field": "service_id"},
+                {
+                    "name": "service_name",
+                    "label": "Service Name",
+                    "field": "service_name",
+                },
+                {
+                    "name": "auth_parameter",
+                    "label": "Auth Parameter",
+                    "field": "auth_parameter",
+                },
+                {
+                    "name": "url_endpoint",
+                    "label": "URL Endpoint",
+                    "field": "url_endpoint",
+                },
+            ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(n.id, n.environment),
@@ -109,49 +138,12 @@ async def inbound_numbers_page() -> None:
                 }
                 for n in numbers
             ]
+            with ui.row().classes("w-full items-center"):
+                ui.button("Sync Inbound Numbers", on_click=handle_sync_inbound)
+                ui.space()
+                add_export_button(table_rows, columns, "inbound_numbers.csv")
             table = ui.table(
-                columns=make_sortable(
-                    [
-                        {"name": "id", "label": "ID", "field": "id"},
-                        {
-                            "name": "environment",
-                            "label": "Environment",
-                            "field": "environment",
-                        },
-                        {"name": "number", "label": "Number", "field": "number"},
-                        {
-                            "name": "provider",
-                            "label": "Provider",
-                            "field": "provider",
-                        },
-                        {"name": "active", "label": "Active", "field": "active"},
-                        {
-                            "name": "self_managed",
-                            "label": "Self Managed",
-                            "field": "self_managed",
-                        },
-                        {
-                            "name": "service_id",
-                            "label": "Service ID",
-                            "field": "service_id",
-                        },
-                        {
-                            "name": "service_name",
-                            "label": "Service Name",
-                            "field": "service_name",
-                        },
-                        {
-                            "name": "auth_parameter",
-                            "label": "Auth Parameter",
-                            "field": "auth_parameter",
-                        },
-                        {
-                            "name": "url_endpoint",
-                            "label": "URL Endpoint",
-                            "field": "url_endpoint",
-                        },
-                    ]
-                ),
+                columns=make_sortable(columns),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
             )
@@ -160,5 +152,4 @@ async def inbound_numbers_page() -> None:
 
         service_select.on_value_change(lambda _: render_table.refresh())
         inbound_search.on_value_change(handle_inbound_search_event)
-        ui.button("Sync Inbound Numbers", on_click=handle_sync_inbound)
         await render_table()

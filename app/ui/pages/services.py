@@ -8,6 +8,7 @@ from app.repository import list_services
 from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
+    add_export_button,
     format_environment,
     make_row_key,
     make_sortable,
@@ -54,12 +55,11 @@ async def services_page() -> None:
             .classes("w-full md:w-1/2")
         )
         service_search.on_value_change(handle_service_search_event)
-        ui.button("Sync Services", on_click=page_sync_services)
-        await services_table()
+        await services_table(page_sync_services)
 
 
 @ui.refreshable
-async def services_table() -> None:
+async def services_table(sync_callback) -> None:
     rows = await list_services(get_view_environment())
     if _st.service_search_query:
         rows = [
@@ -68,6 +68,18 @@ async def services_table() -> None:
             if _st.service_search_query in (row.id or "").lower()
             or _st.service_search_query in (row.name or "").lower()
         ]
+    columns = [
+        {"name": "id", "label": "ID", "field": "id"},
+        {"name": "environment", "label": "Environment", "field": "environment"},
+        {"name": "name", "label": "Name", "field": "name"},
+        {"name": "active", "label": "Active", "field": "active"},
+        {"name": "restricted", "label": "Restricted", "field": "restricted"},
+        {"name": "message_limit", "label": "Msg Limit", "field": "message_limit"},
+        {"name": "rate_limit", "label": "Rate Limit", "field": "rate_limit"},
+        {"name": "research_mode", "label": "Research", "field": "research_mode"},
+        {"name": "count_as_live", "label": "Live", "field": "count_as_live"},
+        {"name": "permissions", "label": "Permissions", "field": "permissions"},
+    ]
     table_rows: List[Dict[str, Any]] = [
         {
             "_row_key": make_row_key(row.id, row.environment),
@@ -86,29 +98,12 @@ async def services_table() -> None:
         }
         for row in rows
     ]
+    with ui.row().classes("w-full items-center"):
+        ui.button("Sync Services", on_click=sync_callback)
+        ui.space()
+        add_export_button(table_rows, columns, "services.csv")
     table = ui.table(
-        columns=make_sortable(
-            [
-                {"name": "id", "label": "ID", "field": "id"},
-                {"name": "environment", "label": "Environment", "field": "environment"},
-                {"name": "name", "label": "Name", "field": "name"},
-                {"name": "active", "label": "Active", "field": "active"},
-                {"name": "restricted", "label": "Restricted", "field": "restricted"},
-                {
-                    "name": "message_limit",
-                    "label": "Msg Limit",
-                    "field": "message_limit",
-                },
-                {"name": "rate_limit", "label": "Rate Limit", "field": "rate_limit"},
-                {
-                    "name": "research_mode",
-                    "label": "Research",
-                    "field": "research_mode",
-                },
-                {"name": "count_as_live", "label": "Live", "field": "count_as_live"},
-                {"name": "permissions", "label": "Permissions", "field": "permissions"},
-            ]
-        ),
+        columns=make_sortable(columns),
         rows=table_rows,
         pagination={"rowsPerPage": 10},
     )

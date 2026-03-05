@@ -6,7 +6,10 @@ all needed data as parameters or access only NiceGUI/stdlib APIs.
 
 from __future__ import annotations
 
+import base64
+import csv
 import inspect
+import io
 import json
 import logging
 import re
@@ -44,6 +47,54 @@ def make_sortable(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def make_row_key(entity_id: Any, environment: Optional[str]) -> str:
     """Create a unique row key combining id and environment for Quasar tables."""
     return f"{entity_id or ''}:{environment or ''}"
+
+
+# ---------------------------------------------------------------------------
+# CSV Export
+# ---------------------------------------------------------------------------
+def rows_to_csv(rows: List[Dict[str, Any]], columns: List[Dict[str, Any]]) -> str:
+    """Convert table rows to CSV string using column definitions."""
+    output = io.StringIO()
+    # Get field names from columns, excluding internal fields like _row_key
+    fields = [col["field"] for col in columns if not col["field"].startswith("_")]
+    labels = [col["label"] for col in columns if not col["field"].startswith("_")]
+
+    writer = csv.writer(output)
+    writer.writerow(labels)
+    for row in rows:
+        writer.writerow([row.get(field, "") for field in fields])
+
+    return output.getvalue()
+
+
+def download_csv(csv_content: str, filename: str) -> None:
+    """Trigger a CSV file download in the browser."""
+    b64 = base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
+    ui.run_javascript(
+        f"""
+        const link = document.createElement('a');
+        link.href = 'data:text/csv;base64,{b64}';
+        link.download = '{filename}';
+        link.click();
+        """
+    )
+    safe_notify(f"Exported {filename}", color="green")
+
+
+def add_export_button(
+    rows: List[Dict[str, Any]],
+    columns: List[Dict[str, Any]],
+    filename: str,
+) -> ui.button:
+    """Add an export CSV button that downloads the current table data."""
+
+    def handle_export():
+        csv_content = rows_to_csv(rows, columns)
+        download_csv(csv_content, filename)
+
+    return ui.button("Export CSV", icon="download", on_click=handle_export).props(
+        "flat dense"
+    )
 
 
 # ---------------------------------------------------------------------------

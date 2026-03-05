@@ -7,6 +7,7 @@ from nicegui import ui
 from app.repository import list_services, list_templates
 from app.ui.helpers import (
     add_copyable_slots,
+    add_export_button,
     format_environment,
     format_service_label,
     make_row_key,
@@ -98,6 +99,19 @@ async def templates_page() -> None:
                     if template_search_query in (row.id or "").lower()
                     or template_search_query in (row.name or "").lower()
                 ]
+            columns = [
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "environment", "label": "Environment", "field": "environment"},
+                {"name": "service_id", "label": "Service", "field": "service_id"},
+                {"name": "name", "label": "Name", "field": "name"},
+                {"name": "template_type", "label": "Type", "field": "template_type"},
+                {"name": "version", "label": "Version", "field": "version"},
+                {"name": "archived", "label": "Archived", "field": "archived"},
+                {"name": "hidden", "label": "Hidden", "field": "hidden"},
+                {"name": "updated_at", "label": "Updated", "field": "updated_at"},
+                {"name": "subject", "label": "Subject", "field": "subject"},
+                {"name": "content", "label": "Content", "field": "content"},
+            ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(row.id, row.environment),
@@ -117,38 +131,12 @@ async def templates_page() -> None:
                 }
                 for row in rows
             ]
+            with ui.row().classes("w-full items-center"):
+                ui.button("Sync Templates", on_click=handle_sync_templates)
+                ui.space()
+                add_export_button(table_rows, columns, "templates.csv")
             table = ui.table(
-                columns=make_sortable(
-                    [
-                        {"name": "id", "label": "ID", "field": "id"},
-                        {
-                            "name": "environment",
-                            "label": "Environment",
-                            "field": "environment",
-                        },
-                        {
-                            "name": "service_id",
-                            "label": "Service",
-                            "field": "service_id",
-                        },
-                        {"name": "name", "label": "Name", "field": "name"},
-                        {
-                            "name": "template_type",
-                            "label": "Type",
-                            "field": "template_type",
-                        },
-                        {"name": "version", "label": "Version", "field": "version"},
-                        {"name": "archived", "label": "Archived", "field": "archived"},
-                        {"name": "hidden", "label": "Hidden", "field": "hidden"},
-                        {
-                            "name": "updated_at",
-                            "label": "Updated",
-                            "field": "updated_at",
-                        },
-                        {"name": "subject", "label": "Subject", "field": "subject"},
-                        {"name": "content", "label": "Content", "field": "content"},
-                    ]
-                ),
+                columns=make_sortable(columns),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
             )
@@ -163,5 +151,4 @@ async def templates_page() -> None:
         service_select.on_value_change(lambda _: render_table.refresh())
         type_select.on_value_change(lambda _: render_table.refresh())
         template_search.on_value_change(handle_template_search_event)
-        ui.button("Sync Templates", on_click=handle_sync_templates)
         await render_table()

@@ -7,6 +7,7 @@ from nicegui import ui
 from app.repository import list_users
 from app.ui.helpers import (
     add_copyable_slots,
+    add_export_button,
     format_environment,
     make_row_key,
     make_sortable,
@@ -89,6 +90,42 @@ async def users_page() -> None:
                     or search_query in (user.name or "").lower()
                     or search_query in (user.email_address or "").lower()
                 ]
+            columns = [
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "environment", "label": "Environment", "field": "environment"},
+                {"name": "email_address", "label": "Email", "field": "email_address"},
+                {"name": "name", "label": "Name", "field": "name"},
+                {"name": "state", "label": "State", "field": "state"},
+                {
+                    "name": "platform_admin",
+                    "label": "Platform Admin",
+                    "field": "platform_admin",
+                },
+                {"name": "blocked", "label": "Blocked", "field": "blocked"},
+                {"name": "auth_type", "label": "Auth", "field": "auth_type"},
+                {"name": "mobile_number", "label": "Mobile", "field": "mobile_number"},
+                {
+                    "name": "failed_login_count",
+                    "label": "Failed Logins",
+                    "field": "failed_login_count",
+                },
+                {"name": "logged_in_at", "label": "Logged In", "field": "logged_in_at"},
+                {
+                    "name": "password_changed_at",
+                    "label": "Password Changed",
+                    "field": "password_changed_at",
+                },
+                {
+                    "name": "services_count",
+                    "label": "Services",
+                    "field": "services_count",
+                },
+                {
+                    "name": "organisations_count",
+                    "label": "Orgs",
+                    "field": "organisations_count",
+                },
+            ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(user.id, user.environment),
@@ -109,61 +146,12 @@ async def users_page() -> None:
                 }
                 for user in users
             ]
+            with ui.row().classes("w-full items-center"):
+                ui.button("Sync Users", on_click=handle_sync_users)
+                ui.space()
+                add_export_button(table_rows, columns, "users.csv")
             table = ui.table(
-                columns=make_sortable(
-                    [
-                        {"name": "id", "label": "ID", "field": "id"},
-                        {
-                            "name": "environment",
-                            "label": "Environment",
-                            "field": "environment",
-                        },
-                        {
-                            "name": "email_address",
-                            "label": "Email",
-                            "field": "email_address",
-                        },
-                        {"name": "name", "label": "Name", "field": "name"},
-                        {"name": "state", "label": "State", "field": "state"},
-                        {
-                            "name": "platform_admin",
-                            "label": "Platform Admin",
-                            "field": "platform_admin",
-                        },
-                        {"name": "blocked", "label": "Blocked", "field": "blocked"},
-                        {"name": "auth_type", "label": "Auth", "field": "auth_type"},
-                        {
-                            "name": "mobile_number",
-                            "label": "Mobile",
-                            "field": "mobile_number",
-                        },
-                        {
-                            "name": "failed_login_count",
-                            "label": "Failed Logins",
-                            "field": "failed_login_count",
-                        },
-                        {
-                            "name": "logged_in_at",
-                            "label": "Logged In",
-                            "field": "logged_in_at",
-                        },
-                        {
-                            "name": "password_changed_at",
-                            "label": "Password Changed",
-                            "field": "password_changed_at",
-                        },
-                        {
-                            "name": "services_count",
-                            "label": "Services",
-                            "field": "services_count",
-                        },
-                        {
-                            "name": "organisations_count",
-                            "label": "Orgs",
-                            "field": "organisations_count",
-                        },
-                    ]
-                ),
+                columns=make_sortable(columns),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
             )
@@ -175,7 +163,6 @@ async def users_page() -> None:
             search_query = (getattr(e, "value", None) or "").strip().lower()
             await refresh_if_needed(render_table)
 
-        ui.button("Sync Users", on_click=handle_sync_users)
         search_input.on_value_change(handle_search_event)
         state_select.on_value_change(lambda _: render_table.refresh())
         await render_table()

@@ -1184,6 +1184,91 @@ class TestMakeRowKey:
         assert helpers.make_row_key(None, None) == ":"
 
 
+class TestRowsToCsv:
+    def test_basic_export(self):
+        columns = [
+            {"name": "id", "label": "ID", "field": "id"},
+            {"name": "name", "label": "Name", "field": "name"},
+        ]
+        rows = [
+            {"id": "1", "name": "Alice"},
+            {"id": "2", "name": "Bob"},
+        ]
+        csv = helpers.rows_to_csv(rows, columns)
+        lines = csv.strip().split("\r\n")
+        assert lines[0] == "ID,Name"
+        assert lines[1] == "1,Alice"
+        assert lines[2] == "2,Bob"
+
+    def test_excludes_internal_fields(self):
+        columns = [
+            {"name": "_row_key", "label": "Key", "field": "_row_key"},
+            {"name": "id", "label": "ID", "field": "id"},
+        ]
+        rows = [{"_row_key": "internal", "id": "1"}]
+        csv = helpers.rows_to_csv(rows, columns)
+        assert "_row_key" not in csv
+        assert "internal" not in csv
+        assert "ID" in csv
+
+    def test_handles_missing_fields(self):
+        columns = [
+            {"name": "id", "label": "ID", "field": "id"},
+            {"name": "missing", "label": "Missing", "field": "missing"},
+        ]
+        rows = [{"id": "1"}]
+        csv = helpers.rows_to_csv(rows, columns)
+        lines = csv.strip().split("\r\n")
+        assert lines[1] == "1,"
+
+
+class TestDownloadCsv:
+    def test_triggers_download(self):
+        with (
+            patch("app.ui.helpers.ui.run_javascript") as mock_js,
+            patch("app.ui.helpers.safe_notify") as mock_notify,
+        ):
+            helpers.download_csv("a,b\n1,2", "test.csv")
+            mock_js.assert_called_once()
+            assert "test.csv" in mock_js.call_args[0][0]
+            mock_notify.assert_called_once()
+
+
+class TestAddExportButton:
+    def test_creates_button(self):
+        mock_btn = MagicMock()
+        mock_btn.props = MagicMock(return_value=mock_btn)
+        with patch("app.ui.helpers.ui.button", return_value=mock_btn) as mock_ui_btn:
+            helpers.add_export_button([], [], "test.csv")
+            mock_ui_btn.assert_called_once()
+            assert "Export CSV" in str(mock_ui_btn.call_args)
+
+    def test_callback_triggers_csv_download(self):
+        """Test that clicking the button calls rows_to_csv and download_csv."""
+        mock_btn = MagicMock()
+        mock_btn.props = MagicMock(return_value=mock_btn)
+        captured_callback = None
+
+        def capture_button(label, icon, on_click):
+            nonlocal captured_callback
+            captured_callback = on_click
+            return mock_btn
+
+        rows = [{"name": "Test", "value": "1"}]
+        columns = [{"name": "name", "label": "Name", "field": "name"}]
+
+        with (
+            patch("app.ui.helpers.ui.button", side_effect=capture_button),
+            patch("app.ui.helpers.rows_to_csv", return_value="csv,data") as mock_csv,
+            patch("app.ui.helpers.download_csv") as mock_download,
+        ):
+            helpers.add_export_button(rows, columns, "test.csv")
+            assert captured_callback is not None
+            captured_callback()
+            mock_csv.assert_called_once_with(rows, columns)
+            mock_download.assert_called_once_with("csv,data", "test.csv")
+
+
 # ===================================================================
 # Async business logic tests
 # ===================================================================
@@ -1636,6 +1721,7 @@ def _ui_patches(mod_path, _make_mock):
         patch(f"{mod_path}.ui.linear_progress", side_effect=_make_mock),
         patch(f"{mod_path}.ui.toggle", side_effect=_make_mock),
         patch(f"{mod_path}.ui.code", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.space", side_effect=_make_mock),
         patch(f"{mod_path}.ui.page", lambda *a, **kw: lambda fn: fn),
     ]
     # Optional patches — only add if the page module imports the name
@@ -1828,9 +1914,13 @@ async def test_services_table_func(initialized_db, mock_config):
                 return_value=[],
             ),
             patch("app.ui.pages.services.ui.table", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.row", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.button", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.space"),
             patch("app.ui.pages.services.add_copyable_slots"),
+            patch("app.ui.pages.services.add_export_button"),
         ):
-            await page_services.services_table.func()
+            await page_services.services_table.func(lambda: None)
     finally:
         _st.config = original
         _st.state = original_state
@@ -2016,7 +2106,9 @@ async def test_render_local_keys_func(initialized_db, mock_config):
                 return_value=[],
             ),
             patch("app.ui.pages.settings_page.ui.table", return_value=mock_obj),
+            patch("app.ui.pages.settings_page.ui.row", return_value=mock_obj),
             patch("app.ui.pages.settings_page.add_copyable_slots"),
+            patch("app.ui.pages.settings_page.add_export_button"),
         ):
             await page_settings.render_local_keys.func()
     finally:
@@ -2098,9 +2190,13 @@ async def test_services_table_with_search_query(initialized_db, mock_config):
                 return_value=[],
             ),
             patch("app.ui.pages.services.ui.table", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.row", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.button", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.space"),
             patch("app.ui.pages.services.add_copyable_slots"),
+            patch("app.ui.pages.services.add_export_button"),
         ):
-            await page_services.services_table.func()
+            await page_services.services_table.func(lambda: None)
     finally:
         _st.config = original
         _st.state = original_state

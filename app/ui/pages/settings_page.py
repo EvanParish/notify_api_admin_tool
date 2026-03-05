@@ -16,6 +16,7 @@ from app.repository import (
 from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
+    add_export_button,
     format_service_label,
     make_row_key,
     make_sortable,
@@ -194,6 +195,13 @@ async def save_local_key(
 @ui.refreshable
 async def render_local_keys() -> None:
     keys = await list_local_keys()
+    columns = [
+        {"name": "id", "label": "ID", "field": "id"},
+        {"name": "service_id", "label": "Service", "field": "service_id"},
+        {"name": "environment", "label": "Environment", "field": "environment"},
+        {"name": "key_name", "label": "Name", "field": "key_name"},
+        {"name": "key_type", "label": "Type", "field": "key_type"},
+    ]
     rows: List[Dict[str, Any]] = [
         {
             "_row_key": make_row_key(k.id, k.environment),
@@ -205,16 +213,10 @@ async def render_local_keys() -> None:
         }
         for k in keys
     ]
+    with ui.row().classes("w-full justify-end"):
+        add_export_button(rows, columns, "local_api_keys.csv")
     table = ui.table(
-        columns=make_sortable(
-            [
-                {"name": "id", "label": "ID", "field": "id"},
-                {"name": "service_id", "label": "Service", "field": "service_id"},
-                {"name": "environment", "label": "Environment", "field": "environment"},
-                {"name": "key_name", "label": "Name", "field": "key_name"},
-                {"name": "key_type", "label": "Type", "field": "key_type"},
-            ]
-        ),
+        columns=make_sortable(columns),
         rows=rows,
         pagination={"rowsPerPage": 5},
     )

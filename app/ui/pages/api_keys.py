@@ -16,6 +16,7 @@ from app.repository import (
 from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
+    add_export_button,
     format_environment,
     format_service_label,
     make_row_key,
@@ -390,6 +391,18 @@ async def api_keys_page() -> None:
             keys = await list_api_keys(
                 selected_service, environment=get_view_environment()
             )
+            columns = [
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "environment", "label": "Environment", "field": "environment"},
+                {"name": "service_id", "label": "Service ID", "field": "service_id"},
+                {"name": "name", "label": "Name", "field": "name"},
+                {"name": "key_type", "label": "Type", "field": "key_type"},
+                {"name": "expiry_date", "label": "Expires", "field": "expiry_date"},
+                {"name": "created_by", "label": "Created By", "field": "created_by"},
+                {"name": "created_at", "label": "Created", "field": "created_at"},
+                {"name": "revoked", "label": "Revoked", "field": "revoked"},
+                {"name": "version", "label": "Version", "field": "version"},
+            ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(key.id, key.environment),
@@ -414,41 +427,19 @@ async def api_keys_page() -> None:
                     or search_term in (key.name or "").lower()
                 )
             ]
+            with ui.row().classes("w-full items-center"):
+                ui.button("Sync API Keys", on_click=handle_sync_keys)
+                ui.button(
+                    "Manage Selected Key",
+                    on_click=handle_open_manage_dialog,
+                    color="primary",
+                )
+                create_button = ui.button("Create Personal API Key", color="green")
+                create_button.on_click(handle_open_create_dialog)
+                ui.space()
+                add_export_button(table_rows, columns, "api_keys.csv")
             table = ui.table(
-                columns=make_sortable(
-                    [
-                        {"name": "id", "label": "ID", "field": "id"},
-                        {
-                            "name": "environment",
-                            "label": "Environment",
-                            "field": "environment",
-                        },
-                        {
-                            "name": "service_id",
-                            "label": "Service ID",
-                            "field": "service_id",
-                        },
-                        {"name": "name", "label": "Name", "field": "name"},
-                        {"name": "key_type", "label": "Type", "field": "key_type"},
-                        {
-                            "name": "expiry_date",
-                            "label": "Expires",
-                            "field": "expiry_date",
-                        },
-                        {
-                            "name": "created_by",
-                            "label": "Created By",
-                            "field": "created_by",
-                        },
-                        {
-                            "name": "created_at",
-                            "label": "Created",
-                            "field": "created_at",
-                        },
-                        {"name": "revoked", "label": "Revoked", "field": "revoked"},
-                        {"name": "version", "label": "Version", "field": "version"},
-                    ]
-                ),
+                columns=make_sortable(columns),
                 rows=table_rows,
                 selection="single",
                 on_select=handle_table_selection,
@@ -461,13 +452,4 @@ async def api_keys_page() -> None:
         service_select.on_value_change(lambda _: render_table.refresh())
         expires_from.on_value_change(lambda _: render_table.refresh())
         expires_to.on_value_change(lambda _: render_table.refresh())
-        with ui.row().classes("gap-2"):
-            ui.button("Sync API Keys", on_click=handle_sync_keys)
-            ui.button(
-                "Manage Selected Key",
-                on_click=handle_open_manage_dialog,
-                color="primary",
-            )
-            create_button = ui.button("Create Personal API Key", color="green")
-        create_button.on_click(handle_open_create_dialog)
         await render_table()

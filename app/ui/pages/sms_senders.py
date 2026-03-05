@@ -7,6 +7,7 @@ from nicegui import ui
 from app.repository import list_services, list_sms_senders
 from app.ui.helpers import (
     add_copyable_slots,
+    add_export_button,
     format_environment,
     format_service_label,
     make_row_key,
@@ -97,6 +98,28 @@ async def sms_senders_page() -> None:
                     if sms_sender_search_query in (sender.sms_sender or "").lower()
                     or sms_sender_search_query in (sender.id or "").lower()
                 ]
+            columns = [
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "environment", "label": "Environment", "field": "environment"},
+                {"name": "service_id", "label": "Service", "field": "service_id"},
+                {"name": "sms_sender", "label": "SMS Sender", "field": "sms_sender"},
+                {"name": "is_default", "label": "Default", "field": "is_default"},
+                {"name": "archived", "label": "Archived", "field": "archived"},
+                {"name": "description", "label": "Description", "field": "description"},
+                {
+                    "name": "provider_name",
+                    "label": "Provider",
+                    "field": "provider_name",
+                },
+                {"name": "rate_limit", "label": "Rate Limit", "field": "rate_limit"},
+                {
+                    "name": "rate_limit_interval",
+                    "label": "Rate Interval",
+                    "field": "rate_limit_interval",
+                },
+                {"name": "created_at", "label": "Created", "field": "created_at"},
+                {"name": "updated_at", "label": "Updated", "field": "updated_at"},
+            ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(sender.id, sender.environment),
@@ -115,71 +138,12 @@ async def sms_senders_page() -> None:
                 }
                 for sender in senders
             ]
+            with ui.row().classes("w-full items-center"):
+                ui.button("Sync SMS Senders", on_click=handle_sync_senders)
+                ui.space()
+                add_export_button(table_rows, columns, "sms_senders.csv")
             table = ui.table(
-                columns=make_sortable(
-                    [
-                        {
-                            "name": "id",
-                            "label": "ID",
-                            "field": "id",
-                        },
-                        {
-                            "name": "environment",
-                            "label": "Environment",
-                            "field": "environment",
-                        },
-                        {
-                            "name": "service_id",
-                            "label": "Service",
-                            "field": "service_id",
-                        },
-                        {
-                            "name": "sms_sender",
-                            "label": "SMS Sender",
-                            "field": "sms_sender",
-                        },
-                        {
-                            "name": "is_default",
-                            "label": "Default",
-                            "field": "is_default",
-                        },
-                        {
-                            "name": "archived",
-                            "label": "Archived",
-                            "field": "archived",
-                        },
-                        {
-                            "name": "description",
-                            "label": "Description",
-                            "field": "description",
-                        },
-                        {
-                            "name": "provider_name",
-                            "label": "Provider",
-                            "field": "provider_name",
-                        },
-                        {
-                            "name": "rate_limit",
-                            "label": "Rate Limit",
-                            "field": "rate_limit",
-                        },
-                        {
-                            "name": "rate_limit_interval",
-                            "label": "Rate Interval",
-                            "field": "rate_limit_interval",
-                        },
-                        {
-                            "name": "created_at",
-                            "label": "Created",
-                            "field": "created_at",
-                        },
-                        {
-                            "name": "updated_at",
-                            "label": "Updated",
-                            "field": "updated_at",
-                        },
-                    ]
-                ),
+                columns=make_sortable(columns),
                 rows=table_rows,
                 pagination={"rowsPerPage": 10},
             )
@@ -188,5 +152,4 @@ async def sms_senders_page() -> None:
 
         service_select.on_value_change(lambda _: render_table.refresh())
         sms_sender_search.on_value_change(handle_sms_sender_search_event)
-        ui.button("Sync SMS Senders", on_click=handle_sync_senders)
         await render_table()
