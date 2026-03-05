@@ -151,11 +151,6 @@ def build_shell(on_view_env_change=None) -> tuple:
                 .props("use-chips clearable dense")
                 .classes("min-w-[160px]")
             )
-            sync_env_select = ui.select(
-                {env: env.title() for env in _st.config.api_hosts},
-                value=_st.state.environment,
-                label="Sync Env",
-            ).classes("w-32")
             refresh_button = ui.button("Refresh All Data")
             theme_button = ui.button(icon="dark_mode").props("flat round dense")
             theme_button.on_click(lambda: toggle_theme(dark_mode, theme_button))
@@ -174,13 +169,6 @@ def build_shell(on_view_env_change=None) -> tuple:
                         _st.state, "view_environments", e.value if e.value else []
                     )
                 )
-
-            async def handle_sync_env_change(e):  # pragma: no cover
-                _st.state.environment = e.value
-                await _st.refresh_status_badge(status_badge)
-                ui.notify(f"Switched to {e.value} environment", color="info")
-
-            sync_env_select.on_value_change(handle_sync_env_change)
 
             with ui.dropdown_button("Sync Settings", auto_close=False).props("flat"):
                 ui.label("Allowed sync environments").classes("text-sm mb-2")

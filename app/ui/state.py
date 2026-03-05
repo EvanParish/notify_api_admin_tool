@@ -130,24 +130,20 @@ def handle_unauthorized(sync_label, env: str) -> None:
     safe_notify(message, color="warning")
 
 
-async def ensure_sync_enabled(sync_label) -> bool:
-    if state.environment not in state.enabled_sync_environments:
-        sync_label.text = f"Sync disabled for {state.environment}"
-        ui.notify(
-            f"Syncing is not enabled for {state.environment} environment",
-            color="warning",
-        )
-        return False
-    return True
-
-
 async def refresh_status_badge(badge) -> None:
-    if not await has_admin_auth(state.environment):
+    # Show status for the first enabled sync environment
+    envs = list(state.enabled_sync_environments)
+    if not envs:
+        badge.text = "No environments enabled"
+        badge.props("color=gray")
+        return
+    env = envs[0]
+    if not await has_admin_auth(env):
         state.api_status = "auth missing"
         badge.text = "API Status: Auth Missing"
         badge.props("color=pink")
         return
-    api = await build_api_client(state.environment)
+    api = await build_api_client(env)
     ok = await api.healthcheck()
     state.api_status = "online" if ok else "offline"
     badge.text = f"API Status: {state.api_status.title()}"

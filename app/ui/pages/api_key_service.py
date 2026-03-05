@@ -37,13 +37,15 @@ async def api_key_emails_page() -> None:
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def sync_api_keys():  # pragma: no cover
+    async def sync_api_keys(environment: str | None = None):  # pragma: no cover
+        envs = [environment] if environment else None
         await handle_entity_sync(
             ["sync_api_keys"],
             status_badge,
             sync_label,
             "API keys",
             pre_sync=["sync_services"],
+            environments=envs,
         )
 
     refresh_button.on_click(page_refresh)
@@ -210,7 +212,7 @@ async def api_key_emails_page() -> None:
             secret, created_key, environment, service.name, service_id
         )
         ui.notify("Email content generated", color="green")
-        await sync_api_keys()
+        await sync_api_keys(environment)
 
     def handle_copy_output() -> None:  # pragma: no cover
         if not output_area.value:

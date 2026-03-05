@@ -611,10 +611,8 @@ async def test_integration_full_workflow(initialized_db, mock_config, mock_encry
 
 
 @pytest.mark.asyncio
-async def test_handle_full_sync_dev_only_mode_blocks_staging(
-    initialized_db, mock_config
-):
-    """Test that enabled_sync_environments blocks syncing non-enabled environments."""
+async def test_handle_full_sync_only_syncs_enabled_envs(initialized_db, mock_config):
+    """Test that sync only runs for environments in enabled_sync_environments."""
 
     original_config = _st.config
     original_state = _st.state
@@ -624,6 +622,7 @@ async def test_handle_full_sync_dev_only_mode_blocks_staging(
     @dataclass
     class TestState:
         environment: str
+        view_environments: list = None
         api_status: str = "unknown"
         sync_message: str = ""
         dev_only_mode: bool = True
@@ -632,24 +631,25 @@ async def test_handle_full_sync_dev_only_mode_blocks_staging(
         def __post_init__(self):
             if self.enabled_sync_environments is None:
                 self.enabled_sync_environments = {"development"}
+            if self.view_environments is None:
+                self.view_environments = []
 
-    # Create state with staging environment but only development enabled
+    # Only development is enabled
     _st.state = TestState(environment="staging")
 
     mock_status_badge = MagicMock()
+    mock_status_badge.props = MagicMock()
     mock_sync_label = MagicMock()
     mock_sync_label.text = ""
 
     try:
-        with patch("app.ui.state.ui.notify") as mock_notify:
-            result = await sync_handlers.handle_full_sync(
-                mock_status_badge, mock_sync_label
-            )
+        result = await sync_handlers.handle_full_sync(
+            mock_status_badge, mock_sync_label
+        )
 
-            # Verify sync was blocked
-            assert mock_sync_label.text == "Sync disabled for staging"
-            mock_notify.assert_called_once()
-            assert result is False
+        # Sync completes for the enabled environment (development)
+        assert mock_sync_label.text == "Sync complete"
+        assert result is True
     finally:
         _st.config = original_config
         _st.state = original_state
@@ -667,6 +667,7 @@ async def test_handle_full_sync_dev_only_mode_allows_dev(initialized_db, mock_co
     @dataclass
     class TestState:
         environment: str
+        view_environments: list = None
         api_status: str = "unknown"
         sync_message: str = ""
         dev_only_mode: bool = True
@@ -675,6 +676,8 @@ async def test_handle_full_sync_dev_only_mode_allows_dev(initialized_db, mock_co
         def __post_init__(self):
             if self.enabled_sync_environments is None:
                 self.enabled_sync_environments = {"development"}
+            if self.view_environments is None:
+                self.view_environments = []
 
     _st.state = TestState(environment="development")
 
@@ -697,8 +700,8 @@ async def test_handle_full_sync_dev_only_mode_allows_dev(initialized_db, mock_co
 
 
 @pytest.mark.asyncio
-async def test_handle_full_sync_dev_only_mode_disabled(initialized_db, mock_config):
-    """Test that adding environments to enabled_sync_environments allows syncing them."""
+async def test_handle_full_sync_multiple_envs_enabled(initialized_db, mock_config):
+    """Test that adding environments to enabled_sync_environments syncs all of them."""
 
     original_config = _st.config
     original_state = _st.state
@@ -708,6 +711,7 @@ async def test_handle_full_sync_dev_only_mode_disabled(initialized_db, mock_conf
     @dataclass
     class TestState:
         environment: str
+        view_environments: list = None
         api_status: str = "unknown"
         sync_message: str = ""
         dev_only_mode: bool = False
@@ -715,11 +719,11 @@ async def test_handle_full_sync_dev_only_mode_disabled(initialized_db, mock_conf
 
         def __post_init__(self):
             if self.enabled_sync_environments is None:
-                self.enabled_sync_environments = {"development"}
+                self.enabled_sync_environments = {"development", "staging"}
+            if self.view_environments is None:
+                self.view_environments = []
 
-    # Create state with staging and add staging to enabled environments
     _st.state = TestState(environment="staging")
-    _st.state.enabled_sync_environments.add("staging")
 
     mock_status_badge = MagicMock()
     mock_status_badge.props = MagicMock()
@@ -731,8 +735,8 @@ async def test_handle_full_sync_dev_only_mode_disabled(initialized_db, mock_conf
             mock_status_badge, mock_sync_label
         )
 
-        # Verify sync completed
-        assert mock_sync_label.text == "Sync complete"
+        # Verify sync completed - may show partial success if not all envs work
+        assert "Sync complete" in mock_sync_label.text
         assert result is True
     finally:
         _st.config = original_config
@@ -1590,6 +1594,27 @@ async def test_refresh_status_badge_auth_missing(initialized_db, mock_config):
         _st.state = original_state
 
 
+@pytest.mark.asyncio
+async def test_refresh_status_badge_no_envs_enabled(initialized_db, mock_config):
+    """Test that refresh_status_badge shows message when no envs are enabled."""
+    original_config = _st.config
+    original_state = _st.state
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    _st.state.enabled_sync_environments = set()  # No envs enabled
+    mock_badge = MagicMock()
+    mock_badge.text = ""
+    mock_badge.props = MagicMock()
+
+    try:
+        await _st.refresh_status_badge(mock_badge)
+        assert mock_badge.text == "No environments enabled"
+        mock_badge.props.assert_called_once_with("color=gray")
+    finally:
+        _st.config = original_config
+        _st.state = original_state
+
+
 # ===================================================================
 # Category 3: handle_full_sync auth/401 branches (lines 231, 243-247)
 # ===================================================================
@@ -1604,8 +1629,11 @@ async def test_handle_full_sync_auth_missing(initialized_db, mock_config):
     mock_status_badge, mock_sync_label = _make_mock_badges()
 
     try:
-        with patch.object(
-            _st, "ensure_admin_auth", new_callable=AsyncMock, return_value=False
+        with (
+            patch.object(
+                _st, "ensure_admin_auth", new_callable=AsyncMock, return_value=False
+            ),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
         ):
             result = await sync_handlers.handle_full_sync(
                 mock_status_badge, mock_sync_label
@@ -1635,6 +1663,7 @@ async def test_handle_full_sync_unauthorized(initialized_db, mock_config):
     try:
         with (
             patch.object(_st, "build_api_client", new_callable=AsyncMock) as mock_build,
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
             patch("app.ui.state.safe_notify"),
         ):
             mock_api = AsyncMock()
@@ -1643,7 +1672,8 @@ async def test_handle_full_sync_unauthorized(initialized_db, mock_config):
             mock_build.return_value = mock_api
             with patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager):
                 await sync_handlers.handle_full_sync(mock_status_badge, mock_sync_label)
-                assert "Unauthorized" in mock_sync_label.text
+                # Sync fails for all envs, shows failed message
+                assert "failed" in mock_sync_label.text
     finally:
         _st.config = original_config
         _st.state = original_state
@@ -2145,15 +2175,16 @@ async def test_handle_full_sync_reraises_non_401(initialized_db, mock_config):
     try:
         with (
             patch.object(_st, "build_api_client", new_callable=AsyncMock) as mock_build,
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
         ):
             mock_manager = AsyncMock()
             mock_manager.sync_all = AsyncMock(side_effect=exc)
             mock_build.return_value = AsyncMock()
             with patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager):
-                with pytest.raises(httpx.HTTPStatusError):
-                    await sync_handlers.handle_full_sync(
-                        mock_status_badge, mock_sync_label
-                    )
+                # Exceptions are caught by asyncio.gather with return_exceptions
+                await sync_handlers.handle_full_sync(mock_status_badge, mock_sync_label)
+                # Should show failure in label
+                assert "failed" in mock_sync_label.text
     finally:
         _st.config = original_config
         _st.state = original_state

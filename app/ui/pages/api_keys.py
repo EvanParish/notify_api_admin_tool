@@ -90,13 +90,15 @@ async def api_keys_page() -> None:
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def page_sync_api_keys():  # pragma: no cover
+    async def page_sync_api_keys(environment: str | None = None):  # pragma: no cover
+        envs = [environment] if environment else None
         await handle_entity_sync(
             ["sync_api_keys"],
             status_badge,
             sync_label,
             "API keys",
             pre_sync=["sync_services"],
+            environments=envs,
         )
 
     refresh_button.on_click(page_refresh)
@@ -185,7 +187,7 @@ async def api_keys_page() -> None:
 
             await refresh_if_needed(render_local_keys)
             create_dialog.close()
-            await page_sync_api_keys()
+            await page_sync_api_keys(environment)
             await refresh_if_needed(render_table)
 
         async def handle_open_create_dialog() -> None:  # pragma: no cover
