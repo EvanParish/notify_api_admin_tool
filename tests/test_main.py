@@ -747,11 +747,13 @@ class SharedTestState:
     sync_message: str = ""
     dev_only_mode: bool = True
     enabled_sync_environments: set = None
-    view_environment: str = "all"
+    view_environments: list = None
 
     def __post_init__(self):
         if self.enabled_sync_environments is None:
             self.enabled_sync_environments = {"development"}
+        if self.view_environments is None:
+            self.view_environments = []
 
 
 # ===================================================================
@@ -810,20 +812,20 @@ class TestSafeClientDelete:
             assert mock_self._deleted is True
 
 
-class TestAppStateViewEnvironmentFallback:
-    """Test AppState view_environment fallback to 'all'."""
+class TestAppStateViewEnvironmentsFallback:
+    """Test AppState view_environments fallback to empty list (all)."""
 
-    def test_empty_view_environment_defaults_to_all(self):
+    def test_none_view_environments_defaults_to_empty(self):
         from app.ui.state import AppState
 
-        st = AppState(environment="dev", view_environment="")
-        assert st.view_environment == "all"
+        st = AppState(environment="dev", view_environments=None)
+        assert st.view_environments == []
 
-    def test_none_view_environment_stays_default(self):
+    def test_default_view_environments_is_empty(self):
         from app.ui.state import AppState
 
         st = AppState(environment="dev")
-        assert st.view_environment == "all"
+        assert st.view_environments == []
 
 
 class TestNormalizeEmailEnv:
@@ -964,27 +966,38 @@ class TestTruncateText:
 
 
 class TestGetViewEnvironment:
-    def test_all_returns_none(self):
+    def test_empty_list_returns_none(self):
         original_state = _st.state
-        _st.state = SharedTestState(environment="dev", view_environment="all")
+        _st.state = SharedTestState(environment="dev", view_environments=[])
         try:
             assert _st.get_view_environment() is None
         finally:
             _st.state = original_state
 
-    def test_empty_returns_none(self):
+    def test_none_returns_none(self):
         original_state = _st.state
-        _st.state = SharedTestState(environment="dev", view_environment="")
+        _st.state = SharedTestState(environment="dev", view_environments=None)
+        _st.state.view_environments = []  # post_init sets this
         try:
             assert _st.get_view_environment() is None
         finally:
             _st.state = original_state
 
-    def test_specific_env_returns_it(self):
+    def test_single_env_returns_list(self):
         original_state = _st.state
-        _st.state = SharedTestState(environment="dev", view_environment="staging")
+        _st.state = SharedTestState(environment="dev", view_environments=["staging"])
         try:
-            assert _st.get_view_environment() == "staging"
+            assert _st.get_view_environment() == ["staging"]
+        finally:
+            _st.state = original_state
+
+    def test_multiple_envs_returns_list(self):
+        original_state = _st.state
+        _st.state = SharedTestState(
+            environment="dev", view_environments=["dev", "staging"]
+        )
+        try:
+            assert _st.get_view_environment() == ["dev", "staging"]
         finally:
             _st.state = original_state
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from sqlalchemy import or_, select
 
@@ -74,13 +74,23 @@ async def set_secure_setting(
     await set_setting(key, encrypted)
 
 
-async def list_services(environment: Optional[str] = None) -> List[Service]:
+def _env_filter(column, environments: Optional[List[str]]):
+    """Build environment filter clause for queries."""
+    if not environments:
+        return None  # No filter needed - show all
+    # Include rows matching any selected environment OR with null environment
+    return or_(column.in_(environments), column.is_(None))
+
+
+async def list_services(
+    environment: Optional[Union[str, List[str]]] = None,
+) -> List[Service]:
     async with get_session() as session:
         query = select(Service)
-        if environment:
-            query = query.where(
-                or_(Service.environment == environment, Service.environment.is_(None))
-            )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(Service.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
@@ -88,7 +98,7 @@ async def list_services(environment: Optional[str] = None) -> List[Service]:
 async def list_templates(
     service_id: Optional[str] = None,
     template_type: Optional[str] = None,
-    environment: Optional[str] = None,
+    environment: Optional[Union[str, List[str]]] = None,
 ) -> List[Template]:
     async with get_session() as session:
         query = select(Template)
@@ -96,23 +106,26 @@ async def list_templates(
             query = query.where(Template.service_id == service_id)
         if template_type:
             query = query.where(Template.template_type == template_type)
-        if environment:
-            query = query.where(
-                or_(Template.environment == environment, Template.environment.is_(None))
-            )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(Template.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
 
 async def list_local_keys(
-    service_id: Optional[str] = None, environment: Optional[str] = None
+    service_id: Optional[str] = None,
+    environment: Optional[Union[str, List[str]]] = None,
 ) -> List[LocalApiKey]:
     async with get_session() as session:
         query = select(LocalApiKey)
         if service_id:
             query = query.where(LocalApiKey.service_id == service_id)
-        if environment:
-            query = query.where(LocalApiKey.environment == environment)
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(LocalApiKey.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(str(row.id), row.key_name)]
 
@@ -148,16 +161,17 @@ async def resolve_local_key(encryption: EncryptionManager, key_id: int) -> str:
 
 
 async def list_api_keys(
-    service_id: Optional[str] = None, environment: Optional[str] = None
+    service_id: Optional[str] = None,
+    environment: Optional[Union[str, List[str]]] = None,
 ) -> List[ApiKey]:
     async with get_session() as session:
         query = select(ApiKey)
         if service_id:
             query = query.where(ApiKey.service_id == service_id)
-        if environment:
-            query = query.where(
-                or_(ApiKey.environment == environment, ApiKey.environment.is_(None))
-            )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(ApiKey.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
@@ -206,19 +220,17 @@ async def mark_api_key_revoked(
 
 
 async def list_sms_senders(
-    service_id: Optional[str] = None, environment: Optional[str] = None
+    service_id: Optional[str] = None,
+    environment: Optional[Union[str, List[str]]] = None,
 ) -> List[SmsSender]:
     async with get_session() as session:
         query = select(SmsSender)
         if service_id:
             query = query.where(SmsSender.service_id == service_id)
-        if environment:
-            query = query.where(
-                or_(
-                    SmsSender.environment == environment,
-                    SmsSender.environment.is_(None),
-                )
-            )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(SmsSender.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return [
             row
@@ -228,44 +240,40 @@ async def list_sms_senders(
 
 
 async def list_provider_details(
-    environment: Optional[str] = None,
+    environment: Optional[Union[str, List[str]]] = None,
 ) -> List[ProviderDetail]:
     async with get_session() as session:
         query = select(ProviderDetail)
-        if environment:
-            query = query.where(
-                or_(
-                    ProviderDetail.environment == environment,
-                    ProviderDetail.environment.is_(None),
-                )
-            )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(ProviderDetail.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return rows
 
 
 async def list_communication_items(
-    environment: Optional[str] = None,
+    environment: Optional[Union[str, List[str]]] = None,
 ) -> List[CommunicationItem]:
     async with get_session() as session:
         query = select(CommunicationItem)
-        if environment:
-            query = query.where(
-                or_(
-                    CommunicationItem.environment == environment,
-                    CommunicationItem.environment.is_(None),
-                )
-            )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(CommunicationItem.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return rows
 
 
-async def list_users(environment: Optional[str] = None) -> List[User]:
+async def list_users(
+    environment: Optional[Union[str, List[str]]] = None,
+) -> List[User]:
     async with get_session() as session:
         query = select(User)
-        if environment:
-            query = query.where(
-                or_(User.environment == environment, User.environment.is_(None))
-            )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(User.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return [
             row
@@ -275,19 +283,17 @@ async def list_users(environment: Optional[str] = None) -> List[User]:
 
 
 async def list_inbound_numbers(
-    service_id: Optional[str] = None, environment: Optional[str] = None
+    service_id: Optional[str] = None,
+    environment: Optional[Union[str, List[str]]] = None,
 ) -> List[InboundNumber]:
     async with get_session() as session:
         query = select(InboundNumber)
         if service_id:
             query = query.where(InboundNumber.service_id == service_id)
-        if environment:
-            query = query.where(
-                or_(
-                    InboundNumber.environment == environment,
-                    InboundNumber.environment.is_(None),
-                )
-            )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(InboundNumber.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return rows
 

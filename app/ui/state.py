@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 from nicegui import app, ui
 
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AppState:
     environment: str
-    view_environment: str = "all"
+    view_environments: List[str] = field(default_factory=list)
     api_status: str = "unknown"
     sync_message: str = ""
     dev_only_mode: bool = True
@@ -39,8 +39,8 @@ class AppState:
     def __post_init__(self):
         if self.enabled_sync_environments is None:
             self.enabled_sync_environments = {"dev"}
-        if not self.view_environment:
-            self.view_environment = "all"
+        if not self.view_environments:
+            self.view_environments = []  # empty means "all"
 
 
 # ---------------------------------------------------------------------------
@@ -154,10 +154,16 @@ async def refresh_status_badge(badge) -> None:
     badge.props(f"color={'green' if ok else 'red'}")
 
 
-def get_view_environment() -> Optional[str]:
-    return (
-        None if state.view_environment in {"all", None, ""} else state.view_environment
-    )
+def get_view_environments() -> Optional[List[str]]:
+    """Return selected environments for filtering, or None if all selected."""
+    if not state.view_environments:
+        return None  # empty list means "all"
+    return state.view_environments
+
+
+# Backwards compatibility alias
+def get_view_environment() -> Optional[List[str]]:
+    return get_view_environments()
 
 
 def safe_notify(message: str, color: str = "warning") -> None:

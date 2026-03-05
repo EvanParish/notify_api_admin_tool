@@ -488,6 +488,31 @@ async def test_list_services_with_environment(initialized_db):
 
 
 @pytest.mark.asyncio
+async def test_list_services_with_multiple_environments(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(
+            Service(id="svc-2", name="Svc2", active=True, environment="staging")
+        )
+        session.add(Service(id="svc-3", name="Svc3", active=True, environment="prod"))
+        await session.commit()
+
+    # Test filtering with multiple environments
+    services = await list_services(environment=["dev", "staging"])
+    assert len(services) == 2
+    ids = {s.id for s in services}
+    assert ids == {"svc-1", "svc-2"}
+
+    # Test with empty list (should return all)
+    services = await list_services(environment=[])
+    assert len(services) == 3
+
+    # Test with None (should return all)
+    services = await list_services(environment=None)
+    assert len(services) == 3
+
+
+@pytest.mark.asyncio
 async def test_list_templates_with_environment(initialized_db):
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Svc", active=True, environment="dev"))

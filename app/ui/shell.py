@@ -139,11 +139,18 @@ def build_shell(on_view_env_change=None) -> tuple:
         with ui.row().classes("items-center gap-4"):
             status_badge = ui.badge("API Status: Unknown", color="gray")
             sync_label = ui.label("").classes("text-slate-900 dark:text-white")
-            env_options = {"all": "All"}
-            env_options.update({env: env.title() for env in _st.config.api_hosts})
-            env_select = ui.select(
-                env_options, value=_st.state.view_environment, label="View Env"
-            ).classes("w-36")
+            # Multi-select for viewing environments
+            env_options = list(_st.config.api_hosts.keys())
+            env_select = (
+                ui.select(
+                    env_options,
+                    value=_st.state.view_environments,
+                    label="View Envs",
+                    multiple=True,
+                )
+                .props("use-chips clearable dense")
+                .classes("min-w-[160px]")
+            )
             sync_env_select = ui.select(
                 {env: env.title() for env in _st.config.api_hosts},
                 value=_st.state.environment,
@@ -155,7 +162,7 @@ def build_shell(on_view_env_change=None) -> tuple:
             if on_view_env_change:
 
                 async def handle_env_change(e):  # pragma: no cover
-                    _st.state.view_environment = e.value
+                    _st.state.view_environments = e.value if e.value else []
                     result = on_view_env_change()
                     if inspect.isawaitable(result):
                         await result
@@ -163,7 +170,9 @@ def build_shell(on_view_env_change=None) -> tuple:
                 env_select.on_value_change(handle_env_change)  # pragma: no cover
             else:
                 env_select.on_value_change(
-                    lambda e: setattr(_st.state, "view_environment", e.value)
+                    lambda e: setattr(
+                        _st.state, "view_environments", e.value if e.value else []
+                    )
                 )
 
             async def handle_sync_env_change(e):  # pragma: no cover
