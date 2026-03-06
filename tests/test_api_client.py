@@ -61,6 +61,38 @@ async def test_mock_api_update_api_key_expiry():
 
 
 @pytest.mark.asyncio
+async def test_mock_api_update_provider_detail():
+    api = MockNotificationAPI()
+    result = await api.update_provider_detail(
+        provider_id="prov-1",
+        priority=10,
+        active=True,
+        load_balancing_weight=50,
+    )
+
+    assert result["id"] == "prov-1"
+    assert result["priority"] == 10
+    assert result["active"] is True
+    assert result["load_balancing_weight"] == 50
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_communication_item():
+    api = MockNotificationAPI()
+    result = await api.update_communication_item(
+        item_id="comm-1",
+        name="Test Item",
+        default_send_indicator=True,
+        va_profile_item_id=5,
+    )
+
+    assert result["id"] == "comm-1"
+    assert result["name"] == "Test Item"
+    assert result["default_send_indicator"] is True
+    assert result["va_profile_item_id"] == 5
+
+
+@pytest.mark.asyncio
 async def test_mock_api_revoke_api_key():
     api = MockNotificationAPI()
     result = await api.revoke_api_key("svc-1", "key-1")
@@ -199,6 +231,96 @@ async def test_http_api_update_api_key_expiry():
             auth=None,
         )
         assert result["data"]["id"] == "key-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_provider_detail():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "prov-1"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.update_provider_detail(
+            "prov-1",
+            priority=10,
+            active=True,
+            load_balancing_weight=50,
+        )
+
+        mock_post.assert_called_once_with(
+            "https://api.example.com/provider-details/prov-1",
+            json={"priority": 10, "active": True, "load_balancing_weight": 50},
+            auth=None,
+        )
+        assert result["id"] == "prov-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_provider_detail_partial():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "prov-1"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.update_provider_detail("prov-1", priority=15)
+
+        mock_post.assert_called_once_with(
+            "https://api.example.com/provider-details/prov-1",
+            json={"priority": 15},
+            auth=None,
+        )
+        assert result["id"] == "prov-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_communication_item():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "comm-1"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "patch", return_value=mock_response) as mock_patch:
+        result = await api.update_communication_item(
+            "comm-1",
+            name="Test Item",
+            default_send_indicator=True,
+            va_profile_item_id=5,
+        )
+
+        mock_patch.assert_called_once_with(
+            "https://api.example.com/communication-item/comm-1",
+            json={
+                "name": "Test Item",
+                "default_send_indicator": True,
+                "va_profile_item_id": 5,
+            },
+            auth=None,
+        )
+        assert result["id"] == "comm-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_communication_item_partial():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "comm-1"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "patch", return_value=mock_response) as mock_patch:
+        result = await api.update_communication_item("comm-1", name="Updated Name")
+
+        mock_patch.assert_called_once_with(
+            "https://api.example.com/communication-item/comm-1",
+            json={"name": "Updated Name"},
+            auth=None,
+        )
+        assert result["id"] == "comm-1"
 
 
 @pytest.mark.asyncio

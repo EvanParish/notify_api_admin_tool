@@ -252,6 +252,31 @@ async def list_provider_details(
         return rows
 
 
+async def update_provider_detail(
+    provider_id: str,
+    priority: int | None = None,
+    active: bool | None = None,
+    load_balancing_weight: int | None = None,
+    environment: str | None = None,
+) -> bool:
+    async with get_session() as session:
+        query = select(ProviderDetail).where(ProviderDetail.id == provider_id)
+        if environment:
+            query = query.where(ProviderDetail.environment == environment)
+        result = await session.execute(query)
+        provider = result.scalars().first()
+        if not provider:
+            return False
+        if priority is not None:
+            provider.priority = priority
+        if active is not None:
+            provider.active = active
+        if load_balancing_weight is not None:
+            provider.load_balancing_weight = load_balancing_weight
+        await session.commit()
+        return True
+
+
 async def list_communication_items(
     environment: Optional[Union[str, List[str]]] = None,
 ) -> List[CommunicationItem]:
@@ -263,6 +288,31 @@ async def list_communication_items(
             query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return rows
+
+
+async def update_communication_item(
+    item_id: str,
+    name: str | None = None,
+    default_send_indicator: bool | None = None,
+    va_profile_item_id: int | None = None,
+    environment: str | None = None,
+) -> bool:
+    async with get_session() as session:
+        query = select(CommunicationItem).where(CommunicationItem.id == item_id)
+        if environment:
+            query = query.where(CommunicationItem.environment == environment)
+        result = await session.execute(query)
+        item = result.scalars().first()
+        if not item:
+            return False
+        if name is not None:
+            item.name = name
+        if default_send_indicator is not None:
+            item.default_send_indicator = default_send_indicator
+        if va_profile_item_id is not None:
+            item.va_profile_item_id = va_profile_item_id
+        await session.commit()
+        return True
 
 
 async def list_users(

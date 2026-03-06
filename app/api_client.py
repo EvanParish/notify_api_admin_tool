@@ -70,7 +70,25 @@ class NotificationAPI:
     async def get_provider_details(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+    async def update_provider_detail(
+        self,
+        provider_id: str,
+        priority: int | None = None,
+        active: bool | None = None,
+        load_balancing_weight: int | None = None,
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
+
     async def get_communication_items(self) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    async def update_communication_item(
+        self,
+        item_id: str,
+        name: str | None = None,
+        default_send_indicator: bool | None = None,
+        va_profile_item_id: int | None = None,
+    ) -> Dict[str, Any]:
         raise NotImplementedError
 
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
@@ -203,6 +221,29 @@ class HttpNotificationAPI(NotificationAPI):
         return payload.get("provider_details") or payload.get("data") or []
 
     @http_retry
+    async def update_provider_detail(
+        self,
+        provider_id: str,
+        priority: int | None = None,
+        active: bool | None = None,
+        load_balancing_weight: int | None = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        if priority is not None:
+            payload["priority"] = priority
+        if active is not None:
+            payload["active"] = active
+        if load_balancing_weight is not None:
+            payload["load_balancing_weight"] = load_balancing_weight
+        resp = await self.client.post(
+            f"{self.base_url}/provider-details/{provider_id}",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    @http_retry
     async def get_communication_items(self) -> List[Dict[str, Any]]:
         resp = await self.client.get(
             f"{self.base_url}/communication-item", auth=self._basic_auth
@@ -212,6 +253,29 @@ class HttpNotificationAPI(NotificationAPI):
         if isinstance(payload, list):
             return payload
         return payload.get("data") or []
+
+    @http_retry
+    async def update_communication_item(
+        self,
+        item_id: str,
+        name: str | None = None,
+        default_send_indicator: bool | None = None,
+        va_profile_item_id: int | None = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        if name is not None:
+            payload["name"] = name
+        if default_send_indicator is not None:
+            payload["default_send_indicator"] = default_send_indicator
+        if va_profile_item_id is not None:
+            payload["va_profile_item_id"] = va_profile_item_id
+        resp = await self.client.patch(
+            f"{self.base_url}/communication-item/{item_id}",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     @http_retry
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
@@ -419,6 +483,21 @@ class MockNotificationAPI(NotificationAPI):
             },
         ]
 
+    async def update_provider_detail(
+        self,
+        provider_id: str,
+        priority: int | None = None,
+        active: bool | None = None,
+        load_balancing_weight: int | None = None,
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {
+            "id": provider_id,
+            "priority": priority,
+            "active": active,
+            "load_balancing_weight": load_balancing_weight,
+        }
+
     async def get_communication_items(self) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
@@ -435,6 +514,21 @@ class MockNotificationAPI(NotificationAPI):
                 "va_profile_item_id": 2,
             },
         ]
+
+    async def update_communication_item(
+        self,
+        item_id: str,
+        name: str | None = None,
+        default_send_indicator: bool | None = None,
+        va_profile_item_id: int | None = None,
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {
+            "id": item_id,
+            "name": name,
+            "default_send_indicator": default_send_indicator,
+            "va_profile_item_id": va_profile_item_id,
+        }
 
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)

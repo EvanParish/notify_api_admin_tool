@@ -1732,6 +1732,7 @@ def _ui_patches(mod_path, _make_mock):
         patch(f"{mod_path}.ui.button", side_effect=_make_mock),
         patch(f"{mod_path}.ui.select", side_effect=_make_mock),
         patch(f"{mod_path}.ui.input", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.number", side_effect=_make_mock),
         patch(f"{mod_path}.ui.table", side_effect=_make_mock),
         patch(f"{mod_path}.ui.textarea", side_effect=_make_mock),
         patch(f"{mod_path}.ui.checkbox", side_effect=_make_mock),
@@ -1846,6 +1847,12 @@ def _ui_patches(mod_path, _make_mock):
         "add_local_key": patch(f"{mod_path}.add_local_key", new_callable=AsyncMock),
         "render_local_keys": patch(
             f"{mod_path}.render_local_keys", new_callable=AsyncMock
+        ),
+        "update_provider_detail": patch(
+            f"{mod_path}.update_provider_detail", new_callable=AsyncMock
+        ),
+        "update_communication_item": patch(
+            f"{mod_path}.update_communication_item", new_callable=AsyncMock
         ),
         "make_sortable": patch(f"{mod_path}.make_sortable"),
     }

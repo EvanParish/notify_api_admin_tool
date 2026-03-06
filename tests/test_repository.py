@@ -18,6 +18,8 @@ from app.repository import (
     list_users,
     update_api_key_expiry,
     mark_api_key_revoked,
+    update_provider_detail,
+    update_communication_item,
 )
 from app.crypto import EncryptionManager
 from app.repository import DbSaltProvider
@@ -757,3 +759,157 @@ async def test_list_inbound_numbers_by_environment(initialized_db):
     numbers = await list_inbound_numbers(environment="dev")
     assert len(numbers) == 1
     assert numbers[0].id == "n1"
+
+
+@pytest.mark.asyncio
+async def test_update_provider_detail(initialized_db):
+    async with get_session() as session:
+        session.add(
+            ProviderDetail(
+                id="prov-1",
+                environment="dev",
+                active=False,
+                priority=5,
+                load_balancing_weight=10,
+            )
+        )
+        await session.commit()
+
+    updated = await update_provider_detail(
+        provider_id="prov-1",
+        priority=10,
+        active=True,
+        load_balancing_weight=50,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(
+                select(ProviderDetail).where(ProviderDetail.id == "prov-1")
+            )
+        ).scalar_one()
+        assert record.priority == 10
+        assert record.active is True
+        assert record.load_balancing_weight == 50
+
+
+@pytest.mark.asyncio
+async def test_update_provider_detail_not_found(initialized_db):
+    result = await update_provider_detail(
+        provider_id="nonexistent",
+        priority=10,
+        environment="dev",
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_update_provider_detail_partial_update(initialized_db):
+    async with get_session() as session:
+        session.add(
+            ProviderDetail(
+                id="prov-2",
+                environment="dev",
+                active=True,
+                priority=5,
+                load_balancing_weight=100,
+            )
+        )
+        await session.commit()
+
+    # Only update priority
+    updated = await update_provider_detail(
+        provider_id="prov-2",
+        priority=15,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(
+                select(ProviderDetail).where(ProviderDetail.id == "prov-2")
+            )
+        ).scalar_one()
+        assert record.priority == 15
+        assert record.active is True  # Unchanged
+        assert record.load_balancing_weight == 100  # Unchanged
+
+
+@pytest.mark.asyncio
+async def test_update_communication_item(initialized_db):
+    async with get_session() as session:
+        session.add(
+            CommunicationItem(
+                id="comm-1",
+                environment="dev",
+                name="Test Item",
+                va_profile_item_id=5,
+                default_send_indicator=False,
+            )
+        )
+        await session.commit()
+
+    updated = await update_communication_item(
+        item_id="comm-1",
+        name="Updated Item",
+        default_send_indicator=True,
+        va_profile_item_id=10,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(
+                select(CommunicationItem).where(CommunicationItem.id == "comm-1")
+            )
+        ).scalar_one()
+        assert record.name == "Updated Item"
+        assert record.default_send_indicator is True
+        assert record.va_profile_item_id == 10
+
+
+@pytest.mark.asyncio
+async def test_update_communication_item_not_found(initialized_db):
+    result = await update_communication_item(
+        item_id="nonexistent",
+        name="Test",
+        environment="dev",
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_update_communication_item_partial_update(initialized_db):
+    async with get_session() as session:
+        session.add(
+            CommunicationItem(
+                id="comm-2",
+                environment="dev",
+                name="Original Name",
+                va_profile_item_id=20,
+                default_send_indicator=True,
+            )
+        )
+        await session.commit()
+
+    # Only update name
+    updated = await update_communication_item(
+        item_id="comm-2",
+        name="New Name",
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(
+                select(CommunicationItem).where(CommunicationItem.id == "comm-2")
+            )
+        ).scalar_one()
+        assert record.name == "New Name"
+        assert record.va_profile_item_id == 20  # Unchanged
+        assert record.default_send_indicator is True  # Unchanged
