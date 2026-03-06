@@ -244,12 +244,6 @@ async def api_keys_page() -> None:
             expiry_value = key.get("expiry_date") or ""
             expiry_input.value = expiry_value.split("T", 1)[0] if expiry_value else ""
 
-        def handle_table_selection(e) -> None:  # pragma: no cover
-            selected_api_key.clear()
-            if e.selection:
-                selected_api_key.update(e.selection[0])
-            update_manage_fields(resolve_selected_key())
-
         async def handle_open_manage_dialog() -> None:  # pragma: no cover
             key = resolve_selected_key()
             if not key:
@@ -440,11 +434,27 @@ async def api_keys_page() -> None:
                 create_button.on_click(handle_open_create_dialog)
                 ui.space()
                 add_export_button(table_rows, columns, "api_keys.csv")
+
+            def handle_row_select(e) -> None:  # pragma: no cover
+                if e.selection:
+                    clicked_key = e.selection[0].get("_row_key")
+                    current_key = selected_api_key.get("_row_key")
+                    if clicked_key == current_key:
+                        selected_api_key.clear()
+                        table.selected = []
+                        update_manage_fields(None)
+                        return
+                    selected_api_key.clear()
+                    selected_api_key.update(e.selection[0])
+                else:
+                    selected_api_key.clear()
+                update_manage_fields(resolve_selected_key())
+
             table = ui.table(
                 columns=make_sortable(columns),
                 rows=table_rows,
                 selection="single",
-                on_select=handle_table_selection,
+                on_select=handle_row_select,
                 pagination={"rowsPerPage": 10},
             )
             table.props("row-key=_row_key").classes("w-full")

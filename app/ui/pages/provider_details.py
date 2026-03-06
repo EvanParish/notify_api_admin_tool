@@ -88,12 +88,6 @@ async def provider_details_page() -> None:
             weight_input.value = provider.get("load_balancing_weight")
             active_checkbox.value = bool(provider.get("active"))
 
-        def handle_table_selection(e) -> None:  # pragma: no cover
-            selected_provider.clear()
-            if e.selection:
-                selected_provider.update(e.selection[0])
-            update_manage_fields(resolve_selected_provider())
-
         async def handle_open_manage_dialog() -> None:  # pragma: no cover
             provider = resolve_selected_provider()
             if not provider:
@@ -230,11 +224,27 @@ async def provider_details_page() -> None:
                 )
                 ui.space()
                 add_export_button(table_rows, columns, "provider_details.csv")
+
+            def handle_row_select(e) -> None:  # pragma: no cover
+                if e.selection:
+                    clicked_key = e.selection[0].get("_row_key")
+                    current_key = selected_provider.get("_row_key")
+                    if clicked_key == current_key:
+                        selected_provider.clear()
+                        table.selected = []
+                        update_manage_fields(None)
+                        return
+                    selected_provider.clear()
+                    selected_provider.update(e.selection[0])
+                else:
+                    selected_provider.clear()
+                update_manage_fields(resolve_selected_provider())
+
             table = ui.table(
                 columns=make_sortable(columns),
                 rows=table_rows,
                 selection="single",
-                on_select=handle_table_selection,
+                on_select=handle_row_select,
                 pagination={"rowsPerPage": 9},
             )
             table.props("row-key=_row_key").classes("w-full")

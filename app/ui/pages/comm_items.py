@@ -85,12 +85,6 @@ async def communication_items_page() -> None:
             va_profile_id_input.value = item.get("va_profile_item_id")
             default_send_checkbox.value = bool(item.get("default_send_indicator"))
 
-        def handle_table_selection(e) -> None:  # pragma: no cover
-            selected_item.clear()
-            if e.selection:
-                selected_item.update(e.selection[0])
-            update_manage_fields(resolve_selected_item())
-
         async def handle_open_manage_dialog() -> None:  # pragma: no cover
             item = resolve_selected_item()
             if not item:
@@ -210,11 +204,27 @@ async def communication_items_page() -> None:
                 )
                 ui.space()
                 add_export_button(table_rows, columns, "communication_items.csv")
+
+            def handle_row_select(e) -> None:  # pragma: no cover
+                if e.selection:
+                    clicked_key = e.selection[0].get("_row_key")
+                    current_key = selected_item.get("_row_key")
+                    if clicked_key == current_key:
+                        selected_item.clear()
+                        table.selected = []
+                        update_manage_fields(None)
+                        return
+                    selected_item.clear()
+                    selected_item.update(e.selection[0])
+                else:
+                    selected_item.clear()
+                update_manage_fields(resolve_selected_item())
+
             table = ui.table(
                 columns=make_sortable(columns),
                 rows=table_rows,
                 selection="single",
-                on_select=handle_table_selection,
+                on_select=handle_row_select,
                 pagination={"rowsPerPage": 10},
             )
             table.props("row-key=_row_key").classes("w-full")
