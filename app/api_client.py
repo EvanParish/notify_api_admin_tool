@@ -41,7 +41,9 @@ class NotificationAPI:
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
-    async def get_api_keys(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_api_keys(
+        self, service_id: str, include_revoked: bool = False
+    ) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
     async def create_api_key(
@@ -123,9 +125,14 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json().get("data", [])
 
     @http_retry
-    async def get_api_keys(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_api_keys(
+        self, service_id: str, include_revoked: bool = False
+    ) -> List[Dict[str, Any]]:
+        params = {"include_revoked": "true"} if include_revoked else {}
         resp = await self.client.get(
-            f"{self.base_url}/service/{service_id}/api-keys", auth=self._basic_auth
+            f"{self.base_url}/service/{service_id}/api-keys",
+            auth=self._basic_auth,
+            params=params,
         )
         resp.raise_for_status()
         return resp.json().get("apiKeys", [])
@@ -317,9 +324,11 @@ class MockNotificationAPI(NotificationAPI):
             },
         ]
 
-    async def get_api_keys(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_api_keys(
+        self, service_id: str, include_revoked: bool = False
+    ) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)
-        return [
+        keys = [
             {
                 "id": "key-1",
                 "name": "Demo Key",
@@ -327,6 +336,16 @@ class MockNotificationAPI(NotificationAPI):
                 "created_by": "user-1",
             }
         ]
+        if include_revoked:
+            keys.append(
+                {
+                    "id": "key-revoked",
+                    "name": "Revoked Key",
+                    "expiry_date": "2020-01-01",
+                    "created_by": "user-1",
+                }
+            )
+        return keys
 
     async def create_api_key(
         self,

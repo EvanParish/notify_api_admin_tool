@@ -25,7 +25,7 @@ class FakeAPI(NotificationAPI):
             return self._template_generator(service_id)
         return self.templates_data
 
-    async def get_api_keys(self, service_id: str):
+    async def get_api_keys(self, service_id: str, include_revoked: bool = False):
         return []
 
     async def get_sms_senders(self, service_id: str):
@@ -449,7 +449,7 @@ async def test_sync_api_keys_reraises_non_404(initialized_db):
 
     mock_api = MockNotificationAPI()
 
-    async def raise_server_error(service_id):
+    async def raise_server_error(service_id, include_revoked=False):
         raise Exception("Internal Server Error 500")
 
     mock_api.get_api_keys = raise_server_error

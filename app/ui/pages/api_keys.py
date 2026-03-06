@@ -90,7 +90,9 @@ async def api_keys_page() -> None:
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def page_sync_api_keys(environment: str | None = None):  # pragma: no cover
+    async def page_sync_api_keys(
+        environment: str | None = None, include_revoked: bool = False
+    ):  # pragma: no cover
         envs = [environment] if environment else None
         await handle_entity_sync(
             ["sync_api_keys"],
@@ -99,6 +101,7 @@ async def api_keys_page() -> None:
             "API keys",
             pre_sync=["sync_services"],
             environments=envs,
+            sync_kwargs={"include_revoked": include_revoked},
         )
 
     refresh_button.on_click(page_refresh)
@@ -377,9 +380,10 @@ async def api_keys_page() -> None:
         )
         expires_from = ui.input(label="Expires from").props("clearable type=date")
         expires_to = ui.input(label="Expires to").props("clearable type=date")
+        include_revoked_checkbox = ui.checkbox("Include revoked keys on sync")
 
         async def handle_sync_keys() -> None:  # pragma: no cover
-            await page_sync_api_keys()
+            await page_sync_api_keys(include_revoked=include_revoked_checkbox.value)
             render_table.refresh()
 
         @ui.refreshable

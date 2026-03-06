@@ -44,6 +44,15 @@ async def test_mock_api_get_api_keys():
 
 
 @pytest.mark.asyncio
+async def test_mock_api_get_api_keys_include_revoked():
+    api = MockNotificationAPI()
+    keys = await api.get_api_keys("svc-1", include_revoked=True)
+
+    assert len(keys) == 2
+    assert any(k["id"] == "key-revoked" for k in keys)
+
+
+@pytest.mark.asyncio
 async def test_mock_api_create_api_key():
     api = MockNotificationAPI()
     result = await api.create_api_key("svc-1", "New Key", "normal")
@@ -158,9 +167,28 @@ async def test_http_api_get_api_keys():
         keys = await api.get_api_keys("svc-1")
 
         mock_get.assert_called_once_with(
-            "https://api.example.com/service/svc-1/api-keys", auth=None
+            "https://api.example.com/service/svc-1/api-keys", auth=None, params={}
         )
         assert len(keys) == 1
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_api_keys_include_revoked():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"apiKeys": [{"id": "key-1"}, {"id": "key-2"}]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response) as mock_get:
+        keys = await api.get_api_keys("svc-1", include_revoked=True)
+
+        mock_get.assert_called_once_with(
+            "https://api.example.com/service/svc-1/api-keys",
+            auth=None,
+            params={"include_revoked": "true"},
+        )
+        assert len(keys) == 2
 
 
 @pytest.mark.asyncio

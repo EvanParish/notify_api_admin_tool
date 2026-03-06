@@ -307,3 +307,44 @@ async def test_handle_entity_sync_explicit_environments(initialized_db, mock_con
             assert synced_envs == ["prod"]
     finally:
         _st.config, _st.state = original_config, original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_entity_sync_with_sync_kwargs(initialized_db, mock_config):
+    """Passes sync_kwargs through to the sync method."""
+
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
+    badge, label = _make_mock_badges()
+
+    captured_kwargs = {}
+
+    def make_manager(api, concurrency, environment):
+        manager = MagicMock()
+
+        async def capture_sync(**kw):
+            captured_kwargs.update(kw)
+
+        manager.sync_api_keys = capture_sync
+        return manager
+
+    try:
+        with (
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
+            patch("app.ui.sync_handlers.SyncManager", side_effect=make_manager),
+        ):
+            result = await handle_entity_sync(
+                ["sync_api_keys"],
+                badge,
+                label,
+                "API keys",
+                sync_kwargs={"include_revoked": True},
+            )
+            assert result is True
+            assert captured_kwargs.get("include_revoked") is True
+            assert "progress" in captured_kwargs
+    finally:
+        _st.config, _st.state = original_config, original_state

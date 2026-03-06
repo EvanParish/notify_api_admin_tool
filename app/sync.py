@@ -61,19 +61,24 @@ class SyncManager:
             templates = await self.api.get_templates(service_id)
             await upsert_templates(templates, self.environment, service_id)
 
-    async def sync_api_keys(self, progress: ProgressCallback = None) -> None:
+    async def sync_api_keys(
+        self, progress: ProgressCallback = None, include_revoked: bool = False
+    ) -> None:
         service_ids = await list_service_ids(self.environment)
-        tasks = [self._sync_api_keys_for_service(sid, progress) for sid in service_ids]
+        tasks = [
+            self._sync_api_keys_for_service(sid, progress, include_revoked)
+            for sid in service_ids
+        ]
         await asyncio.gather(*tasks)
 
     async def _sync_api_keys_for_service(
-        self, service_id: str, progress: ProgressCallback
+        self, service_id: str, progress: ProgressCallback, include_revoked: bool = False
     ) -> None:
         async with self._semaphore:
             if progress:
                 await progress(f"API keys for {service_id}")
             try:
-                api_keys = await self.api.get_api_keys(service_id)
+                api_keys = await self.api.get_api_keys(service_id, include_revoked)
             except Exception as e:
                 if "404" in str(e) or "NOT FOUND" in str(e):
                     if progress:

@@ -86,7 +86,7 @@ def _build_key_email(
         "Please see the details below regarding your key(s) for the VA Notify API.\n\n"
         "Action items:\n"
         "1. Please confirm receipt of this email.\n"
-        "2. Please confirm when you have implemented the new key(s) in your application.\n\n"
+        "2. Please confirm when you have configured the new key(s) in your application.\n\n"
         f"{env_label} Details\n"
         f"Key Secret: {key_secret}\n"
         f"Expiration Date: {expiry_date}\n"
