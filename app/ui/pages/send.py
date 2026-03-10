@@ -10,6 +10,7 @@ from nicegui import ui
 from app.repository import (
     list_local_keys,
     list_services,
+    list_sms_senders,
     list_templates,
     resolve_local_key,
 )
@@ -75,6 +76,12 @@ async def send_page() -> None:
             .props("clearable")
             .classes("w-full md:w-1/2")
         )
+        sms_sender_select = (
+            ui.select({}, label="SMS Sender (optional)", with_input=True)
+            .props("clearable")
+            .classes("w-full md:w-1/2")
+        )
+        sms_sender_select.set_visibility(False)
         recipient_input = (
             ui.input(
                 label="Recipients (comma separated)",
@@ -123,6 +130,24 @@ async def send_page() -> None:
             template_select.set_options(options)
             if template_select.value not in options:
                 template_select.value = None
+
+        async def load_sms_senders() -> None:
+            selected_service = service_select.value
+            t_type = type_toggle.value
+            if t_type == "sms" and selected_service:
+                senders = await list_sms_senders(
+                    selected_service, environment=_st.state.environment
+                )
+                options = {
+                    s.id: f"{s.sms_sender}{' (default)' if s.is_default else ''}"
+                    for s in senders
+                }
+                sms_sender_select.set_options(options)
+                sms_sender_select.set_visibility(True)
+            else:
+                sms_sender_select.set_options({})
+                sms_sender_select.value = None
+                sms_sender_select.set_visibility(False)
 
         async def handle_template_change() -> None:  # pragma: no cover
             personalisation_area.clear()
@@ -176,6 +201,7 @@ async def send_page() -> None:
             selected_service = service_select.value
             selected_key = key_select.value
             selected_template = template_select.value
+            selected_sms_sender = sms_sender_select.value
             t_type = type_toggle.value
             recipient_value = recipient_input.value or ""
             if not (
@@ -223,6 +249,9 @@ async def send_page() -> None:
                                 api_key=api_key_secret,
                                 service_id=selected_service,
                                 template_type=t_type,
+                                sms_sender_id=selected_sms_sender
+                                if t_type == "sms"
+                                else None,
                             )
                             return index, {
                                 "recipient": recipient,
@@ -275,10 +304,12 @@ async def send_page() -> None:
         async def handle_service_change(_=None) -> None:
             await load_keys()
             await load_templates()
+            await load_sms_senders()
             await update_preview()
 
         async def handle_type_change(_=None) -> None:  # pragma: no cover
             await load_templates()
+            await load_sms_senders()
             await update_preview()
 
         async def handle_template_select(_=None) -> None:  # pragma: no cover

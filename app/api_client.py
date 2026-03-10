@@ -102,6 +102,7 @@ class NotificationAPI:
         api_key: str,
         service_id: str,
         template_type: str,
+        sms_sender_id: str | None = None,
     ) -> Dict[str, Any]:
         raise NotImplementedError
 
@@ -297,6 +298,7 @@ class HttpNotificationAPI(NotificationAPI):
         api_key: str,
         service_id: str,
         template_type: str,
+        sms_sender_id: str | None = None,
     ) -> Dict[str, Any]:
         token = self._make_jwt(service_id, api_key)
         headers = {"Authorization": f"Bearer {token}"}
@@ -310,6 +312,8 @@ class HttpNotificationAPI(NotificationAPI):
         else:
             payload["phone_number"] = recipient
             endpoint = "/v2/notifications/sms"
+            if sms_sender_id:
+                payload["sms_sender_id"] = sms_sender_id
 
         resp = await self.client.post(
             f"{self.base_url}{endpoint}", json=payload, headers=headers
@@ -566,9 +570,10 @@ class MockNotificationAPI(NotificationAPI):
         api_key: str,
         service_id: str,
         template_type: str,
+        sms_sender_id: str | None = None,
     ) -> Dict[str, Any]:
         await asyncio.sleep(self._sleep)
-        return {
+        result: Dict[str, Any] = {
             "id": "mock-notification-123",
             "template_id": template_id,
             "recipient": recipient,
@@ -577,6 +582,9 @@ class MockNotificationAPI(NotificationAPI):
             "type": template_type,
             "status": "sent",
         }
+        if sms_sender_id:
+            result["sms_sender_id"] = sms_sender_id
+        return result
 
     async def healthcheck(self) -> bool:
         await asyncio.sleep(self._sleep)

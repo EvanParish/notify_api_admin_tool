@@ -118,6 +118,27 @@ async def test_mock_api_send_notification():
     assert result["recipient"] == "user@example.com"
     assert result["personalisation"] == {"name": "John"}
     assert result["status"] == "sent"
+    assert "sms_sender_id" not in result
+
+
+@pytest.mark.asyncio
+async def test_mock_api_send_notification_with_sms_sender():
+    api = MockNotificationAPI()
+    result = await api.send_notification(
+        template_id="tmpl-2",
+        recipient="1234567890",
+        personalisation={"code": "ABC"},
+        api_key="test-key",
+        service_id="svc-1",
+        template_type="sms",
+        sms_sender_id="sender-456",
+    )
+
+    assert result["id"] == "mock-notification-123"
+    assert result["template_id"] == "tmpl-2"
+    assert result["recipient"] == "1234567890"
+    assert result["sms_sender_id"] == "sender-456"
+    assert result["status"] == "sent"
 
 
 @pytest.mark.asyncio
@@ -392,6 +413,34 @@ async def test_http_api_send_notification_sms():
         assert call_args[0][0] == "https://api.example.com/v2/notifications/sms"
         payload = call_args[1]["json"]
         assert payload["phone_number"] == "1234567890"
+        assert "sms_sender_id" not in payload
+
+
+@pytest.mark.asyncio
+async def test_http_api_send_notification_sms_with_sender():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "notif-3"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.send_notification(
+            template_id="tmpl-2",
+            recipient="1234567890",
+            personalisation={"code": "1234"},
+            api_key="secret-key",
+            service_id="svc-1",
+            template_type="sms",
+            sms_sender_id="sender-123",
+        )
+
+        assert result["id"] == "notif-3"
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "https://api.example.com/v2/notifications/sms"
+        payload = call_args[1]["json"]
+        assert payload["phone_number"] == "1234567890"
+        assert payload["sms_sender_id"] == "sender-123"
 
 
 @pytest.mark.asyncio
