@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Type, Union
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 
 from .crypto import EncryptionManager
-from .db import get_session
+from .db import Base, get_session
 from .models import (
     ApiKey,
     CommunicationItem,
@@ -351,6 +351,38 @@ async def list_inbound_numbers(
 # ---------------------------------------------------------------------------
 # Bulk upsert functions (used by SyncManager)
 # ---------------------------------------------------------------------------
+
+
+# Map of table names to model classes for clearing data
+CLEARABLE_TABLES: Dict[str, Type[Base]] = {
+    "services": Service,
+    "templates": Template,
+    "api_keys": ApiKey,
+    "sms_senders": SmsSender,
+    "users": User,
+    "provider_details": ProviderDetail,
+    "communication_items": CommunicationItem,
+    "inbound_numbers": InboundNumber,
+    "local_api_keys": LocalApiKey,
+}
+
+
+async def clear_table_data(table_name: str, environment: str | None = None) -> int:
+    """Clear data from a table, optionally filtered by environment.
+
+    Returns the number of rows deleted.
+    """
+    model = CLEARABLE_TABLES.get(table_name)
+    if not model:
+        raise ValueError(f"Unknown table: {table_name}")
+
+    async with get_session() as session:
+        stmt = delete(model)
+        if environment and hasattr(model, "environment"):
+            stmt = stmt.where(model.environment == environment)
+        result = await session.execute(stmt)
+        await session.commit()
+        return result.rowcount
 
 
 async def list_service_ids(environment: Optional[str] = None) -> List[str]:

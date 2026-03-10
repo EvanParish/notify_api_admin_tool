@@ -1854,6 +1854,10 @@ def _ui_patches(mod_path, _make_mock):
         "update_communication_item": patch(
             f"{mod_path}.update_communication_item", new_callable=AsyncMock
         ),
+        "clear_table_data": patch(
+            f"{mod_path}.clear_table_data", new_callable=AsyncMock, return_value=0
+        ),
+        "CLEARABLE_TABLES": patch(f"{mod_path}.CLEARABLE_TABLES", {}),
         "make_sortable": patch(f"{mod_path}.make_sortable"),
     }
     for attr, p in optional.items():

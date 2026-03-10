@@ -5,7 +5,9 @@ from typing import Any, Dict, List, Optional
 from nicegui import ui
 
 from app.repository import (
+    CLEARABLE_TABLES,
     add_local_key,
+    clear_table_data,
     get_secure_setting,
     get_setting,
     list_local_keys,
@@ -158,6 +160,83 @@ async def settings_page() -> None:
             key_environment.on_value_change(handle_key_environment_change)
             ui.label("Stored Keys")
             await render_local_keys()
+
+        with ui.card().classes("p-6 w-full"):
+            ui.label("Clear Cached Data").classes("text-md font-semibold")
+            ui.label(
+                "Remove synced data from the local database by table and environment."
+            ).classes("text-sm text-gray-600")
+
+            table_options = {
+                name: name.replace("_", " ").title() for name in CLEARABLE_TABLES
+            }
+            clear_table_select = (
+                ui.select(table_options, label="Table", value=None)
+                .props("clearable")
+                .classes("w-full md:w-1/3")
+            )
+
+            env_options_with_all = {"": "All Environments"}
+            env_options_with_all.update(
+                {env: env.title() for env in _st.config.api_hosts}
+            )
+            clear_env_select = ui.select(
+                env_options_with_all, label="Environment", value=""
+            ).classes("w-full md:w-1/3")
+
+            with ui.dialog() as confirm_clear_dialog, ui.card().classes("p-6"):
+                ui.label("Confirm Data Deletion").classes("text-md font-semibold")
+                confirm_clear_message = ui.label("")
+                with ui.row().classes("gap-2"):
+                    confirm_clear_button = ui.button("Delete Data", color="negative")
+                    ui.button(
+                        "Cancel", on_click=confirm_clear_dialog.close, color="gray"
+                    )
+
+            pending_clear: Dict[str, Any] = {}
+
+            async def handle_clear_request() -> None:  # pragma: no cover
+                table_name = clear_table_select.value
+                if not table_name:
+                    ui.notify("Select a table to clear", color="red")
+                    return
+                environment = clear_env_select.value or None
+                env_label = environment.title() if environment else "all environments"
+                table_label = table_name.replace("_", " ")
+                confirm_clear_message.text = (
+                    f"Are you sure you want to delete all {table_label} data "
+                    f"from {env_label}? This cannot be undone."
+                )
+                pending_clear.clear()
+                pending_clear["table"] = table_name
+                pending_clear["environment"] = environment
+                confirm_clear_dialog.open()
+
+            async def handle_confirm_clear() -> None:  # pragma: no cover
+                confirm_clear_dialog.close()
+                if not pending_clear:
+                    return
+                table_name = pending_clear.get("table")
+                environment = pending_clear.get("environment")
+                pending_clear.clear()
+                if not table_name:
+                    return
+                try:
+                    deleted = await clear_table_data(table_name, environment)
+                    env_label = (
+                        environment.title() if environment else "all environments"
+                    )
+                    ui.notify(
+                        f"Deleted {deleted} rows from {table_name} ({env_label})",
+                        color="green",
+                    )
+                    if table_name == "local_api_keys":
+                        await refresh_if_needed(render_local_keys)
+                except ValueError as exc:
+                    ui.notify(str(exc), color="red")
+
+            ui.button("Clear Data", on_click=handle_clear_request, color="negative")
+            confirm_clear_button.on_click(handle_confirm_clear)
 
 
 async def save_base_urls(inputs: Dict[str, ui.input]) -> None:

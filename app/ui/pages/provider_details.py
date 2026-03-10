@@ -145,6 +145,7 @@ async def provider_details_page() -> None:
             selected_provider["load_balancing_weight"] = weight
             selected_provider["active"] = active
             update_manage_fields(resolve_selected_provider())
+            manage_dialog.close()
             await refresh_if_needed(render_table)
 
         update_button.on_click(handle_update_provider)

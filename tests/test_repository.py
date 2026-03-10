@@ -20,6 +20,7 @@ from app.repository import (
     mark_api_key_revoked,
     update_provider_detail,
     update_communication_item,
+    clear_table_data,
 )
 from app.crypto import EncryptionManager
 from app.repository import DbSaltProvider
@@ -913,3 +914,73 @@ async def test_update_communication_item_partial_update(initialized_db):
         assert record.name == "New Name"
         assert record.va_profile_item_id == 20  # Unchanged
         assert record.default_send_indicator is True  # Unchanged
+
+
+@pytest.mark.asyncio
+async def test_clear_table_data_all_environments(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service 1", environment="dev"))
+        session.add(Service(id="svc-2", name="Service 2", environment="staging"))
+        session.add(Service(id="svc-3", name="Service 3", environment="dev"))
+        await session.commit()
+
+    # Clear all services
+    deleted = await clear_table_data("services")
+    assert deleted == 3
+
+    services = await list_services()
+    assert len(services) == 0
+
+
+@pytest.mark.asyncio
+async def test_clear_table_data_by_environment(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service 1", environment="dev"))
+        session.add(Service(id="svc-2", name="Service 2", environment="staging"))
+        session.add(Service(id="svc-3", name="Service 3", environment="dev"))
+        await session.commit()
+
+    # Clear only dev services
+    deleted = await clear_table_data("services", "dev")
+    assert deleted == 2
+
+    services = await list_services()
+    assert len(services) == 1
+    assert services[0].environment == "staging"
+
+
+@pytest.mark.asyncio
+async def test_clear_table_data_unknown_table(initialized_db):
+    with pytest.raises(ValueError) as exc_info:
+        await clear_table_data("nonexistent_table")
+    assert "Unknown table" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_clear_table_data_users(initialized_db):
+    async with get_session() as session:
+        session.add(User(id="u1", environment="dev", name="User 1"))
+        session.add(User(id="u2", environment="prod", name="User 2"))
+        await session.commit()
+
+    deleted = await clear_table_data("users", "dev")
+    assert deleted == 1
+
+    users = await list_users()
+    assert len(users) == 1
+    assert users[0].id == "u2"
+
+
+@pytest.mark.asyncio
+async def test_clear_table_data_local_api_keys(initialized_db):
+    enc = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+
+    await add_local_key(enc, "svc-1", "dev", "Key1", "secret1", "normal")
+    await add_local_key(enc, "svc-1", "staging", "Key2", "secret2", "normal")
+
+    deleted = await clear_table_data("local_api_keys", "dev")
+    assert deleted == 1
+
+    keys = await list_local_keys()
+    assert len(keys) == 1
+    assert keys[0].environment == "staging"

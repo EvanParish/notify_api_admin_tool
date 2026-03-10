@@ -148,6 +148,7 @@ async def communication_items_page() -> None:
                 selected_item["va_profile_item_id"] = va_profile_id
             selected_item["default_send_indicator"] = default_send
             update_manage_fields(resolve_selected_item())
+            manage_dialog.close()
             await refresh_if_needed(render_table)
 
         update_button.on_click(handle_update_item)
