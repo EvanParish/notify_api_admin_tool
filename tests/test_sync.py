@@ -437,7 +437,7 @@ async def test_sync_api_keys_handles_404_with_progress(initialized_db):
 
 
 @pytest.mark.asyncio
-async def test_sync_api_keys_reraises_non_404(initialized_db):
+async def test_sync_api_keys_records_non_404_error(initialized_db):
     from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
     from app.models import Service
@@ -455,5 +455,126 @@ async def test_sync_api_keys_reraises_non_404(initialized_db):
     mock_api.get_api_keys = raise_server_error
 
     manager = SyncManager(mock_api, max_concurrency=5)
-    with pytest.raises(Exception, match="Internal Server Error 500"):
-        await manager.sync_api_keys()
+    result = await manager.sync_api_keys()
+    assert result.error_count == 1
+    assert len(result.errors) == 1
+    assert "Internal Server Error 500" in str(result.errors[0])
+
+
+@pytest.mark.asyncio
+async def test_sync_sms_senders_handles_404(initialized_db):
+    """Test that sync handles 404 errors gracefully for SMS senders."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service
+    from app.db import get_session
+
+    async with get_session() as session:
+        session.add(Service(id="svc-no-sms", name="No SMS Service", active=True))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+
+    async def raise_404(service_id):
+        raise Exception("Client error '404 NOT FOUND'")
+
+    mock_api.get_sms_senders = raise_404
+
+    messages = []
+
+    async def progress(msg):
+        messages.append(msg)
+
+    manager = SyncManager(mock_api, max_concurrency=5)
+    result = await manager.sync_sms_senders(progress=progress)
+
+    # 404 should be treated as success (no SMS senders)
+    assert result.error_count == 0
+    assert result.success_count == 1
+    assert any("No SMS senders" in msg for msg in messages)
+
+
+@pytest.mark.asyncio
+async def test_sync_sms_senders_records_non_404_error(initialized_db):
+    """Test that sync records non-404 errors for SMS senders."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service
+    from app.db import get_session
+    import httpx
+
+    async with get_session() as session:
+        session.add(Service(id="svc-err-sms", name="Error SMS Service", active=True))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+
+    mock_response = type(
+        "MockResponse",
+        (),
+        {"status_code": 500, "json": lambda: {"message": "Internal error"}},
+    )()
+
+    async def raise_500(service_id):
+        raise httpx.HTTPStatusError(
+            "Server Error", request=None, response=mock_response
+        )
+
+    mock_api.get_sms_senders = raise_500
+
+    manager = SyncManager(mock_api, max_concurrency=5)
+    result = await manager.sync_sms_senders()
+
+    assert result.error_count == 1
+    assert result.success_count == 0
+    assert len(result.errors) == 1
+    assert result.errors[0].status_code == 500
+    assert result.errors[0].entity == "sms_senders"
+    assert result.errors[0].service_id == "svc-err-sms"
+
+
+@pytest.mark.asyncio
+async def test_sync_result_string_representation(initialized_db):
+    """Test SyncError string representation includes status code."""
+    from app.sync import SyncError
+
+    error = SyncError(
+        entity="templates",
+        message="Not authorized",
+        status_code=401,
+        service_id="svc-123",
+    )
+    error_str = str(error)
+    assert "templates" in error_str
+    assert "svc-123" in error_str
+    assert "HTTP 401" in error_str
+    assert "Not authorized" in error_str
+
+
+@pytest.mark.asyncio
+async def test_sync_extracts_error_message_from_json_response(initialized_db):
+    """Test that error message is extracted from JSON response body."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    import httpx
+
+    mock_api = MockNotificationAPI()
+
+    class MockResponse:
+        status_code = 400
+
+        def json(self):
+            return {"message": "Invalid service configuration"}
+
+    async def raise_with_json():
+        raise httpx.HTTPStatusError(
+            "Bad Request", request=None, response=MockResponse()
+        )
+
+    mock_api.get_services = raise_with_json
+
+    manager = SyncManager(mock_api, max_concurrency=5)
+    result = await manager.sync_services()
+
+    assert result.error_count == 1
+    assert "Invalid service configuration" in str(result.errors[0])

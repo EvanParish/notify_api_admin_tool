@@ -239,6 +239,41 @@ async def list_sms_senders(
         ]
 
 
+async def update_sms_sender(
+    sms_sender_id: str,
+    service_id: str | None = None,
+    sms_sender: str | None = None,
+    description: str | None = None,
+    provider_id: str | None = None,
+    is_default: bool | None = None,
+    rate_limit: int | None = None,
+    rate_limit_interval: str | None = None,
+    environment: str | None = None,
+) -> bool:
+    async with get_session() as session:
+        query = select(SmsSender).where(SmsSender.id == sms_sender_id)
+        if environment:
+            query = query.where(SmsSender.environment == environment)
+        result = await session.execute(query)
+        sender = result.scalars().first()
+        if not sender:
+            return False
+        if sms_sender is not None:
+            sender.sms_sender = sms_sender
+        if description is not None:
+            sender.description = description
+        if provider_id is not None:
+            sender.provider_id = provider_id
+        if is_default is not None:
+            sender.is_default = is_default
+        if rate_limit is not None:
+            sender.rate_limit = rate_limit
+        if rate_limit_interval is not None:
+            sender.rate_limit_interval = rate_limit_interval
+        await session.commit()
+        return True
+
+
 async def list_provider_details(
     environment: Optional[Union[str, List[str]]] = None,
 ) -> List[ProviderDetail]:

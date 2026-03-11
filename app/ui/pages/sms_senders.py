@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
+import httpx
 from nicegui import ui
 
-from app.repository import list_services, list_sms_senders
+from app.repository import (
+    list_provider_details,
+    list_services,
+    list_sms_senders,
+    update_sms_sender,
+)
+from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
@@ -15,7 +22,13 @@ from app.ui.helpers import (
     refresh_if_needed,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
-from app.ui.state import get_view_environment, refresh_status_badge
+from app.ui.state import (
+    build_api_client,
+    ensure_admin_auth,
+    get_view_environment,
+    handle_unauthorized,
+    refresh_status_badge,
+)
 from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 
@@ -44,13 +57,17 @@ async def sms_senders_page() -> None:
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def page_sync_sms_senders():  # pragma: no cover
+    async def page_sync_sms_senders(
+        environment: str | None = None,
+    ):  # pragma: no cover
+        envs = [environment] if environment else None
         await handle_entity_sync(
             ["sync_sms_senders"],
             status_badge,
             sync_label,
             "SMS senders",
             pre_sync=["sync_services"],
+            environments=envs,
         )
 
     refresh_button.on_click(page_refresh)
@@ -58,6 +75,296 @@ async def sms_senders_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("SMS Senders").classes("text-lg font-semibold")
+
+        # Create SMS Sender dialog
+        with ui.dialog() as create_dialog, ui.card().classes("p-6 w-full max-w-3xl"):
+            ui.label("Add SMS Sender").classes("text-md font-semibold")
+            create_env = ui.select(
+                {env: env.title() for env in _st.config.api_hosts},
+                value=_st.state.environment,
+                label="Environment",
+            ).classes("w-full md:w-1/2")
+            create_service = (
+                ui.select({}, label="Service", with_input=True)
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
+            create_sms_sender = (
+                ui.input(label="SMS Sender (phone number)")
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
+            create_description = (
+                ui.input(label="Description")
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
+            create_provider = (
+                ui.select({}, label="Provider", with_input=True)
+                .props("clearable")
+                .classes("w-full md:w-1/2")
+            )
+            create_is_default = ui.checkbox("Set as default")
+            create_rate_limit = ui.number(label="Rate Limit", min=1).classes(
+                "w-full md:w-1/2"
+            )
+            create_rate_limit_interval = ui.number(
+                label="Rate Limit Interval (seconds)", min=1
+            ).classes("w-full md:w-1/2")
+            with ui.row().classes("gap-2"):
+                create_submit_button = ui.button("Create SMS Sender", color="green")
+                ui.button("Cancel", on_click=create_dialog.close, color="gray")
+
+        async def refresh_create_service_options() -> None:  # pragma: no cover
+            options = {
+                svc.id: format_service_label(svc)
+                for svc in await list_services(create_env.value)
+            }
+            create_service.set_options(options)
+            if create_service.value not in options:
+                create_service.value = None
+
+        async def refresh_create_provider_options() -> None:  # pragma: no cover
+            providers = await list_provider_details(create_env.value)
+            sms_providers = [p for p in providers if p.notification_type == "sms"]
+            options = {
+                p.id: f"{p.display_name} ({p.identifier})" for p in sms_providers
+            }
+            create_provider.set_options(options)
+            if create_provider.value not in options:
+                create_provider.value = None
+
+        async def handle_create_env_change(_=None) -> None:  # pragma: no cover
+            await refresh_create_service_options()
+            await refresh_create_provider_options()
+
+        async def handle_create_sms_sender() -> None:  # pragma: no cover
+            environment = create_env.value
+            service_id = create_service.value
+            sms_sender = (create_sms_sender.value or "").strip()
+            description = (create_description.value or "").strip()
+            provider_id = create_provider.value
+            is_default = create_is_default.value
+            rate_limit = (
+                int(create_rate_limit.value)
+                if create_rate_limit.value is not None
+                else None
+            )
+            rate_limit_interval = (
+                int(create_rate_limit_interval.value)
+                if create_rate_limit_interval.value is not None
+                else None
+            )
+            if not (
+                environment
+                and service_id
+                and sms_sender
+                and description
+                and provider_id
+            ):
+                ui.notify(
+                    "Environment, service, SMS sender, description, and provider are required",
+                    color="red",
+                )
+                return
+            if not await ensure_admin_auth(environment, sync_label):
+                return
+            api = await build_api_client(environment)
+            try:
+                await api.create_sms_sender(
+                    service_id=service_id,
+                    sms_sender=sms_sender,
+                    description=description,
+                    provider_id=provider_id,
+                    is_default=is_default,
+                    rate_limit=rate_limit,
+                    rate_limit_interval=rate_limit_interval,
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response and exc.response.status_code == 401:
+                    handle_unauthorized(sync_label, environment)
+                    return
+                ui.notify(f"Failed to create SMS sender: {exc}", color="red")
+                return
+            except Exception as exc:
+                ui.notify(f"Error creating SMS sender: {exc}", color="red")
+                return
+            ui.notify("SMS sender created", color="green")
+            create_dialog.close()
+            await page_sync_sms_senders(environment)
+            await refresh_if_needed(render_table)
+
+        async def handle_open_create_dialog() -> None:  # pragma: no cover
+            create_env.value = _st.state.environment
+            create_sms_sender.value = ""
+            create_description.value = ""
+            create_is_default.value = False
+            create_rate_limit.value = None
+            create_rate_limit_interval.value = None
+            await refresh_create_service_options()
+            await refresh_create_provider_options()
+            create_dialog.open()
+
+        create_env.on_value_change(handle_create_env_change)
+        create_submit_button.on_click(handle_create_sms_sender)
+
+        # Edit SMS Sender dialog
+        selected_sender: dict[str, Any] = {}
+
+        with ui.dialog() as edit_dialog, ui.card().classes("p-6 w-full max-w-lg"):
+            ui.label("Edit SMS Sender").classes("text-md font-semibold")
+            selected_sender_label = ui.label("")
+            edit_sms_sender = (
+                ui.input(label="SMS Sender (phone number)")
+                .props("clearable")
+                .classes("w-full")
+            )
+            edit_description = (
+                ui.input(label="Description").props("clearable").classes("w-full")
+            )
+            edit_provider = (
+                ui.select({}, label="Provider", with_input=True)
+                .props("clearable")
+                .classes("w-full")
+            )
+            edit_is_default = ui.checkbox("Set as default")
+            edit_rate_limit = ui.number(label="Rate Limit", min=1).classes("w-full")
+            edit_rate_limit_interval = ui.number(
+                label="Rate Limit Interval (seconds)", min=1
+            ).classes("w-full")
+            with ui.row().classes("gap-2"):
+                edit_update_button = ui.button("Update SMS Sender", color="primary")
+                ui.button("Close", on_click=edit_dialog.close, color="gray")
+
+        def resolve_selected_sender() -> dict[str, Any] | None:  # pragma: no cover
+            return selected_sender if selected_sender.get("id") else None
+
+        def resolve_selected_environment(
+            sender: dict[str, Any],
+        ) -> str | None:  # pragma: no cover
+            env_value = sender.get("environment_value") or sender.get("environment")
+            if not env_value or env_value == "unknown":
+                return None
+            return env_value
+
+        def update_edit_fields(
+            sender: dict[str, Any] | None,
+        ) -> None:  # pragma: no cover
+            if not sender:
+                selected_sender_label.text = "No SMS sender selected."
+                edit_sms_sender.value = ""
+                edit_description.value = ""
+                edit_provider.value = None
+                edit_is_default.value = False
+                edit_rate_limit.value = None
+                edit_rate_limit_interval.value = None
+                return
+            sender_id = sender.get("id")
+            sms_sender_val = sender.get("sms_sender") or ""
+            selected_sender_label.text = f"Selected: {sms_sender_val} ({sender_id})"
+            edit_sms_sender.value = sms_sender_val
+            edit_description.value = sender.get("description") or ""
+            edit_provider.value = sender.get("provider_id")
+            edit_is_default.value = bool(sender.get("is_default"))
+            edit_rate_limit.value = sender.get("rate_limit")
+            edit_rate_limit_interval.value = sender.get("rate_limit_interval")
+
+        async def handle_open_edit_dialog() -> None:  # pragma: no cover
+            sender = resolve_selected_sender()
+            if not sender:
+                ui.notify("Select an SMS sender from the table first", color="red")
+                return
+            environment = resolve_selected_environment(sender)
+            if environment:
+                providers = await list_provider_details(environment)
+                sms_providers = [p for p in providers if p.notification_type == "sms"]
+                options = {
+                    p.id: f"{p.display_name} ({p.identifier})" for p in sms_providers
+                }
+                edit_provider.set_options(options)
+            update_edit_fields(sender)
+            edit_dialog.open()
+
+        async def handle_update_sms_sender() -> None:  # pragma: no cover
+            sender = resolve_selected_sender()
+            if not sender:
+                ui.notify("Select an SMS sender first", color="red")
+                return
+            environment = resolve_selected_environment(sender)
+            sender_id = sender.get("id")
+            service_id = sender.get("service_id")
+            if not (environment and sender_id and service_id):
+                ui.notify(
+                    "Selected SMS sender is missing required details", color="red"
+                )
+                return
+            sms_sender_val = (edit_sms_sender.value or "").strip() or None
+            description = (edit_description.value or "").strip() or None
+            provider_id = edit_provider.value
+            is_default = edit_is_default.value
+            rate_limit = (
+                int(edit_rate_limit.value)
+                if edit_rate_limit.value is not None
+                else None
+            )
+            rate_limit_interval = (
+                int(edit_rate_limit_interval.value)
+                if edit_rate_limit_interval.value is not None
+                else None
+            )
+            if not await ensure_admin_auth(environment, sync_label):
+                return
+            api = await build_api_client(environment)
+            try:
+                await api.update_sms_sender(
+                    service_id=service_id,
+                    sms_sender_id=sender_id,
+                    sms_sender=sms_sender_val,
+                    description=description,
+                    provider_id=provider_id,
+                    is_default=is_default,
+                    rate_limit=rate_limit,
+                    rate_limit_interval=rate_limit_interval,
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response and exc.response.status_code == 401:
+                    handle_unauthorized(sync_label, environment)
+                    return
+                ui.notify(f"Failed to update SMS sender: {exc}", color="red")
+                return
+            except Exception as exc:
+                ui.notify(f"Error updating SMS sender: {exc}", color="red")
+                return
+            updated = await update_sms_sender(
+                sms_sender_id=sender_id,
+                sms_sender=sms_sender_val,
+                description=description,
+                provider_id=provider_id,
+                is_default=is_default,
+                rate_limit=rate_limit,
+                rate_limit_interval=str(rate_limit_interval)
+                if rate_limit_interval
+                else None,
+                environment=environment,
+            )
+            if updated:
+                ui.notify("SMS sender updated", color="green")
+            else:
+                ui.notify(
+                    "SMS sender updated, but cache is missing. Run sync to refresh.",
+                    color="warning",
+                )
+            selected_sender["sms_sender"] = sms_sender_val
+            selected_sender["description"] = description
+            selected_sender["provider_id"] = provider_id
+            selected_sender["is_default"] = is_default
+            selected_sender["rate_limit"] = rate_limit
+            selected_sender["rate_limit_interval"] = rate_limit_interval
+            update_edit_fields(resolve_selected_sender())
+            edit_dialog.close()
+            await refresh_if_needed(render_table)
+
+        edit_update_button.on_click(handle_update_sms_sender)
 
         filter_row = ui.row().classes("gap-2 w-full")
         with filter_row:
@@ -87,6 +394,8 @@ async def sms_senders_page() -> None:
 
         @ui.refreshable
         async def render_table() -> None:  # pragma: no cover
+            selected_sender.clear()
+            update_edit_fields(None)
             selected_service = service_select.value
             senders = await list_sms_senders(
                 selected_service, environment=get_view_environment()
@@ -120,16 +429,18 @@ async def sms_senders_page() -> None:
                 {"name": "created_at", "label": "Created", "field": "created_at"},
                 {"name": "updated_at", "label": "Updated", "field": "updated_at"},
             ]
-            table_rows: List[Dict[str, Any]] = [
+            table_rows: list[dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(sender.id, sender.environment),
                     "id": sender.id,
                     "environment": format_environment(sender.environment),
+                    "environment_value": sender.environment,
                     "service_id": sender.service_id,
                     "sms_sender": sender.sms_sender,
                     "is_default": sender.is_default,
                     "archived": sender.archived,
                     "description": sender.description,
+                    "provider_id": sender.provider_id,
                     "provider_name": sender.provider_name,
                     "rate_limit": sender.rate_limit,
                     "rate_limit_interval": sender.rate_limit_interval,
@@ -140,11 +451,39 @@ async def sms_senders_page() -> None:
             ]
             with ui.row().classes("w-full items-center"):
                 ui.button("Sync SMS Senders", on_click=handle_sync_senders)
+                ui.button(
+                    "Edit Selected Sender",
+                    on_click=handle_open_edit_dialog,
+                    color="primary",
+                )
+                ui.button(
+                    "Add SMS Sender",
+                    on_click=handle_open_create_dialog,
+                    color="green",
+                )
                 ui.space()
                 add_export_button(table_rows, columns, "sms_senders.csv")
+
+            def handle_row_select(e) -> None:  # pragma: no cover
+                if e.selection:
+                    clicked_key = e.selection[0].get("_row_key")
+                    current_key = selected_sender.get("_row_key")
+                    if clicked_key == current_key:
+                        selected_sender.clear()
+                        table.selected = []
+                        update_edit_fields(None)
+                        return
+                    selected_sender.clear()
+                    selected_sender.update(e.selection[0])
+                else:
+                    selected_sender.clear()
+                update_edit_fields(resolve_selected_sender())
+
             table = ui.table(
                 columns=make_sortable(columns),
                 rows=table_rows,
+                selection="single",
+                on_select=handle_row_select,
                 pagination={"rowsPerPage": 10},
             )
             table.props("row-key=_row_key").classes("w-full")

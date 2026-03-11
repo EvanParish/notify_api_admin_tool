@@ -10,6 +10,7 @@ import pytest
 
 from app.ui import state as _st
 from app.ui.sync_handlers import handle_entity_sync
+from app.sync import SyncResult
 
 
 @dataclass
@@ -28,6 +29,13 @@ def _make_mock_badges():
     label = MagicMock()
     label.text = ""
     return badge, label
+
+
+def _make_success_result():
+    """Create a SyncResult indicating success."""
+    result = SyncResult()
+    result.add_success()
+    return result
 
 
 @pytest.mark.asyncio
@@ -179,12 +187,17 @@ async def test_handle_entity_sync_with_pre_sync(initialized_db, mock_config):
 
     call_order = []
     mock_manager = MagicMock()
-    mock_manager.sync_services = AsyncMock(
-        side_effect=lambda **kw: call_order.append("sync_services")
-    )
-    mock_manager.sync_templates = AsyncMock(
-        side_effect=lambda **kw: call_order.append("sync_templates")
-    )
+
+    async def track_services(**kw):
+        call_order.append("sync_services")
+        return _make_success_result()
+
+    async def track_templates(**kw):
+        call_order.append("sync_templates")
+        return _make_success_result()
+
+    mock_manager.sync_services = track_services
+    mock_manager.sync_templates = track_templates
 
     try:
         with (
@@ -253,9 +266,12 @@ async def test_handle_entity_sync_multiple_envs(initialized_db, mock_config):
 
     def make_manager(api, concurrency, environment):
         manager = MagicMock()
-        manager.sync_services = AsyncMock(
-            side_effect=lambda **kw: synced_envs.append(environment)
-        )
+
+        async def track_sync(**kw):
+            synced_envs.append(environment)
+            return _make_success_result()
+
+        manager.sync_services = track_sync
         return manager
 
     try:
@@ -288,9 +304,12 @@ async def test_handle_entity_sync_explicit_environments(initialized_db, mock_con
 
     def make_manager(api, concurrency, environment):
         manager = MagicMock()
-        manager.sync_services = AsyncMock(
-            side_effect=lambda **kw: synced_envs.append(environment)
-        )
+
+        async def track_sync(**kw):
+            synced_envs.append(environment)
+            return _make_success_result()
+
+        manager.sync_services = track_sync
         return manager
 
     try:
@@ -305,5 +324,110 @@ async def test_handle_entity_sync_explicit_environments(initialized_db, mock_con
             assert result is True
             # Should only sync prod, not dev/staging
             assert synced_envs == ["prod"]
+    finally:
+        _st.config, _st.state = original_config, original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_entity_sync_displays_errors_with_status_codes(
+    initialized_db, mock_config
+):
+    """Errors are displayed via notifications with HTTP status codes."""
+    from app.sync import SyncResult, SyncError
+
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
+    badge, label = _make_mock_badges()
+
+    mock_manager = MagicMock()
+
+    async def sync_with_error(**kw):
+        result = SyncResult()
+        result.add_error(
+            SyncError(
+                entity="sms_senders",
+                message="Service not found",
+                status_code=404,
+                service_id="svc-123",
+            )
+        )
+        return result
+
+    mock_manager.sync_sms_senders = sync_with_error
+    notified_messages = []
+
+    try:
+        with (
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
+            patch(
+                "app.ui.state.safe_notify",
+                side_effect=lambda msg, color: notified_messages.append((msg, color)),
+            ),
+            patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
+        ):
+            result = await handle_entity_sync(
+                ["sync_sms_senders"], badge, label, "sms_senders"
+            )
+            assert result is False
+            assert "failed" in label.text
+            # Check that notification includes status code
+            assert len(notified_messages) > 0
+            msg, color = notified_messages[0]
+            assert "HTTP 404" in msg
+            assert "sms_senders" in msg
+            assert color == "negative"
+    finally:
+        _st.config, _st.state = original_config, original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_entity_sync_limits_error_notifications(
+    initialized_db, mock_config
+):
+    """Only first 3 errors are shown as notifications, plus a summary."""
+    from app.sync import SyncResult, SyncError
+
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
+    badge, label = _make_mock_badges()
+
+    mock_manager = MagicMock()
+
+    async def sync_with_many_errors(**kw):
+        result = SyncResult()
+        for i in range(5):
+            result.add_error(
+                SyncError(
+                    entity="templates",
+                    message=f"Error {i}",
+                    status_code=500,
+                    service_id=f"svc-{i}",
+                )
+            )
+        return result
+
+    mock_manager.sync_templates = sync_with_many_errors
+    notified_messages = []
+
+    try:
+        with (
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
+            patch(
+                "app.ui.state.safe_notify",
+                side_effect=lambda msg, color: notified_messages.append((msg, color)),
+            ),
+            patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
+        ):
+            await handle_entity_sync(["sync_templates"], badge, label, "templates")
+            # Should show 3 individual errors + 1 summary
+            assert len(notified_messages) == 4
+            # Last message should be the summary
+            assert "2 more errors" in notified_messages[-1][0]
     finally:
         _st.config, _st.state = original_config, original_state

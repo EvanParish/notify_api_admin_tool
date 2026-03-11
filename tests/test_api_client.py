@@ -102,6 +102,54 @@ async def test_mock_api_revoke_api_key():
 
 
 @pytest.mark.asyncio
+async def test_mock_api_get_sms_senders():
+    api = MockNotificationAPI()
+    result = await api.get_sms_senders("svc-1")
+
+    assert len(result) == 1
+    assert result[0]["id"] == "sms-1"
+    assert result[0]["sms_sender"] == "+15551234567"
+    assert result[0]["is_default"] is True
+
+
+@pytest.mark.asyncio
+async def test_mock_api_create_sms_sender():
+    api = MockNotificationAPI()
+    result = await api.create_sms_sender(
+        service_id="svc-1",
+        sms_sender="+15559876543",
+        description="New SMS sender",
+        provider_id="provider-1",
+        is_default=False,
+        rate_limit=100,
+    )
+
+    assert result["id"] == "sms-new-123"
+    assert result["sms_sender"] == "+15559876543"
+    assert result["description"] == "New SMS sender"
+    assert result["provider_id"] == "provider-1"
+    assert result["is_default"] is False
+    assert result["rate_limit"] == 100
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_sms_sender():
+    api = MockNotificationAPI()
+    result = await api.update_sms_sender(
+        service_id="svc-1",
+        sms_sender_id="sms-1",
+        sms_sender="+15551111111",
+        description="Updated description",
+        is_default=True,
+    )
+
+    assert result["id"] == "sms-1"
+    assert result["sms_sender"] == "+15551111111"
+    assert result["description"] == "Updated description"
+    assert result["is_default"] is True
+
+
+@pytest.mark.asyncio
 async def test_mock_api_send_notification():
     api = MockNotificationAPI()
     result = await api.send_notification(
@@ -570,6 +618,20 @@ async def test_base_api_get_sms_senders_raises():
 
 
 @pytest.mark.asyncio
+async def test_base_api_create_sms_sender_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.create_sms_sender("svc-1", "+155512345", "desc", "prov-1")
+
+
+@pytest.mark.asyncio
+async def test_base_api_update_sms_sender_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.update_sms_sender("svc-1", "sms-1", sms_sender="+155512345")
+
+
+@pytest.mark.asyncio
 async def test_base_api_get_users_raises():
     api = NotificationAPI()
     with pytest.raises(NotImplementedError):
@@ -669,6 +731,107 @@ async def test_http_api_get_sms_senders_data_key():
     with patch.object(api.client, "get", return_value=mock_response):
         result = await api.get_sms_senders("svc-1")
         assert result == [{"id": "s3"}]
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_sms_sender():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "sms-new", "sms_sender": "+15559876543"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.create_sms_sender(
+            service_id="svc-1",
+            sms_sender="+15559876543",
+            description="Test sender",
+            provider_id="prov-1",
+            is_default=True,
+            rate_limit=100,
+            rate_limit_interval=60,
+        )
+
+        assert result["id"] == "sms-new"
+        assert mock_post.called
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "https://api.example.com/service/svc-1/sms-sender"
+        payload = call_args[1]["json"]
+        assert payload["sms_sender"] == "+15559876543"
+        assert payload["description"] == "Test sender"
+        assert payload["provider_id"] == "prov-1"
+        assert payload["is_default"] is True
+        assert payload["rate_limit"] == 100
+        assert payload["rate_limit_interval"] == 60
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_sms_sender_minimal():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "sms-new"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.create_sms_sender(
+            service_id="svc-1",
+            sms_sender="+15559876543",
+            description="Test sender",
+            provider_id="prov-1",
+        )
+
+        assert result["id"] == "sms-new"
+        payload = mock_post.call_args[1]["json"]
+        assert "rate_limit" not in payload
+        assert "rate_limit_interval" not in payload
+        assert "inbound_number_id" not in payload
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_sms_sender():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "sms-1", "sms_sender": "+15551111111"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.update_sms_sender(
+            service_id="svc-1",
+            sms_sender_id="sms-1",
+            sms_sender="+15551111111",
+            description="Updated",
+            is_default=True,
+        )
+
+        assert result["id"] == "sms-1"
+        assert mock_post.called
+        call_args = mock_post.call_args
+        assert (
+            call_args[0][0] == "https://api.example.com/service/svc-1/sms-sender/sms-1"
+        )
+        payload = call_args[1]["json"]
+        assert payload["sms_sender"] == "+15551111111"
+        assert payload["description"] == "Updated"
+        assert payload["is_default"] is True
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_sms_sender_partial():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "sms-1"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        await api.update_sms_sender(
+            service_id="svc-1",
+            sms_sender_id="sms-1",
+            is_default=False,
+        )
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload == {"is_default": False}
+        assert "sms_sender" not in payload
+        assert "description" not in payload
 
 
 # --- get_users response formats ---

@@ -19,6 +19,7 @@ from app.repository import (
     update_api_key_expiry,
     mark_api_key_revoked,
     update_provider_detail,
+    update_sms_sender,
     update_communication_item,
     clear_table_data,
 )
@@ -837,6 +838,86 @@ async def test_update_provider_detail_partial_update(initialized_db):
         assert record.priority == 15
         assert record.active is True  # Unchanged
         assert record.load_balancing_weight == 100  # Unchanged
+
+
+@pytest.mark.asyncio
+async def test_update_sms_sender(initialized_db):
+    async with get_session() as session:
+        session.add(
+            SmsSender(
+                id="sms-1",
+                environment="dev",
+                service_id="svc-1",
+                sms_sender="+15551234567",
+                is_default=False,
+                description="Original",
+                rate_limit=100,
+            )
+        )
+        await session.commit()
+
+    updated = await update_sms_sender(
+        sms_sender_id="sms-1",
+        sms_sender="+15559876543",
+        description="Updated",
+        is_default=True,
+        rate_limit=200,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(select(SmsSender).where(SmsSender.id == "sms-1"))
+        ).scalar_one()
+        assert record.sms_sender == "+15559876543"
+        assert record.description == "Updated"
+        assert record.is_default is True
+        assert record.rate_limit == 200
+
+
+@pytest.mark.asyncio
+async def test_update_sms_sender_not_found(initialized_db):
+    result = await update_sms_sender(
+        sms_sender_id="nonexistent",
+        sms_sender="+15551111111",
+        environment="dev",
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_update_sms_sender_partial_update(initialized_db):
+    async with get_session() as session:
+        session.add(
+            SmsSender(
+                id="sms-2",
+                environment="dev",
+                service_id="svc-1",
+                sms_sender="+15551234567",
+                is_default=False,
+                description="Original description",
+                rate_limit=100,
+            )
+        )
+        await session.commit()
+
+    # Only update is_default
+    updated = await update_sms_sender(
+        sms_sender_id="sms-2",
+        is_default=True,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(select(SmsSender).where(SmsSender.id == "sms-2"))
+        ).scalar_one()
+        assert record.is_default is True
+        assert record.sms_sender == "+15551234567"  # Unchanged
+        assert record.description == "Original description"  # Unchanged
+        assert record.rate_limit == 100  # Unchanged
 
 
 @pytest.mark.asyncio

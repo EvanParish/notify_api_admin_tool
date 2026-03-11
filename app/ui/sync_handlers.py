@@ -4,7 +4,7 @@ import asyncio
 
 import httpx
 
-from app.sync import SyncManager
+from app.sync import SyncManager, SyncResult
 from app.ui import state as _st
 
 
@@ -13,10 +13,12 @@ async def _sync_for_environment(
     method_names: list[str],
     sync_label,
     pre_sync: list[str] | None = None,
-) -> bool:
-    """Sync methods for a single environment. Returns True on success."""
+) -> SyncResult:
+    """Sync methods for a single environment. Returns SyncResult with details."""
     if not await _st.ensure_admin_auth(environment, sync_label):
-        return False
+        result = SyncResult()
+        result.error_count = 1
+        return result
 
     api = await _st.build_api_client(environment)
     manager = SyncManager(api, _st.config.max_concurrency, environment=environment)
@@ -25,18 +27,22 @@ async def _sync_for_environment(
         _st.state.sync_message = f"[{environment}] {msg}"
         sync_label.text = f"[{environment}] {msg}"
 
+    combined_result = SyncResult()
     try:
         if pre_sync:
             for method in pre_sync:
-                await getattr(manager, method)(progress=progress)
+                sub_result = await getattr(manager, method)(progress=progress)
+                combined_result.merge(sub_result)
         for method in method_names:
-            await getattr(manager, method)(progress=progress)
+            sub_result = await getattr(manager, method)(progress=progress)
+            combined_result.merge(sub_result)
     except httpx.HTTPStatusError as exc:
         if exc.response and exc.response.status_code == 401:
             _st.handle_unauthorized(sync_label, environment)
-            return False
+            combined_result.error_count += 1
+            return combined_result
         raise
-    return True
+    return combined_result
 
 
 async def handle_entity_sync(
@@ -77,14 +83,47 @@ async def handle_entity_sync(
         return_exceptions=True,
     )
 
-    success_count = sum(1 for r in results if r is True)
-    fail_count = len(envs) - success_count
-    if fail_count > 0:
-        sync_label.text = f"Sync complete: {success_count} ok, {fail_count} failed"
+    total_success = 0
+    total_errors = 0
+    all_errors: list[tuple[str, str]] = []
+
+    for env, result in zip(envs, results):
+        if isinstance(result, Exception):
+            total_errors += 1
+            status_code = None
+            if isinstance(result, httpx.HTTPStatusError) and result.response:
+                status_code = result.response.status_code
+            error_msg = (
+                f"[{env}] HTTP {status_code}: {result}"
+                if status_code
+                else f"[{env}] {result}"
+            )
+            all_errors.append((env, error_msg))
+        elif isinstance(result, SyncResult):
+            total_success += result.success_count
+            total_errors += result.error_count
+            for err in result.errors:
+                all_errors.append((env, f"[{env}] {err}"))
+        else:
+            if result is True:
+                total_success += 1
+            else:
+                total_errors += 1
+
+    if all_errors:
+        for env, error_msg in all_errors[:3]:
+            _st.safe_notify(error_msg, color="negative")
+        if len(all_errors) > 3:
+            _st.safe_notify(
+                f"... and {len(all_errors) - 3} more errors", color="negative"
+            )
+
+    if total_errors > 0:
+        sync_label.text = f"Sync complete: {total_success} ok, {total_errors} failed"
     else:
         sync_label.text = "Sync complete"
     await _st.refresh_status_badge(status_badge)
-    return success_count > 0
+    return total_success > 0
 
 
 async def handle_full_sync(status_badge, sync_label) -> bool:

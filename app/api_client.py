@@ -64,6 +64,35 @@ class NotificationAPI:
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+    async def create_sms_sender(
+        self,
+        service_id: str,
+        sms_sender: str,
+        description: str,
+        provider_id: str,
+        is_default: bool = False,
+        inbound_number_id: str | None = None,
+        rate_limit: int | None = None,
+        rate_limit_interval: int | None = None,
+        sms_sender_specifics: dict | None = None,
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    async def update_sms_sender(
+        self,
+        service_id: str,
+        sms_sender_id: str,
+        sms_sender: str | None = None,
+        description: str | None = None,
+        provider_id: str | None = None,
+        is_default: bool | None = None,
+        inbound_number_id: str | None = None,
+        rate_limit: int | None = None,
+        rate_limit_interval: int | None = None,
+        sms_sender_specifics: dict | None = None,
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
+
     async def get_users(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -200,6 +229,80 @@ class HttpNotificationAPI(NotificationAPI):
         if isinstance(payload, list):
             return payload
         return payload.get("sms_senders") or payload.get("data") or []
+
+    @http_retry
+    async def create_sms_sender(
+        self,
+        service_id: str,
+        sms_sender: str,
+        description: str,
+        provider_id: str,
+        is_default: bool = False,
+        inbound_number_id: str | None = None,
+        rate_limit: int | None = None,
+        rate_limit_interval: int | None = None,
+        sms_sender_specifics: dict | None = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "sms_sender": sms_sender,
+            "description": description,
+            "provider_id": provider_id,
+            "is_default": is_default,
+        }
+        if inbound_number_id is not None:
+            payload["inbound_number_id"] = inbound_number_id
+        if rate_limit is not None:
+            payload["rate_limit"] = rate_limit
+        if rate_limit_interval is not None:
+            payload["rate_limit_interval"] = rate_limit_interval
+        if sms_sender_specifics is not None:
+            payload["sms_sender_specifics"] = sms_sender_specifics
+        resp = await self.client.post(
+            f"{self.base_url}/service/{service_id}/sms-sender",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    @http_retry
+    async def update_sms_sender(
+        self,
+        service_id: str,
+        sms_sender_id: str,
+        sms_sender: str | None = None,
+        description: str | None = None,
+        provider_id: str | None = None,
+        is_default: bool | None = None,
+        inbound_number_id: str | None = None,
+        rate_limit: int | None = None,
+        rate_limit_interval: int | None = None,
+        sms_sender_specifics: dict | None = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        if sms_sender is not None:
+            payload["sms_sender"] = sms_sender
+        if description is not None:
+            payload["description"] = description
+        if provider_id is not None:
+            payload["provider_id"] = provider_id
+        if is_default is not None:
+            payload["is_default"] = is_default
+        if inbound_number_id is not None:
+            payload["inbound_number_id"] = inbound_number_id
+        if rate_limit is not None:
+            payload["rate_limit"] = rate_limit
+        if rate_limit_interval is not None:
+            payload["rate_limit_interval"] = rate_limit_interval
+        if sms_sender_specifics is not None:
+            payload["sms_sender_specifics"] = sms_sender_specifics
+        resp = await self.client.post(
+            f"{self.base_url}/service/{service_id}/sms-sender/{sms_sender_id}",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     @http_retry
     async def get_users(self) -> List[Dict[str, Any]]:
@@ -429,8 +532,62 @@ class MockNotificationAPI(NotificationAPI):
                 "sms_sender": "+15551234567",
                 "is_default": True,
                 "archived": False,
+                "description": "Default SMS sender",
+                "provider_id": "provider-1",
+                "provider_name": "Pinpoint",
             }
         ]
+
+    async def create_sms_sender(
+        self,
+        service_id: str,
+        sms_sender: str,
+        description: str,
+        provider_id: str,
+        is_default: bool = False,
+        inbound_number_id: str | None = None,
+        rate_limit: int | None = None,
+        rate_limit_interval: int | None = None,
+        sms_sender_specifics: dict | None = None,
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {
+            "id": "sms-new-123",
+            "service_id": service_id,
+            "sms_sender": sms_sender,
+            "description": description,
+            "provider_id": provider_id,
+            "is_default": is_default,
+            "archived": False,
+            "inbound_number_id": inbound_number_id,
+            "rate_limit": rate_limit,
+            "rate_limit_interval": rate_limit_interval,
+            "sms_sender_specifics": sms_sender_specifics,
+        }
+
+    async def update_sms_sender(
+        self,
+        service_id: str,
+        sms_sender_id: str,
+        sms_sender: str | None = None,
+        description: str | None = None,
+        provider_id: str | None = None,
+        is_default: bool | None = None,
+        inbound_number_id: str | None = None,
+        rate_limit: int | None = None,
+        rate_limit_interval: int | None = None,
+        sms_sender_specifics: dict | None = None,
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {
+            "id": sms_sender_id,
+            "service_id": service_id,
+            "sms_sender": sms_sender or "+15551234567",
+            "description": description,
+            "provider_id": provider_id,
+            "is_default": is_default,
+            "archived": False,
+        }
 
     async def get_users(self) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)
