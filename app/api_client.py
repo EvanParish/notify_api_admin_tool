@@ -123,6 +123,29 @@ class NotificationAPI:
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+    async def create_inbound_number(
+        self,
+        number: str,
+        provider: str,
+        active: bool | None = None,
+        auth_parameter: str | None = None,
+        self_managed: bool | None = None,
+        url_endpoint: str | None = None,
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    async def update_inbound_number(
+        self,
+        inbound_number_id: str,
+        number: str | None = None,
+        provider: str | None = None,
+        active: bool | None = None,
+        auth_parameter: str | None = None,
+        self_managed: bool | None = None,
+        url_endpoint: str | None = None,
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
+
     async def send_notification(
         self,
         template_id: str,
@@ -391,6 +414,70 @@ class HttpNotificationAPI(NotificationAPI):
         if isinstance(payload, list):
             return payload
         return payload.get("data") or []
+
+    @http_retry
+    async def create_inbound_number(
+        self,
+        number: str,
+        provider: str,
+        active: bool | None = None,
+        auth_parameter: str | None = None,
+        self_managed: bool | None = None,
+        url_endpoint: str | None = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "number": number,
+            "provider": provider,
+        }
+        if active is not None:
+            payload["active"] = active
+        if auth_parameter is not None:
+            payload["auth_parameter"] = auth_parameter
+        if self_managed is not None:
+            payload["self_managed"] = self_managed
+        if url_endpoint is not None:
+            payload["url_endpoint"] = url_endpoint
+        resp = await self.client.post(
+            f"{self.base_url}/inbound-number",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        return result.get("data") or result
+
+    @http_retry
+    async def update_inbound_number(
+        self,
+        inbound_number_id: str,
+        number: str | None = None,
+        provider: str | None = None,
+        active: bool | None = None,
+        auth_parameter: str | None = None,
+        self_managed: bool | None = None,
+        url_endpoint: str | None = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        if number is not None:
+            payload["number"] = number
+        if provider is not None:
+            payload["provider"] = provider
+        if active is not None:
+            payload["active"] = active
+        if auth_parameter is not None:
+            payload["auth_parameter"] = auth_parameter
+        if self_managed is not None:
+            payload["self_managed"] = self_managed
+        if url_endpoint is not None:
+            payload["url_endpoint"] = url_endpoint
+        resp = await self.client.post(
+            f"{self.base_url}/inbound-number/{inbound_number_id}",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        return result.get("data") or result
 
     @http_retry
     async def send_notification(
@@ -718,6 +805,49 @@ class MockNotificationAPI(NotificationAPI):
                 "url_endpoint": "https://staging.api.vetext.va.gov/api/vetext/pub/inbound-message/aws",
             },
         ]
+
+    async def create_inbound_number(
+        self,
+        number: str,
+        provider: str,
+        active: bool | None = None,
+        auth_parameter: str | None = None,
+        self_managed: bool | None = None,
+        url_endpoint: str | None = None,
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {
+            "id": "inbound-new-123",
+            "number": number,
+            "provider": provider,
+            "active": active if active is not None else True,
+            "self_managed": self_managed if self_managed is not None else False,
+            "auth_parameter": auth_parameter,
+            "url_endpoint": url_endpoint,
+            "service": None,
+        }
+
+    async def update_inbound_number(
+        self,
+        inbound_number_id: str,
+        number: str | None = None,
+        provider: str | None = None,
+        active: bool | None = None,
+        auth_parameter: str | None = None,
+        self_managed: bool | None = None,
+        url_endpoint: str | None = None,
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {
+            "id": inbound_number_id,
+            "number": number or "+18337021549",
+            "provider": provider or "pinpoint",
+            "active": active if active is not None else True,
+            "self_managed": self_managed if self_managed is not None else False,
+            "auth_parameter": auth_parameter,
+            "url_endpoint": url_endpoint,
+            "service": None,
+        }
 
     async def send_notification(
         self,

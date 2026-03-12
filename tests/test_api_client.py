@@ -1013,6 +1013,142 @@ async def test_http_api_get_inbound_numbers_data_key():
         assert result == [{"id": "n2"}]
 
 
+@pytest.mark.asyncio
+async def test_http_api_create_inbound_number():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": {"id": "inbound-new", "number": "+12025551212"}
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.create_inbound_number(
+            number="+12025551212",
+            provider="pinpoint",
+            active=True,
+            self_managed=False,
+        )
+
+        assert result["id"] == "inbound-new"
+        assert mock_post.called
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "https://api.example.com/inbound-number"
+        payload = call_args[1]["json"]
+        assert payload["number"] == "+12025551212"
+        assert payload["provider"] == "pinpoint"
+        assert payload["active"] is True
+        assert payload["self_managed"] is False
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_inbound_number_minimal():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "inbound-new"}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.create_inbound_number(
+            number="+12025551212",
+            provider="pinpoint",
+        )
+
+        assert result["id"] == "inbound-new"
+        payload = mock_post.call_args[1]["json"]
+        assert "active" not in payload
+        assert "self_managed" not in payload
+        assert "auth_parameter" not in payload
+        assert "url_endpoint" not in payload
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_inbound_number():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": {"id": "inbound-1", "number": "+12025559999"}
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.update_inbound_number(
+            inbound_number_id="inbound-1",
+            number="+12025559999",
+            active=False,
+        )
+
+        assert result["id"] == "inbound-1"
+        assert mock_post.called
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "https://api.example.com/inbound-number/inbound-1"
+        payload = call_args[1]["json"]
+        assert payload["number"] == "+12025559999"
+        assert payload["active"] is False
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_inbound_number_partial():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "inbound-1"}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        await api.update_inbound_number(
+            inbound_number_id="inbound-1",
+            active=True,
+        )
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload == {"active": True}
+        assert "number" not in payload
+        assert "provider" not in payload
+
+
+@pytest.mark.asyncio
+async def test_mock_api_create_inbound_number():
+    api = MockNotificationAPI()
+    result = await api.create_inbound_number(
+        number="+12025551212",
+        provider="pinpoint",
+        active=True,
+        self_managed=False,
+    )
+
+    assert result["id"] == "inbound-new-123"
+    assert result["number"] == "+12025551212"
+    assert result["provider"] == "pinpoint"
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_inbound_number():
+    api = MockNotificationAPI()
+    result = await api.update_inbound_number(
+        inbound_number_id="inbound-1",
+        number="+12025559999",
+        active=False,
+    )
+
+    assert result["id"] == "inbound-1"
+    assert result["number"] == "+12025559999"
+    assert result["active"] is False
+
+
+@pytest.mark.asyncio
+async def test_base_api_create_inbound_number_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.create_inbound_number("+12025551212", "pinpoint")
+
+
+@pytest.mark.asyncio
+async def test_base_api_update_inbound_number_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.update_inbound_number("inbound-1", number="+12025559999")
+
+
 # --- aclose ---
 
 

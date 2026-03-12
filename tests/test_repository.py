@@ -20,6 +20,7 @@ from app.repository import (
     mark_api_key_revoked,
     update_provider_detail,
     update_sms_sender,
+    update_inbound_number,
     update_communication_item,
     clear_table_data,
 )
@@ -761,6 +762,81 @@ async def test_list_inbound_numbers_by_environment(initialized_db):
     numbers = await list_inbound_numbers(environment="dev")
     assert len(numbers) == 1
     assert numbers[0].id == "n1"
+
+
+@pytest.mark.asyncio
+async def test_update_inbound_number(initialized_db):
+    async with get_session() as session:
+        session.add(
+            InboundNumber(
+                id="n1",
+                environment="dev",
+                number="+15551234567",
+                provider="pinpoint",
+                active=True,
+                self_managed=False,
+            )
+        )
+        await session.commit()
+
+    updated = await update_inbound_number(
+        inbound_number_id="n1",
+        number="+15559876543",
+        active=False,
+        url_endpoint="https://example.com/callback",
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(select(InboundNumber).where(InboundNumber.id == "n1"))
+        ).scalar_one()
+        assert record.number == "+15559876543"
+        assert record.active is False
+        assert record.url_endpoint == "https://example.com/callback"
+
+
+@pytest.mark.asyncio
+async def test_update_inbound_number_not_found(initialized_db):
+    result = await update_inbound_number(
+        inbound_number_id="nonexistent",
+        number="+15551111111",
+        environment="dev",
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_update_inbound_number_partial_update(initialized_db):
+    async with get_session() as session:
+        session.add(
+            InboundNumber(
+                id="n2",
+                environment="dev",
+                number="+15551234567",
+                provider="pinpoint",
+                active=True,
+                self_managed=False,
+            )
+        )
+        await session.commit()
+
+    # Only update active
+    updated = await update_inbound_number(
+        inbound_number_id="n2",
+        active=False,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(select(InboundNumber).where(InboundNumber.id == "n2"))
+        ).scalar_one()
+        assert record.active is False
+        assert record.number == "+15551234567"  # Unchanged
+        assert record.provider == "pinpoint"  # Unchanged
 
 
 @pytest.mark.asyncio

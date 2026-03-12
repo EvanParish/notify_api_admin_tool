@@ -386,6 +386,40 @@ async def list_inbound_numbers(
         return rows
 
 
+async def update_inbound_number(
+    inbound_number_id: str,
+    number: str | None = None,
+    provider: str | None = None,
+    active: bool | None = None,
+    auth_parameter: str | None = None,
+    self_managed: bool | None = None,
+    url_endpoint: str | None = None,
+    environment: str | None = None,
+) -> bool:
+    async with get_session() as session:
+        query = select(InboundNumber).where(InboundNumber.id == inbound_number_id)
+        if environment:
+            query = query.where(InboundNumber.environment == environment)
+        result = await session.execute(query)
+        record = result.scalars().first()
+        if not record:
+            return False
+        if number is not None:
+            record.number = number
+        if provider is not None:
+            record.provider = provider
+        if active is not None:
+            record.active = active
+        if auth_parameter is not None:
+            record.auth_parameter = auth_parameter
+        if self_managed is not None:
+            record.self_managed = self_managed
+        if url_endpoint is not None:
+            record.url_endpoint = url_endpoint
+        await session.commit()
+        return True
+
+
 # ---------------------------------------------------------------------------
 # Bulk upsert functions (used by SyncManager)
 # ---------------------------------------------------------------------------
