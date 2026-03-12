@@ -784,6 +784,29 @@ async def test_http_api_create_sms_sender_minimal():
         assert "rate_limit" not in payload
         assert "rate_limit_interval" not in payload
         assert "inbound_number_id" not in payload
+        assert "sms_sender_specifics" not in payload
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_sms_sender_with_specifics():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "sms-new"}
+    mock_response.raise_for_status = MagicMock()
+
+    sender_specifics = {"messaging_service_sid": "MG0000000000000000000000"}
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.create_sms_sender(
+            service_id="svc-1",
+            sms_sender="+15559876543",
+            description="Test sender",
+            provider_id="prov-1",
+            sms_sender_specifics=sender_specifics,
+        )
+
+        assert result["id"] == "sms-new"
+        payload = mock_post.call_args[1]["json"]
+        assert payload["sms_sender_specifics"] == sender_specifics
 
 
 @pytest.mark.asyncio
@@ -832,6 +855,25 @@ async def test_http_api_update_sms_sender_partial():
         assert payload == {"is_default": False}
         assert "sms_sender" not in payload
         assert "description" not in payload
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_sms_sender_with_specifics():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "sms-1"}
+    mock_response.raise_for_status = MagicMock()
+
+    sender_specifics = {"messaging_service_sid": "MG1111111111111111111111"}
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        await api.update_sms_sender(
+            service_id="svc-1",
+            sms_sender_id="sms-1",
+            sms_sender_specifics=sender_specifics,
+        )
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["sms_sender_specifics"] == sender_specifics
 
 
 # --- get_users response formats ---

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -111,6 +112,14 @@ async def sms_senders_page() -> None:
             create_rate_limit_interval = ui.number(
                 label="Rate Limit Interval (seconds)", min=1
             ).classes("w-full md:w-1/2")
+            create_sender_specifics = (
+                ui.textarea(label="Sender Specifics (JSON)")
+                .props("clearable")
+                .classes("w-full")
+            )
+            ui.label('e.g., {"messaging_service_sid": "MG000..."}').classes(
+                "text-xs text-gray-500"
+            )
             with ui.row().classes("gap-2"):
                 create_submit_button = ui.button("Create SMS Sender", color="green")
                 ui.button("Cancel", on_click=create_dialog.close, color="gray")
@@ -155,6 +164,17 @@ async def sms_senders_page() -> None:
                 if create_rate_limit_interval.value is not None
                 else None
             )
+            sender_specifics_raw = (create_sender_specifics.value or "").strip()
+            sender_specifics: dict | None = None
+            if sender_specifics_raw:
+                try:
+                    sender_specifics = json.loads(sender_specifics_raw)
+                    if not isinstance(sender_specifics, dict):
+                        ui.notify("Sender Specifics must be a JSON object", color="red")
+                        return
+                except json.JSONDecodeError as exc:
+                    ui.notify(f"Invalid JSON for Sender Specifics: {exc}", color="red")
+                    return
             if not (
                 environment
                 and service_id
@@ -179,6 +199,7 @@ async def sms_senders_page() -> None:
                     is_default=is_default,
                     rate_limit=rate_limit,
                     rate_limit_interval=rate_limit_interval,
+                    sms_sender_specifics=sender_specifics,
                 )
             except httpx.HTTPStatusError as exc:
                 if exc.response and exc.response.status_code == 401:
@@ -201,6 +222,7 @@ async def sms_senders_page() -> None:
             create_is_default.value = False
             create_rate_limit.value = None
             create_rate_limit_interval.value = None
+            create_sender_specifics.value = ""
             await refresh_create_service_options()
             await refresh_create_provider_options()
             create_dialog.open()
@@ -232,6 +254,14 @@ async def sms_senders_page() -> None:
             edit_rate_limit_interval = ui.number(
                 label="Rate Limit Interval (seconds)", min=1
             ).classes("w-full")
+            edit_sender_specifics = (
+                ui.textarea(label="Sender Specifics (JSON)")
+                .props("clearable")
+                .classes("w-full")
+            )
+            ui.label('e.g., {"messaging_service_sid": "MG000..."}').classes(
+                "text-xs text-gray-500"
+            )
             with ui.row().classes("gap-2"):
                 edit_update_button = ui.button("Update SMS Sender", color="primary")
                 ui.button("Close", on_click=edit_dialog.close, color="gray")
@@ -258,6 +288,7 @@ async def sms_senders_page() -> None:
                 edit_is_default.value = False
                 edit_rate_limit.value = None
                 edit_rate_limit_interval.value = None
+                edit_sender_specifics.value = ""
                 return
             sender_id = sender.get("id")
             sms_sender_val = sender.get("sms_sender") or ""
@@ -268,6 +299,11 @@ async def sms_senders_page() -> None:
             edit_is_default.value = bool(sender.get("is_default"))
             edit_rate_limit.value = sender.get("rate_limit")
             edit_rate_limit_interval.value = sender.get("rate_limit_interval")
+            specifics = sender.get("sms_sender_specifics")
+            if specifics and isinstance(specifics, dict):
+                edit_sender_specifics.value = json.dumps(specifics, indent=2)
+            else:
+                edit_sender_specifics.value = ""
 
         async def handle_open_edit_dialog() -> None:  # pragma: no cover
             sender = resolve_selected_sender()
@@ -312,6 +348,17 @@ async def sms_senders_page() -> None:
                 if edit_rate_limit_interval.value is not None
                 else None
             )
+            sender_specifics_raw = (edit_sender_specifics.value or "").strip()
+            sender_specifics: dict | None = None
+            if sender_specifics_raw:
+                try:
+                    sender_specifics = json.loads(sender_specifics_raw)
+                    if not isinstance(sender_specifics, dict):
+                        ui.notify("Sender Specifics must be a JSON object", color="red")
+                        return
+                except json.JSONDecodeError as exc:
+                    ui.notify(f"Invalid JSON for Sender Specifics: {exc}", color="red")
+                    return
             if not await ensure_admin_auth(environment, sync_label):
                 return
             api = await build_api_client(environment)
@@ -325,6 +372,7 @@ async def sms_senders_page() -> None:
                     is_default=is_default,
                     rate_limit=rate_limit,
                     rate_limit_interval=rate_limit_interval,
+                    sms_sender_specifics=sender_specifics,
                 )
             except httpx.HTTPStatusError as exc:
                 if exc.response and exc.response.status_code == 401:
@@ -345,6 +393,7 @@ async def sms_senders_page() -> None:
                 rate_limit_interval=str(rate_limit_interval)
                 if rate_limit_interval
                 else None,
+                sms_sender_specifics=sender_specifics,
                 environment=environment,
             )
             if updated:
@@ -360,6 +409,7 @@ async def sms_senders_page() -> None:
             selected_sender["is_default"] = is_default
             selected_sender["rate_limit"] = rate_limit
             selected_sender["rate_limit_interval"] = rate_limit_interval
+            selected_sender["sms_sender_specifics"] = sender_specifics
             update_edit_fields(resolve_selected_sender())
             edit_dialog.close()
             await refresh_if_needed(render_table)
@@ -428,7 +478,22 @@ async def sms_senders_page() -> None:
                 },
                 {"name": "created_at", "label": "Created", "field": "created_at"},
                 {"name": "updated_at", "label": "Updated", "field": "updated_at"},
+                {
+                    "name": "sms_sender_specifics",
+                    "label": "Sender Specifics",
+                    "field": "sms_sender_specifics_display",
+                },
             ]
+
+            def format_sender_specifics(specifics: dict | None) -> str:
+                if (
+                    not specifics
+                    or not isinstance(specifics, dict)
+                    or len(specifics) == 0
+                ):
+                    return ""
+                return json.dumps(specifics, separators=(",", ":"))
+
             table_rows: list[dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(sender.id, sender.environment),
@@ -444,6 +509,10 @@ async def sms_senders_page() -> None:
                     "provider_name": sender.provider_name,
                     "rate_limit": sender.rate_limit,
                     "rate_limit_interval": sender.rate_limit_interval,
+                    "sms_sender_specifics": sender.sms_sender_specifics,
+                    "sms_sender_specifics_display": format_sender_specifics(
+                        sender.sms_sender_specifics
+                    ),
                     "created_at": sender.created_at[:10] if sender.created_at else None,
                     "updated_at": sender.updated_at[:10] if sender.updated_at else None,
                 }

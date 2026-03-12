@@ -248,6 +248,7 @@ async def update_sms_sender(
     is_default: bool | None = None,
     rate_limit: int | None = None,
     rate_limit_interval: str | None = None,
+    sms_sender_specifics: dict | None = None,
     environment: str | None = None,
 ) -> bool:
     async with get_session() as session:
@@ -270,6 +271,8 @@ async def update_sms_sender(
             sender.rate_limit = rate_limit
         if rate_limit_interval is not None:
             sender.rate_limit_interval = rate_limit_interval
+        if sms_sender_specifics is not None:
+            sender.sms_sender_specifics = sms_sender_specifics
         await session.commit()
         return True
 

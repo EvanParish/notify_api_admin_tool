@@ -921,6 +921,36 @@ async def test_update_sms_sender_partial_update(initialized_db):
 
 
 @pytest.mark.asyncio
+async def test_update_sms_sender_with_specifics(initialized_db):
+    async with get_session() as session:
+        session.add(
+            SmsSender(
+                id="sms-3",
+                environment="dev",
+                service_id="svc-1",
+                sms_sender="+15551234567",
+                is_default=False,
+                description="Original",
+            )
+        )
+        await session.commit()
+
+    sender_specifics = {"messaging_service_sid": "MG0000000000000000000000"}
+    updated = await update_sms_sender(
+        sms_sender_id="sms-3",
+        sms_sender_specifics=sender_specifics,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (
+            await session.execute(select(SmsSender).where(SmsSender.id == "sms-3"))
+        ).scalar_one()
+        assert record.sms_sender_specifics == sender_specifics
+
+
+@pytest.mark.asyncio
 async def test_update_communication_item(initialized_db):
     async with get_session() as session:
         session.add(
