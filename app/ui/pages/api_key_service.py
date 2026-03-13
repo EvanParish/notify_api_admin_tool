@@ -15,6 +15,7 @@ from app.repository import (
 from app.ui import state as _st
 from app.ui.email_helpers import (
     UUID_SECRET_TYPE,
+    EmailTemplate,
     _build_multi_env_key_email,
     _normalize_email_env,
     _select_latest_key,
@@ -97,6 +98,14 @@ async def api_key_emails_page() -> None:
             with ui.row().classes("gap-4 items-center"):
                 uuid_checkbox = ui.checkbox("Vets-api (UUID) key", value=False)
                 test_checkbox = ui.checkbox("Test key (non-sending)", value=False)
+            ui.label("Email Template").classes("text-sm font-medium mt-4")
+            template_select = ui.radio(
+                {
+                    EmailTemplate.NEW_SERVICE.value: "New Service (includes API endpoints)",
+                    EmailTemplate.KEY_ROTATION.value: "Key Rotation (key details only)",
+                },
+                value=EmailTemplate.NEW_SERVICE.value,
+            ).props("inline")
             key_name_preview = ui.label(
                 "Generated key names will appear here."
             ).classes("text-sm text-gray-600 dark:text-slate-300")
@@ -340,7 +349,11 @@ async def api_key_emails_page() -> None:
                 ui.notify("Failed to create keys in all environments", color="red")
                 return
 
-            output_area.value = _build_multi_env_key_email(env_keys, service_name)
+            # Get selected template type
+            template = EmailTemplate(template_select.value)
+            output_area.value = _build_multi_env_key_email(
+                env_keys, service_name, template=template
+            )
 
             if failed_envs:
                 ui.notify(

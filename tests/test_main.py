@@ -1059,7 +1059,56 @@ class TestBuildMultiEnvKeyEmail:
         assert "My Service" in result
         # Verify common parts
         assert "Please confirm receipt" in result
-        assert "30 days" in result
+        # New service template includes endpoints
+        assert "api.notifications.va.gov" in result
+
+    def test_key_rotation_template_omits_endpoints(self):
+        env_keys = [
+            {
+                "env": "dev",
+                "secret": "secret-dev",
+                "service_id": "svc-dev-1",
+                "created_key": {
+                    "name": "dev-app-key",
+                    "id": "key-dev-123",
+                    "expiry_date": "2025-12-31",
+                },
+            }
+        ]
+        result = email_helpers._build_multi_env_key_email(
+            env_keys, "My Service", template=email_helpers.EmailTemplate.KEY_ROTATION
+        )
+        assert "secret-dev" in result
+        assert "dev-app-key" in result
+        assert "Dev Details" in result
+        assert "My Service" in result
+        # Key rotation template omits endpoint URLs
+        assert "api.notifications.va.gov" not in result
+        assert "dev-api.va.gov/vanotify" not in result
+        assert "VA Notify Endpoints" not in result
+        # Includes rotation-specific messaging
+        assert "rotated API key" in result
+
+
+class TestBuildEnvSectionWithEndpoints:
+    def test_include_endpoints_true(self):
+        created_key = {"name": "my-key", "id": "key-123", "expiry_date": "2025-12-31"}
+        result = email_helpers._build_env_section(
+            "dev", "secret", created_key, "Service", "svc-1", include_endpoints=True
+        )
+        assert "dev.api.notifications.va.gov" in result
+        assert "VA Notify Endpoints" in result
+
+    def test_include_endpoints_false(self):
+        created_key = {"name": "my-key", "id": "key-123", "expiry_date": "2025-12-31"}
+        result = email_helpers._build_env_section(
+            "dev", "secret", created_key, "Service", "svc-1", include_endpoints=False
+        )
+        assert "api.notifications.va.gov" not in result
+        assert "VA Notify Endpoints" not in result
+        # Still has key details
+        assert "secret" in result
+        assert "my-key" in result
 
 
 class TestBuildKeyNameForEnv:
@@ -1907,6 +1956,7 @@ def _ui_patches(mod_path, _make_mock):
         patch(f"{mod_path}.ui.toggle", side_effect=_make_mock),
         patch(f"{mod_path}.ui.code", side_effect=_make_mock),
         patch(f"{mod_path}.ui.space", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.radio", side_effect=_make_mock),
         patch(f"{mod_path}.ui.page", lambda *a, **kw: lambda fn: fn),
     ]
     # Optional patches — only add if the page module imports the name

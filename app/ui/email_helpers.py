@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from app.ui import state as _st
@@ -26,6 +27,13 @@ EMAIL_PRIVATE_ENDPOINTS = {
     "prod": "https://api.notifications.va.gov",
 }
 UUID_SECRET_TYPE = "uuid"
+
+
+class EmailTemplate(Enum):
+    """Email template types for API key generation."""
+
+    NEW_SERVICE = "new_service"
+    KEY_ROTATION = "key_rotation"
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +94,7 @@ def _build_key_email(
         "Please see the details below regarding your key(s) for the VA Notify API.\n\n"
         "Action items:\n"
         "1. Please confirm receipt of this email.\n"
-        "2. Please confirm when you have implemented the new key(s) in your application.\n\n"
+        "2. Please confirm when you have configured the new key(s) in your application.\n\n"
         f"{env_label} Details\n"
         f"Key Secret: {key_secret}\n"
         f"Expiration Date: {expiry_date}\n"
@@ -102,8 +110,6 @@ def _build_key_email(
         f"{public_url}/v2/notifications/email\n\n"
         "If you need anything else, please don't hesitate to reach out - contact us via email "
         "oitoctovanotify@va.gov or Slack #va-notify-public channel!\n\n"
-        "--- Only include for API key rotation notices ---\n"
-        f"Your current keys will expire in 30 days ({rotation_date}).\n"
     )
 
 
@@ -113,14 +119,24 @@ def _build_env_section(
     created_key: Dict[str, Any],
     service_name: str,
     service_id: str,
+    include_endpoints: bool = True,
 ) -> str:
-    """Build a single environment section for the multi-env email."""
+    """Build a single environment section for the multi-env email.
+
+    Args:
+        env: Environment name
+        key_secret: The API key secret
+        created_key: Dict with key metadata (name, id, expiry_date)
+        service_name: Name of the service
+        service_id: ID of the service
+        include_endpoints: If True, include VA Notify endpoint URLs (for new services)
+    """
     env_label = _format_email_env_label(env)
-    public_url, private_url = _resolve_email_endpoints(env)
     expiry_date = _format_expiry_date(created_key.get("expiry_date"))
     key_name = created_key.get("name") or ""
     key_id = created_key.get("id") or ""
-    return (
+
+    section = (
         f"{env_label} Details\n"
         f"Key Secret: {key_secret}\n"
         f"Expiration Date: {expiry_date}\n"
@@ -128,26 +144,35 @@ def _build_env_section(
         f"Key ID: {key_id}\n\n"
         f"{env_label} Service\n"
         f"Service Name: {service_name}\n"
-        f"Service ID: {service_id}\n\n"
-        f"{env_label} VA Notify Endpoints:\n"
-        "You would use this endpoint for email POST within the VA Network:\n"
-        f"{private_url}/v2/notifications/email\n"
-        "or if outside the VA Network:\n"
-        f"{public_url}/v2/notifications/email\n"
+        f"Service ID: {service_id}\n"
     )
+
+    if include_endpoints:
+        public_url, private_url = _resolve_email_endpoints(env)
+        section += (
+            f"\n{env_label} VA Notify Endpoints:\n"
+            "You would use this endpoint for email POST within the VA Network:\n"
+            f"{private_url}/v2/notifications/email\n"
+            "or if outside the VA Network:\n"
+            f"{public_url}/v2/notifications/email\n"
+        )
+
+    return section
 
 
 def _build_multi_env_key_email(
     env_keys: List[Dict[str, Any]],
     service_name: str,
+    template: EmailTemplate = EmailTemplate.NEW_SERVICE,
 ) -> str:
     """Build email content for API keys created across multiple environments.
 
     Args:
         env_keys: List of dicts with keys: env, secret, created_key, service_id
         service_name: Name of the service
+        template: EmailTemplate.NEW_SERVICE includes endpoints, KEY_ROTATION omits them
     """
-    rotation_date = datetime.now(timezone.utc).date() + timedelta(days=30)
+    include_endpoints = template == EmailTemplate.NEW_SERVICE
 
     sections = []
     for item in env_keys:
@@ -158,19 +183,31 @@ def _build_multi_env_key_email(
                 item["created_key"],
                 service_name,
                 item.get("service_id", "unknown"),
+                include_endpoints=include_endpoints,
             )
         )
 
     env_sections = "\n".join(sections)
-    return (
-        "\nHello,\n\n"
-        "Please see the details below regarding your key(s) for the VA Notify API.\n\n"
-        "Action items:\n"
-        "1. Please confirm receipt of this email.\n"
-        "2. Please confirm when you have implemented the new key(s) in your application.\n\n"
-        f"{env_sections}\n"
-        "If you need anything else, please don't hesitate to reach out - contact us via email "
-        "oitoctovanotify@va.gov or Slack #va-notify-public channel!\n\n"
-        "--- Only include for API key rotation notices ---\n"
-        f"Your current keys will expire in 30 days ({rotation_date}).\n"
-    )
+
+    if template == EmailTemplate.NEW_SERVICE:
+        return (
+            "\nHello,\n\n"
+            "Please see the details below regarding your key(s) for the VA Notify API.\n\n"
+            "Action items:\n"
+            "1. Please confirm receipt of this email.\n\n"
+            f"{env_sections}\n"
+            "If you need anything else, please don't hesitate to reach out - contact us via email "
+            "oitoctovanotify@va.gov or Slack #va-notify-public channel!\n"
+        )
+    else:
+        # Key rotation template
+        return (
+            "\nHello,\n\n"
+            "Please see the details below regarding your rotated API key(s) for VA Notify.\n\n"
+            "Action items:\n"
+            "1. Please confirm receipt of this email.\n"
+            "2. Please confirm when you have configured the new key(s) in your application.\n\n"
+            f"{env_sections}\n"
+            "If you need anything else, please don't hesitate to reach out - contact us via email "
+            "oitoctovanotify@va.gov or Slack #va-notify-public channel!\n"
+        )
