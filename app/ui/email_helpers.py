@@ -105,3 +105,72 @@ def _build_key_email(
         "--- Only include for API key rotation notices ---\n"
         f"Your current keys will expire in 30 days ({rotation_date}).\n"
     )
+
+
+def _build_env_section(
+    env: str,
+    key_secret: str,
+    created_key: Dict[str, Any],
+    service_name: str,
+    service_id: str,
+) -> str:
+    """Build a single environment section for the multi-env email."""
+    env_label = _format_email_env_label(env)
+    public_url, private_url = _resolve_email_endpoints(env)
+    expiry_date = _format_expiry_date(created_key.get("expiry_date"))
+    key_name = created_key.get("name") or ""
+    key_id = created_key.get("id") or ""
+    return (
+        f"{env_label} Details\n"
+        f"Key Secret: {key_secret}\n"
+        f"Expiration Date: {expiry_date}\n"
+        f"Key Name: {key_name}\n"
+        f"Key ID: {key_id}\n\n"
+        f"{env_label} Service\n"
+        f"Service Name: {service_name}\n"
+        f"Service ID: {service_id}\n\n"
+        f"{env_label} VA Notify Endpoints:\n"
+        "You would use this endpoint for email POST within the VA Network:\n"
+        f"{private_url}/v2/notifications/email\n"
+        "or if outside the VA Network:\n"
+        f"{public_url}/v2/notifications/email\n"
+    )
+
+
+def _build_multi_env_key_email(
+    env_keys: List[Dict[str, Any]],
+    service_name: str,
+) -> str:
+    """Build email content for API keys created across multiple environments.
+
+    Args:
+        env_keys: List of dicts with keys: env, secret, created_key, service_id
+        service_name: Name of the service
+    """
+    rotation_date = datetime.now(timezone.utc).date() + timedelta(days=30)
+
+    sections = []
+    for item in env_keys:
+        sections.append(
+            _build_env_section(
+                item["env"],
+                item["secret"],
+                item["created_key"],
+                service_name,
+                item.get("service_id", "unknown"),
+            )
+        )
+
+    env_sections = "\n".join(sections)
+    return (
+        "\nHello,\n\n"
+        "Please see the details below regarding your key(s) for the VA Notify API.\n\n"
+        "Action items:\n"
+        "1. Please confirm receipt of this email.\n"
+        "2. Please confirm when you have implemented the new key(s) in your application.\n\n"
+        f"{env_sections}\n"
+        "If you need anything else, please don't hesitate to reach out - contact us via email "
+        "oitoctovanotify@va.gov or Slack #va-notify-public channel!\n\n"
+        "--- Only include for API key rotation notices ---\n"
+        f"Your current keys will expire in 30 days ({rotation_date}).\n"
+    )

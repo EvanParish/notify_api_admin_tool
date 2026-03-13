@@ -116,6 +116,158 @@ async def test_list_services(initialized_db):
 
 
 @pytest.mark.asyncio
+async def test_list_service_environments_empty(initialized_db):
+    from app.repository import list_service_environments
+
+    envs = await list_service_environments("nonexistent-service")
+    assert envs == []
+
+
+@pytest.mark.asyncio
+async def test_list_service_environments(initialized_db):
+    from app.repository import list_service_environments
+
+    async with get_session() as session:
+        session.add(
+            Service(
+                id="svc-1",
+                name="Service 1",
+                environment="dev",
+                active=True,
+                restricted=False,
+            )
+        )
+        session.add(
+            Service(
+                id="svc-1",
+                name="Service 1",
+                environment="staging",
+                active=True,
+                restricted=False,
+            )
+        )
+        session.add(
+            Service(
+                id="svc-1",
+                name="Service 1",
+                environment="prod",
+                active=True,
+                restricted=False,
+            )
+        )
+        session.add(
+            Service(
+                id="svc-2",
+                name="Service 2",
+                environment="dev",
+                active=True,
+                restricted=False,
+            )
+        )
+        await session.commit()
+
+    envs = await list_service_environments("svc-1")
+    assert set(envs) == {"dev", "staging", "prod"}
+
+    envs2 = await list_service_environments("svc-2")
+    assert envs2 == ["dev"]
+
+
+@pytest.mark.asyncio
+async def test_get_service_by_name(initialized_db):
+    from app.repository import get_service_by_name
+
+    async with get_session() as session:
+        session.add(
+            Service(
+                id="svc-dev-1",
+                name="My Service",
+                environment="dev",
+                active=True,
+                restricted=False,
+            )
+        )
+        session.add(
+            Service(
+                id="svc-staging-2",
+                name="My Service",
+                environment="staging",
+                active=True,
+                restricted=False,
+            )
+        )
+        await session.commit()
+
+    svc_dev = await get_service_by_name("My Service", "dev")
+    assert svc_dev is not None
+    assert svc_dev.id == "svc-dev-1"
+    assert svc_dev.environment == "dev"
+
+    svc_staging = await get_service_by_name("My Service", "staging")
+    assert svc_staging is not None
+    assert svc_staging.id == "svc-staging-2"
+
+    svc_prod = await get_service_by_name("My Service", "prod")
+    assert svc_prod is None
+
+    svc_missing = await get_service_by_name("Nonexistent", "dev")
+    assert svc_missing is None
+
+
+@pytest.mark.asyncio
+async def test_list_environments_for_service_name(initialized_db):
+    from app.repository import list_environments_for_service_name
+
+    async with get_session() as session:
+        session.add(
+            Service(
+                id="svc-dev-1",
+                name="Shared Service",
+                environment="dev",
+                active=True,
+                restricted=False,
+            )
+        )
+        session.add(
+            Service(
+                id="svc-staging-2",
+                name="Shared Service",
+                environment="staging",
+                active=True,
+                restricted=False,
+            )
+        )
+        session.add(
+            Service(
+                id="svc-prod-3",
+                name="Shared Service",
+                environment="prod",
+                active=True,
+                restricted=False,
+            )
+        )
+        session.add(
+            Service(
+                id="svc-other",
+                name="Other Service",
+                environment="dev",
+                active=True,
+                restricted=False,
+            )
+        )
+        await session.commit()
+
+    envs = await list_environments_for_service_name("Shared Service")
+    assert set(envs) == {"dev", "staging", "prod"}
+
+    envs2 = await list_environments_for_service_name("Other Service")
+    assert envs2 == ["dev"]
+
+    envs3 = await list_environments_for_service_name("Nonexistent")
+    assert envs3 == []
+
+
+@pytest.mark.asyncio
 async def test_list_templates_all(initialized_db):
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Service", active=True, restricted=False))

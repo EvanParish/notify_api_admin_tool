@@ -130,6 +130,17 @@ def handle_unauthorized(sync_label, env: str) -> None:
     safe_notify(message, color="warning")
 
 
+async def check_api_online(env: str) -> bool:
+    """Check if the API for the given environment is reachable."""
+    if config.use_mock_api:
+        return True
+    try:
+        api = await build_api_client(env)
+        return await api.healthcheck()
+    except Exception:
+        return False
+
+
 async def refresh_status_badge(badge) -> None:
     # Show status for the first enabled sync environment
     envs = list(state.enabled_sync_environments)

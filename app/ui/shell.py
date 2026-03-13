@@ -178,9 +178,18 @@ def build_shell(on_view_env_change=None) -> tuple:
                     checkbox = ui.checkbox(env.title(), value=is_enabled)
                     env_checkboxes[env] = checkbox
 
-                    def make_handler(environment):  # pragma: no cover
-                        def handler(e):
+                    def make_handler(environment, cb):  # pragma: no cover
+                        async def handler(e):
                             if e.value:
+                                # Check if API is online before enabling
+                                is_online = await _st.check_api_online(environment)
+                                if not is_online:
+                                    cb.value = False
+                                    ui.notify(
+                                        f"{environment.title()} API is offline/unreachable",
+                                        color="negative",
+                                    )
+                                    return
                                 _st.state.enabled_sync_environments.add(environment)
                                 ui.notify(
                                     f"Syncing enabled for {environment}",
@@ -194,5 +203,5 @@ def build_shell(on_view_env_change=None) -> tuple:
 
                         return handler
 
-                    checkbox.on_value_change(make_handler(env))
+                    checkbox.on_value_change(make_handler(env, checkbox))
     return status_badge, sync_label, refresh_button, dark_mode, theme_button

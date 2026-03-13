@@ -832,6 +832,35 @@ class TestAppStateViewEnvironmentsFallback:
         assert st.view_environments == []
 
 
+class TestCheckApiOnline:
+    """Test check_api_online function."""
+
+    async def test_returns_true_for_mock_api(self):
+        from app.ui import state as _st
+
+        original_use_mock = _st.config.use_mock_api
+        try:
+            _st.config.use_mock_api = True
+            result = await _st.check_api_online("dev")
+            assert result is True
+        finally:
+            _st.config.use_mock_api = original_use_mock
+
+    async def test_returns_false_on_connection_error(self):
+        from app.ui import state as _st
+
+        original_use_mock = _st.config.use_mock_api
+        original_hosts = _st.config.api_hosts.copy()
+        try:
+            _st.config.use_mock_api = False
+            _st.config.api_hosts = {"bad": "http://localhost:99999"}
+            result = await _st.check_api_online("bad")
+            assert result is False
+        finally:
+            _st.config.use_mock_api = original_use_mock
+            _st.config.api_hosts = original_hosts
+
+
 class TestNormalizeEmailEnv:
     def test_development_maps_to_dev(self):
         assert email_helpers._normalize_email_env("development") == "dev"
@@ -938,6 +967,131 @@ class TestBuildKeyEmail:
         assert "My Service" in result
         assert "svc-1" in result
         assert "Dev Details" in result
+
+
+class TestBuildEnvSection:
+    def test_contains_env_parts(self):
+        created_key = {
+            "name": "my-key",
+            "id": "key-id-123",
+            "expiry_date": "2025-12-31T00:00:00Z",
+        }
+        result = email_helpers._build_env_section(
+            "dev", "secret-abc", created_key, "My Service", "svc-1"
+        )
+        assert "secret-abc" in result
+        assert "my-key" in result
+        assert "key-id-123" in result
+        assert "2025-12-31" in result
+        assert "My Service" in result
+        assert "svc-1" in result
+        assert "Dev Details" in result
+        assert "dev.api.notifications.va.gov" in result
+
+
+class TestBuildMultiEnvKeyEmail:
+    def test_single_env(self):
+        env_keys = [
+            {
+                "env": "dev",
+                "secret": "secret-dev",
+                "service_id": "svc-dev-1",
+                "created_key": {
+                    "name": "dev-app-key",
+                    "id": "key-dev-123",
+                    "expiry_date": "2025-12-31",
+                },
+            }
+        ]
+        result = email_helpers._build_multi_env_key_email(env_keys, "My Service")
+        assert "secret-dev" in result
+        assert "dev-app-key" in result
+        assert "Dev Details" in result
+        assert "My Service" in result
+        assert "svc-dev-1" in result
+        assert "Please confirm receipt" in result
+
+    def test_multi_env(self):
+        env_keys = [
+            {
+                "env": "dev",
+                "secret": "secret-dev",
+                "service_id": "svc-dev-1",
+                "created_key": {
+                    "name": "dev-app-key",
+                    "id": "key-dev-123",
+                    "expiry_date": "2025-12-31",
+                },
+            },
+            {
+                "env": "staging",
+                "secret": "secret-staging",
+                "service_id": "svc-staging-2",
+                "created_key": {
+                    "name": "staging-app-key",
+                    "id": "key-staging-456",
+                    "expiry_date": "2025-12-31",
+                },
+            },
+            {
+                "env": "prod",
+                "secret": "secret-prod",
+                "service_id": "svc-prod-3",
+                "created_key": {
+                    "name": "prod-app-key",
+                    "id": "key-prod-789",
+                    "expiry_date": "2025-12-31",
+                },
+            },
+        ]
+        result = email_helpers._build_multi_env_key_email(env_keys, "My Service")
+        # Verify all env sections are present
+        assert "Dev Details" in result
+        assert "secret-dev" in result
+        assert "svc-dev-1" in result
+        assert "Staging Details" in result
+        assert "secret-staging" in result
+        assert "svc-staging-2" in result
+        assert "Production Details" in result
+        assert "secret-prod" in result
+        assert "svc-prod-3" in result
+        # Verify service info appears
+        assert "My Service" in result
+        # Verify common parts
+        assert "Please confirm receipt" in result
+        assert "30 days" in result
+
+
+class TestBuildKeyNameForEnv:
+    def test_normal_key(self):
+        result = page_api_key_service._build_key_name_for_env(
+            "dev", "myapp", False, False
+        )
+        assert result == "dev-myapp-key"
+
+    def test_uuid_key(self):
+        result = page_api_key_service._build_key_name_for_env(
+            "staging", "myapp", True, False
+        )
+        assert result == "staging-myapp-uuid-key"
+
+    def test_test_key(self):
+        result = page_api_key_service._build_key_name_for_env(
+            "prod", "myapp", False, True
+        )
+        assert result == "prod-myapp-test-key"
+
+    def test_uuid_test_key(self):
+        result = page_api_key_service._build_key_name_for_env(
+            "dev", "myapp", True, True
+        )
+        assert result == "dev-myapp-uuid-test-key"
+
+    def test_env_alias_normalized(self):
+        result = page_api_key_service._build_key_name_for_env(
+            "development", "myapp", False, False
+        )
+        assert result == "dev-myapp-key"
 
 
 class TestFormatEnvironment:

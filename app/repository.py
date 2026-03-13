@@ -466,6 +466,29 @@ async def list_service_ids(environment: Optional[str] = None) -> List[str]:
         return list((await session.execute(query)).scalars().all())
 
 
+async def list_service_environments(service_id: str) -> list[str]:
+    """Return all environments where a service with the given ID exists."""
+    async with get_session() as session:
+        query = select(Service.environment).where(Service.id == service_id)
+        return list((await session.execute(query)).scalars().all())
+
+
+async def get_service_by_name(name: str, environment: str) -> Optional[Service]:
+    """Return a service by name and environment, or None if not found."""
+    async with get_session() as session:
+        query = select(Service).where(
+            Service.name == name, Service.environment == environment
+        )
+        return (await session.execute(query)).scalar_one_or_none()
+
+
+async def list_environments_for_service_name(name: str) -> list[str]:
+    """Return all environments where a service with the given name exists."""
+    async with get_session() as session:
+        query = select(Service.environment).where(Service.name == name)
+        return list((await session.execute(query)).scalars().all())
+
+
 async def upsert_services(raw: List[Dict], environment: str) -> None:
     async with get_session() as session:
         for svc in raw:
