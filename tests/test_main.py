@@ -1917,6 +1917,153 @@ async def test_has_admin_auth_real_with_creds(
         _st.encryption = original_encryption
 
 
+@pytest.mark.asyncio
+async def test_get_missing_credentials_mock_api(mock_config):
+    """get_missing_credentials returns empty list when use_mock_api is True."""
+    original_config = _st.config
+    mock_config.use_mock_api = True
+    _st.config = mock_config
+    try:
+        result = await _st.get_missing_credentials("dev")
+        assert result == []
+    finally:
+        _st.config = original_config
+
+
+@pytest.mark.asyncio
+async def test_get_missing_credentials_real_both_missing(
+    initialized_db, mock_config, mock_encryption
+):
+    """get_missing_credentials returns both fields when both missing."""
+    original_config = _st.config
+    original_encryption = _st.encryption
+    mock_config.use_mock_api = False
+    _st.config = mock_config
+    _st.encryption = mock_encryption
+
+    try:
+        with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": ""}, clear=False):
+            result = await _st.get_missing_credentials("development")
+            assert "username" in result
+            assert "password" in result
+    finally:
+        _st.config = original_config
+        _st.encryption = original_encryption
+
+
+@pytest.mark.asyncio
+async def test_get_missing_credentials_only_password_missing(
+    initialized_db, mock_config, mock_encryption
+):
+    """get_missing_credentials returns only password when username exists."""
+    from app.repository import set_secure_setting
+
+    original_config = _st.config
+    original_encryption = _st.encryption
+    mock_config.use_mock_api = False
+    _st.config = mock_config
+    _st.encryption = mock_encryption
+
+    try:
+        with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": ""}, clear=False):
+            await set_secure_setting(
+                "basic_username_development", "user", mock_encryption
+            )
+            result = await _st.get_missing_credentials("development")
+            assert result == ["password"]
+    finally:
+        _st.config = original_config
+        _st.encryption = original_encryption
+
+
+@pytest.mark.asyncio
+async def test_get_missing_credentials_only_username_missing(
+    initialized_db, mock_config, mock_encryption
+):
+    """get_missing_credentials returns only username when password exists."""
+    from app.repository import set_secure_setting
+
+    original_config = _st.config
+    original_encryption = _st.encryption
+    mock_config.use_mock_api = False
+    _st.config = mock_config
+    _st.encryption = mock_encryption
+
+    try:
+        with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": ""}, clear=False):
+            await set_secure_setting(
+                "basic_password_development", "pass", mock_encryption
+            )
+            result = await _st.get_missing_credentials("development")
+            assert result == ["username"]
+    finally:
+        _st.config = original_config
+        _st.encryption = original_encryption
+
+
+@pytest.mark.asyncio
+async def test_check_environments_credentials_all_configured(
+    initialized_db, mock_config, mock_encryption
+):
+    """check_environments_credentials returns empty dict when all configured."""
+    from app.repository import set_secure_setting
+
+    original_config = _st.config
+    original_encryption = _st.encryption
+    mock_config.use_mock_api = False
+    _st.config = mock_config
+    _st.encryption = mock_encryption
+
+    try:
+        with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": ""}, clear=False):
+            for env in ["dev", "staging"]:
+                await set_secure_setting(
+                    f"basic_username_{env}", "user", mock_encryption
+                )
+                await set_secure_setting(
+                    f"basic_password_{env}", "pass", mock_encryption
+                )
+
+            result = await _st.check_environments_credentials(["dev", "staging"])
+            assert result == {}
+    finally:
+        _st.config = original_config
+        _st.encryption = original_encryption
+
+
+@pytest.mark.asyncio
+async def test_check_environments_credentials_some_missing(
+    initialized_db, mock_config, mock_encryption
+):
+    """check_environments_credentials returns dict with missing fields per env."""
+    from app.repository import set_secure_setting
+
+    original_config = _st.config
+    original_encryption = _st.encryption
+    mock_config.use_mock_api = False
+    _st.config = mock_config
+    _st.encryption = mock_encryption
+
+    try:
+        with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": ""}, clear=False):
+            # Configure dev fully
+            await set_secure_setting("basic_username_dev", "user", mock_encryption)
+            await set_secure_setting("basic_password_dev", "pass", mock_encryption)
+            # Staging: only username
+            await set_secure_setting("basic_username_staging", "user", mock_encryption)
+            # Prod: nothing configured
+
+            result = await _st.check_environments_credentials(
+                ["dev", "staging", "prod"]
+            )
+            assert "dev" not in result  # Fully configured
+            assert result["staging"] == ["password"]
+            assert set(result["prod"]) == {"username", "password"}
+    finally:
+        _st.config = original_config
+        _st.encryption = original_encryption
+
+
 # ===================================================================
 # Category 7: Page handler tests (lines 560-602, 859-2986, 2990)
 # ===================================================================

@@ -77,6 +77,50 @@ async def test_handle_entity_sync_no_envs_enabled(initialized_db, mock_config):
 
 
 @pytest.mark.asyncio
+async def test_handle_entity_sync_pre_validation_missing_credentials(
+    initialized_db, mock_config
+):
+    """Returns False and shows missing credentials before starting sync."""
+
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.state = _SyncTestState(enabled_sync_environments={"dev", "staging"})
+    badge, label = _make_mock_badges()
+
+    # Simulate dev missing password, staging missing both
+    async def mock_check(envs):
+        return {"dev": ["password"], "staging": ["username", "password"]}
+
+    try:
+        with (
+            patch.object(
+                _st,
+                "check_environments_credentials",
+                new_callable=AsyncMock,
+                side_effect=mock_check,
+            ),
+            patch.object(_st, "build_api_client", new_callable=AsyncMock) as mock_build,
+            patch.object(_st, "safe_notify") as mock_notify,
+        ):
+            result = await handle_entity_sync(
+                ["sync_services"], badge, label, "services"
+            )
+            assert result is False
+            mock_build.assert_not_called()
+            # Label should show what's missing
+            assert "Missing credentials" in label.text
+            assert "dev: password" in label.text
+            assert "staging: username and password" in label.text
+            # Notification should be called with warning
+            mock_notify.assert_called_once()
+            call_args = mock_notify.call_args
+            assert "Missing credentials" in call_args[0][0]
+            assert call_args[1]["color"] == "warning"
+    finally:
+        _st.config, _st.state = original_config, original_state
+
+
+@pytest.mark.asyncio
 async def test_handle_entity_sync_auth_missing(initialized_db, mock_config):
     """Returns False and skips build_api_client when auth is missing for all envs."""
 

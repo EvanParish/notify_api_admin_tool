@@ -112,13 +112,51 @@ async def has_admin_auth(env: str) -> bool:
     return bool(basic_user and basic_pass)
 
 
+async def get_missing_credentials(env: str) -> list[str]:
+    """Return list of missing credential fields for an environment."""
+    if config.use_mock_api or os.getenv("PYTEST_CURRENT_TEST"):
+        return []
+    missing = []
+    basic_user = await get_secure_setting(f"basic_username_{env}", encryption)
+    basic_pass = await get_secure_setting(f"basic_password_{env}", encryption)
+    if not basic_user:
+        missing.append("username")
+    if not basic_pass:
+        missing.append("password")
+    return missing
+
+
+async def check_environments_credentials(
+    environments: list[str],
+) -> dict[str, list[str]]:
+    """Check credentials for multiple environments.
+
+    Returns a dict mapping environment names to lists of missing fields.
+    Environments with no missing fields are omitted from the result.
+    """
+    missing_by_env: dict[str, list[str]] = {}
+    for env in environments:
+        missing = await get_missing_credentials(env)
+        if missing:
+            missing_by_env[env] = missing
+    return missing_by_env
+
+
 async def ensure_admin_auth(env: str, sync_label) -> bool:
     if await has_admin_auth(env):
         return True
-    message = (
-        f"Missing admin auth for {env}. "
-        "Set credentials in Settings > Global Admin Auth."
-    )
+    missing = await get_missing_credentials(env)
+    if missing:
+        fields = " and ".join(missing)
+        message = (
+            f"Missing {fields} for {env}. "
+            "Set credentials in Settings > Global Admin Auth."
+        )
+    else:
+        message = (
+            f"Missing admin auth for {env}. "
+            "Set credentials in Settings > Global Admin Auth."
+        )
     sync_label.text = message
     safe_notify(message, color="warning")
     return False

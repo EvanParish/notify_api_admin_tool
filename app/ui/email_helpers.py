@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -86,7 +85,6 @@ def _build_key_email(
     env_label = _format_email_env_label(env)
     public_url, private_url = _resolve_email_endpoints(env)
     expiry_date = _format_expiry_date(created_key.get("expiry_date"))
-    rotation_date = datetime.now(timezone.utc).date() + timedelta(days=30)
     key_name = created_key.get("name") or ""
     key_id = created_key.get("id") or ""
     return (

@@ -74,6 +74,21 @@ async def handle_entity_sync(
         sync_label.text = "No environments enabled for sync"
         return False
 
+    # Pre-validate credentials for all selected environments
+    missing_by_env = await _st.check_environments_credentials(envs)
+    if missing_by_env:
+        error_parts = []
+        for env, missing_fields in missing_by_env.items():
+            fields = " and ".join(missing_fields)
+            error_parts.append(f"{env}: {fields}")
+        message = (
+            f"Missing credentials for: {', '.join(error_parts)}. "
+            "Update Settings > Global Admin Auth before syncing."
+        )
+        sync_label.text = message
+        _st.safe_notify(message, color="warning")
+        return False
+
     sync_label.text = f"Syncing {label} for {len(envs)} environment(s)..."
     results = await asyncio.gather(
         *[
