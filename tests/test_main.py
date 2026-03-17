@@ -1086,8 +1086,8 @@ class TestBuildMultiEnvKeyEmail:
         assert "api.notifications.va.gov" not in result
         assert "dev-api.va.gov/vanotify" not in result
         assert "VA Notify Endpoints" not in result
-        # Includes rotation-specific messaging
-        assert "rotated API key" in result
+        # Key rotation template has same intro as new key template
+        assert "API key(s)" in result
 
 
 class TestBuildEnvSectionWithEndpoints:

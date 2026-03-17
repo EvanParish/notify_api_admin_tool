@@ -201,7 +201,7 @@ def _build_multi_env_key_email(
         # Key rotation template
         return (
             "\nHello,\n\n"
-            "Please see the details below regarding your rotated API key(s) for VA Notify.\n\n"
+            "Please see the details below regarding your API key(s) for VA Notify.\n\n"
             "Action items:\n"
             "1. Please confirm receipt of this email.\n"
             "2. Please confirm when you have configured the new key(s) in your application.\n\n"
