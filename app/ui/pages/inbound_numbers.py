@@ -37,8 +37,8 @@ async def inbound_numbers_page() -> None:
             for svc in await list_services(get_view_environment())
         }
         service_select.set_options(options)
-        if service_select.value not in options:
-            service_select.value = None
+        if service_select.value:
+            service_select.value = [v for v in service_select.value if v in options]
 
     async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_service_options()
@@ -314,8 +314,13 @@ async def inbound_numbers_page() -> None:
             for svc in await list_services(get_view_environment())
         }
         service_select = (
-            ui.select(service_options, label="Filter by Service", with_input=True)
-            .props("clearable")
+            ui.select(
+                service_options,
+                label="Filter by Service",
+                with_input=True,
+                multiple=True,
+            )
+            .props("clearable use-chips")
             .classes("w-full md:w-1/2")
         )
 
@@ -332,9 +337,9 @@ async def inbound_numbers_page() -> None:
         async def render_table() -> None:  # pragma: no cover
             selected_number.clear()
             update_edit_fields(None)
-            selected_service = service_select.value
+            selected_services = service_select.value or []
             numbers = await list_inbound_numbers(
-                selected_service, environment=get_view_environment()
+                selected_services or None, environment=get_view_environment()
             )
             if inbound_search_query:
                 numbers = [

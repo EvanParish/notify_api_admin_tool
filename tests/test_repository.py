@@ -1323,3 +1323,150 @@ async def test_clear_table_data_local_api_keys(initialized_db):
     keys = await list_local_keys()
     assert len(keys) == 1
     assert keys[0].environment == "staging"
+
+
+# Multi-select service filtering tests
+
+
+@pytest.mark.asyncio
+async def test_list_templates_by_multiple_services(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", environment="dev", name="Service 1"))
+        session.add(Service(id="svc-2", environment="dev", name="Service 2"))
+        session.add(Service(id="svc-3", environment="dev", name="Service 3"))
+        session.add(
+            Template(
+                id="t1",
+                environment="dev",
+                name="T1",
+                service_id="svc-1",
+                template_type="email",
+                content="Hello",
+            )
+        )
+        session.add(
+            Template(
+                id="t2",
+                environment="dev",
+                name="T2",
+                service_id="svc-2",
+                template_type="sms",
+                content="Hi",
+            )
+        )
+        session.add(
+            Template(
+                id="t3",
+                environment="dev",
+                name="T3",
+                service_id="svc-3",
+                template_type="email",
+                content="Hey",
+            )
+        )
+        await session.commit()
+
+    templates = await list_templates(service_id=["svc-1", "svc-2"])
+    assert len(templates) == 2
+    assert {t.id for t in templates} == {"t1", "t2"}
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_by_multiple_services(initialized_db):
+    async with get_session() as session:
+        session.add(ApiKey(id="key-1", service_id="svc-1", name="Key 1"))
+        session.add(ApiKey(id="key-2", service_id="svc-2", name="Key 2"))
+        session.add(ApiKey(id="key-3", service_id="svc-3", name="Key 3"))
+        await session.commit()
+
+    keys = await list_api_keys(service_id=["svc-1", "svc-3"])
+    assert len(keys) == 2
+    assert {k.id for k in keys} == {"key-1", "key-3"}
+
+
+@pytest.mark.asyncio
+async def test_list_sms_senders_by_multiple_services(initialized_db):
+    async with get_session() as session:
+        session.add(
+            SmsSender(id="s1", environment="dev", service_id="svc-1", sms_sender="+111")
+        )
+        session.add(
+            SmsSender(id="s2", environment="dev", service_id="svc-2", sms_sender="+222")
+        )
+        session.add(
+            SmsSender(id="s3", environment="dev", service_id="svc-3", sms_sender="+333")
+        )
+        await session.commit()
+
+    senders = await list_sms_senders(service_id=["svc-2", "svc-3"])
+    assert len(senders) == 2
+    assert {s.id for s in senders} == {"s2", "s3"}
+
+
+@pytest.mark.asyncio
+async def test_list_inbound_numbers_by_multiple_services(initialized_db):
+    async with get_session() as session:
+        session.add(
+            InboundNumber(
+                id="n1", environment="dev", number="+1111", service_id="svc-1"
+            )
+        )
+        session.add(
+            InboundNumber(
+                id="n2", environment="dev", number="+2222", service_id="svc-2"
+            )
+        )
+        session.add(
+            InboundNumber(
+                id="n3", environment="dev", number="+3333", service_id="svc-3"
+            )
+        )
+        await session.commit()
+
+    numbers = await list_inbound_numbers(service_id=["svc-1", "svc-2"])
+    assert len(numbers) == 2
+    assert {n.id for n in numbers} == {"n1", "n2"}
+
+
+@pytest.mark.asyncio
+async def test_list_templates_empty_list_returns_all(initialized_db):
+    """Empty list should return all templates (no filter)."""
+    async with get_session() as session:
+        session.add(
+            Template(
+                id="t1",
+                environment="dev",
+                name="T1",
+                service_id="svc-1",
+                template_type="email",
+                content="Hello",
+            )
+        )
+        session.add(
+            Template(
+                id="t2",
+                environment="dev",
+                name="T2",
+                service_id="svc-2",
+                template_type="sms",
+                content="Hi",
+            )
+        )
+        await session.commit()
+
+    # Empty list should behave like None
+    templates = await list_templates(service_id=[])
+    assert len(templates) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_single_service_as_list(initialized_db):
+    """Single service ID as list should work the same as string."""
+    async with get_session() as session:
+        session.add(ApiKey(id="key-1", service_id="svc-1", name="Key 1"))
+        session.add(ApiKey(id="key-2", service_id="svc-2", name="Key 2"))
+        await session.commit()
+
+    keys = await list_api_keys(service_id=["svc-1"])
+    assert len(keys) == 1
+    assert keys[0].id == "key-1"

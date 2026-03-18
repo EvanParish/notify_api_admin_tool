@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Dict, List, Optional, Type, Union
+from typing import Type
 
 from sqlalchemy import delete, or_, select
 
@@ -25,7 +25,7 @@ from .models import (
 class DbSaltProvider:
     """SaltProvider implementation backed by the settings table."""
 
-    async def get_salt(self) -> Optional[bytes]:
+    async def get_salt(self) -> bytes | None:
         value = await get_setting("encryption_salt")
         return base64.urlsafe_b64decode(value) if value else None
 
@@ -33,15 +33,15 @@ class DbSaltProvider:
         await set_setting("encryption_salt", base64.urlsafe_b64encode(salt).decode())
 
 
-def _is_archived_value(value: Optional[str]) -> bool:
+def _is_archived_value(value: str | None) -> bool:
     return bool(value) and value.lower().startswith("_archive")
 
 
-def _is_archived(*values: Optional[str]) -> bool:
+def _is_archived(*values: str | None) -> bool:
     return any(_is_archived_value(value) for value in values)
 
 
-async def get_setting(key: str) -> Optional[str]:
+async def get_setting(key: str) -> str | None:
     async with get_session() as session:
         result = await session.execute(select(Setting).where(Setting.key == key))
         setting = result.scalar_one_or_none()
@@ -60,7 +60,7 @@ async def set_setting(key: str, value: str) -> None:
         await session.commit()
 
 
-async def get_secure_setting(key: str, encryption: EncryptionManager) -> Optional[str]:
+async def get_secure_setting(key: str, encryption: EncryptionManager) -> str | None:
     value = await get_setting(key)
     if value is None:
         return None
@@ -74,7 +74,7 @@ async def set_secure_setting(
     await set_setting(key, encrypted)
 
 
-def _env_filter(column, environments: Optional[List[str]]):
+def _env_filter(column, environments: list[str] | None):
     """Build environment filter clause for queries."""
     if not environments:
         return None  # No filter needed - show all
@@ -82,9 +82,17 @@ def _env_filter(column, environments: Optional[List[str]]):
     return or_(column.in_(environments), column.is_(None))
 
 
+def _service_filter(column, service_ids: str | list[str] | None):
+    """Build service ID filter clause for queries."""
+    if not service_ids:
+        return None
+    ids = [service_ids] if isinstance(service_ids, str) else service_ids
+    return column.in_(ids)
+
+
 async def list_services(
-    environment: Optional[Union[str, List[str]]] = None,
-) -> List[Service]:
+    environment: str | list[str] | None = None,
+) -> list[Service]:
     async with get_session() as session:
         query = select(Service)
         envs = [environment] if isinstance(environment, str) else environment
@@ -96,14 +104,15 @@ async def list_services(
 
 
 async def list_templates(
-    service_id: Optional[str] = None,
-    template_type: Optional[str] = None,
-    environment: Optional[Union[str, List[str]]] = None,
-) -> List[Template]:
+    service_id: str | list[str] | None = None,
+    template_type: str | None = None,
+    environment: str | list[str] | None = None,
+) -> list[Template]:
     async with get_session() as session:
         query = select(Template)
-        if service_id:
-            query = query.where(Template.service_id == service_id)
+        svc_clause = _service_filter(Template.service_id, service_id)
+        if svc_clause is not None:
+            query = query.where(svc_clause)
         if template_type:
             query = query.where(Template.template_type == template_type)
         envs = [environment] if isinstance(environment, str) else environment
@@ -115,9 +124,9 @@ async def list_templates(
 
 
 async def list_local_keys(
-    service_id: Optional[str] = None,
-    environment: Optional[Union[str, List[str]]] = None,
-) -> List[LocalApiKey]:
+    service_id: str | None = None,
+    environment: str | list[str] | None = None,
+) -> list[LocalApiKey]:
     async with get_session() as session:
         query = select(LocalApiKey)
         if service_id:
@@ -161,13 +170,14 @@ async def resolve_local_key(encryption: EncryptionManager, key_id: int) -> str:
 
 
 async def list_api_keys(
-    service_id: Optional[str] = None,
-    environment: Optional[Union[str, List[str]]] = None,
-) -> List[ApiKey]:
+    service_id: str | list[str] | None = None,
+    environment: str | list[str] | None = None,
+) -> list[ApiKey]:
     async with get_session() as session:
         query = select(ApiKey)
-        if service_id:
-            query = query.where(ApiKey.service_id == service_id)
+        svc_clause = _service_filter(ApiKey.service_id, service_id)
+        if svc_clause is not None:
+            query = query.where(svc_clause)
         envs = [environment] if isinstance(environment, str) else environment
         env_clause = _env_filter(ApiKey.environment, envs)
         if env_clause is not None:
@@ -180,7 +190,7 @@ async def update_api_key_expiry(
     service_id: str,
     key_id: str,
     expiry_date: str,
-    environment: Optional[str] = None,
+    environment: str | None = None,
 ) -> bool:
     async with get_session() as session:
         query = select(ApiKey).where(
@@ -200,7 +210,7 @@ async def update_api_key_expiry(
 
 
 async def mark_api_key_revoked(
-    service_id: str, key_id: str, environment: Optional[str] = None
+    service_id: str, key_id: str, environment: str | None = None
 ) -> bool:
     async with get_session() as session:
         query = select(ApiKey).where(
@@ -220,13 +230,14 @@ async def mark_api_key_revoked(
 
 
 async def list_sms_senders(
-    service_id: Optional[str] = None,
-    environment: Optional[Union[str, List[str]]] = None,
-) -> List[SmsSender]:
+    service_id: str | list[str] | None = None,
+    environment: str | list[str] | None = None,
+) -> list[SmsSender]:
     async with get_session() as session:
         query = select(SmsSender)
-        if service_id:
-            query = query.where(SmsSender.service_id == service_id)
+        svc_clause = _service_filter(SmsSender.service_id, service_id)
+        if svc_clause is not None:
+            query = query.where(svc_clause)
         envs = [environment] if isinstance(environment, str) else environment
         env_clause = _env_filter(SmsSender.environment, envs)
         if env_clause is not None:
@@ -278,8 +289,8 @@ async def update_sms_sender(
 
 
 async def list_provider_details(
-    environment: Optional[Union[str, List[str]]] = None,
-) -> List[ProviderDetail]:
+    environment: str | list[str] | None = None,
+) -> list[ProviderDetail]:
     async with get_session() as session:
         query = select(ProviderDetail)
         envs = [environment] if isinstance(environment, str) else environment
@@ -316,8 +327,8 @@ async def update_provider_detail(
 
 
 async def list_communication_items(
-    environment: Optional[Union[str, List[str]]] = None,
-) -> List[CommunicationItem]:
+    environment: str | list[str] | None = None,
+) -> list[CommunicationItem]:
     async with get_session() as session:
         query = select(CommunicationItem)
         envs = [environment] if isinstance(environment, str) else environment
@@ -354,8 +365,8 @@ async def update_communication_item(
 
 
 async def list_users(
-    environment: Optional[Union[str, List[str]]] = None,
-) -> List[User]:
+    environment: str | list[str] | None = None,
+) -> list[User]:
     async with get_session() as session:
         query = select(User)
         envs = [environment] if isinstance(environment, str) else environment
@@ -371,13 +382,14 @@ async def list_users(
 
 
 async def list_inbound_numbers(
-    service_id: Optional[str] = None,
-    environment: Optional[Union[str, List[str]]] = None,
-) -> List[InboundNumber]:
+    service_id: str | list[str] | None = None,
+    environment: str | list[str] | None = None,
+) -> list[InboundNumber]:
     async with get_session() as session:
         query = select(InboundNumber)
-        if service_id:
-            query = query.where(InboundNumber.service_id == service_id)
+        svc_clause = _service_filter(InboundNumber.service_id, service_id)
+        if svc_clause is not None:
+            query = query.where(svc_clause)
         envs = [environment] if isinstance(environment, str) else environment
         env_clause = _env_filter(InboundNumber.environment, envs)
         if env_clause is not None:
@@ -426,7 +438,7 @@ async def update_inbound_number(
 
 
 # Map of table names to model classes for clearing data
-CLEARABLE_TABLES: Dict[str, Type[Base]] = {
+CLEARABLE_TABLES: dict[str, Type[Base]] = {
     "services": Service,
     "templates": Template,
     "api_keys": ApiKey,
@@ -457,7 +469,7 @@ async def clear_table_data(table_name: str, environment: str | None = None) -> i
         return result.rowcount
 
 
-async def list_service_ids(environment: Optional[str] = None) -> List[str]:
+async def list_service_ids(environment: str | None = None) -> list[str]:
     """Return all service IDs, optionally filtered by environment."""
     async with get_session() as session:
         query = select(Service.id)
@@ -473,7 +485,7 @@ async def list_service_environments(service_id: str) -> list[str]:
         return list((await session.execute(query)).scalars().all())
 
 
-async def get_service_by_name(name: str, environment: str) -> Optional[Service]:
+async def get_service_by_name(name: str, environment: str) -> Service | None:
     """Return a service by name and environment, or None if not found."""
     async with get_session() as session:
         query = select(Service).where(
@@ -489,7 +501,7 @@ async def list_environments_for_service_name(name: str) -> list[str]:
         return list((await session.execute(query)).scalars().all())
 
 
-async def upsert_services(raw: List[Dict], environment: str) -> None:
+async def upsert_services(raw: list[dict], environment: str) -> None:
     async with get_session() as session:
         for svc in raw:
             permissions = svc.get("permissions")
@@ -518,7 +530,7 @@ async def upsert_services(raw: List[Dict], environment: str) -> None:
 
 
 async def upsert_templates(
-    raw: List[Dict], environment: str, fallback_service_id: Optional[str] = None
+    raw: list[dict], environment: str, fallback_service_id: str | None = None
 ) -> None:
     async with get_session() as session:
         for tmpl in raw:
@@ -545,7 +557,7 @@ async def upsert_templates(
         await session.commit()
 
 
-async def upsert_api_keys(raw: List[Dict], environment: str, service_id: str) -> None:
+async def upsert_api_keys(raw: list[dict], environment: str, service_id: str) -> None:
     async with get_session() as session:
         for key in raw:
             record = ApiKey(
@@ -565,7 +577,7 @@ async def upsert_api_keys(raw: List[Dict], environment: str, service_id: str) ->
 
 
 async def upsert_sms_senders(
-    raw: List[Dict], environment: str, fallback_service_id: str
+    raw: list[dict], environment: str, fallback_service_id: str
 ) -> None:
     async with get_session() as session:
         for sender in raw:
@@ -590,7 +602,7 @@ async def upsert_sms_senders(
         await session.commit()
 
 
-async def upsert_users(raw: List[Dict], environment: str) -> None:
+async def upsert_users(raw: list[dict], environment: str) -> None:
     async with get_session() as session:
         for user in raw:
             email = (user.get("email_address") or "").lower()
@@ -620,7 +632,7 @@ async def upsert_users(raw: List[Dict], environment: str) -> None:
         await session.commit()
 
 
-async def upsert_provider_details(raw: List[Dict], environment: str) -> None:
+async def upsert_provider_details(raw: list[dict], environment: str) -> None:
     async with get_session() as session:
         for provider in raw:
             record = ProviderDetail(
@@ -641,7 +653,7 @@ async def upsert_provider_details(raw: List[Dict], environment: str) -> None:
         await session.commit()
 
 
-async def upsert_communication_items(raw: List[Dict], environment: str) -> None:
+async def upsert_communication_items(raw: list[dict], environment: str) -> None:
     async with get_session() as session:
         for item in raw:
             record = CommunicationItem(
@@ -655,7 +667,7 @@ async def upsert_communication_items(raw: List[Dict], environment: str) -> None:
         await session.commit()
 
 
-async def upsert_inbound_numbers(raw: List[Dict], environment: str) -> None:
+async def upsert_inbound_numbers(raw: list[dict], environment: str) -> None:
     async with get_session() as session:
         for item in raw:
             service = item.get("service") or {}

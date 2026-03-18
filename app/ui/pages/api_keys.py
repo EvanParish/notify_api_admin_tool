@@ -75,8 +75,8 @@ async def api_keys_page() -> None:
             for svc in await list_services(get_view_environment())
         }
         service_select.set_options(options)
-        if service_select.value not in options:
-            service_select.value = None
+        if service_select.value:
+            service_select.value = [v for v in service_select.value if v in options]
 
     async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_service_options()
@@ -365,8 +365,13 @@ async def api_keys_page() -> None:
             for svc in await list_services(get_view_environment())
         }
         service_select = (
-            ui.select(service_options, label="Filter by Service", with_input=True)
-            .props("clearable")
+            ui.select(
+                service_options,
+                label="Filter by Service",
+                with_input=True,
+                multiple=True,
+            )
+            .props("clearable use-chips")
             .classes("w-full md:w-1/2")
         )
         expires_from = ui.input(label="Expires from").props("clearable type=date")
@@ -380,12 +385,12 @@ async def api_keys_page() -> None:
         async def render_table() -> None:
             selected_api_key.clear()
             update_manage_fields(None)
-            selected_service = service_select.value
+            selected_services = service_select.value or []
             start_date = _parse_filter_date(expires_from.value)
             end_date = _parse_filter_date(expires_to.value)
             search_term = (search_input.value or "").strip().lower()
             keys = await list_api_keys(
-                selected_service, environment=get_view_environment()
+                selected_services or None, environment=get_view_environment()
             )
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},

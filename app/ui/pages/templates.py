@@ -30,8 +30,8 @@ async def templates_page() -> None:
             for svc in await list_services(get_view_environment())
         }
         service_select.set_options(options)
-        if service_select.value not in options:
-            service_select.value = None
+        if service_select.value:
+            service_select.value = [v for v in service_select.value if v in options]
 
     async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_service_options()
@@ -71,8 +71,8 @@ async def templates_page() -> None:
         }
         type_options = {"email": "Email", "sms": "SMS"}
         service_select = (
-            ui.select(service_options, label="Service", with_input=True)
-            .props("clearable")
+            ui.select(service_options, label="Service", with_input=True, multiple=True)
+            .props("clearable use-chips")
             .classes("w-full md:w-1/2")
         )
         type_select = (
@@ -87,10 +87,12 @@ async def templates_page() -> None:
 
         @ui.refreshable
         async def render_table() -> None:  # pragma: no cover
-            selected_service = service_select.value
+            selected_services = service_select.value or []
             selected_type = type_select.value
             rows = await list_templates(
-                selected_service, selected_type, environment=get_view_environment()
+                selected_services or None,
+                selected_type,
+                environment=get_view_environment(),
             )
             if template_search_query:
                 rows = [
