@@ -419,7 +419,7 @@ async def sms_senders_page() -> None:
         filter_row = ui.row().classes("gap-2 w-full")
         with filter_row:
             sms_sender_search = (
-                ui.input(label="Search by SMS Sender or ID")
+                ui.input(label="Search by SMS Sender, ID, or Service ID")
                 .props("clearable")
                 .classes("w-full md:w-1/2")
             )
@@ -461,6 +461,7 @@ async def sms_senders_page() -> None:
                     for sender in senders
                     if sms_sender_search_query in (sender.sms_sender or "").lower()
                     or sms_sender_search_query in (sender.id or "").lower()
+                    or sms_sender_search_query in (sender.service_id or "").lower()
                 ]
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},

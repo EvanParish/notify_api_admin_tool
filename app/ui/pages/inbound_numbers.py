@@ -305,7 +305,7 @@ async def inbound_numbers_page() -> None:
         filter_row = ui.row().classes("gap-2 w-full")
         with filter_row:
             inbound_search = (
-                ui.input(label="Search by Number or ID")
+                ui.input(label="Search by Number, ID, or Service ID")
                 .props("clearable")
                 .classes("w-full md:w-1/2")
             )
@@ -347,6 +347,7 @@ async def inbound_numbers_page() -> None:
                     for n in numbers
                     if inbound_search_query in (n.number or "").lower()
                     or inbound_search_query in (n.id or "").lower()
+                    or inbound_search_query in (n.service_id or "").lower()
                 ]
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},

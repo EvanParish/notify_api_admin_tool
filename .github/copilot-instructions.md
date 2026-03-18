@@ -49,7 +49,7 @@ ruff format .
 
 This repo uses python 3.13+ features, so ensure your environment is set up with Python 3.13 or higher to avoid syntax errors and take advantage of the latest language features.
 
-Python 3.13+ is used,so instead of use the old style of `from typing import List, Optional`, we can use the new syntax: `list[str]` and `str | None`. This keeps the code cleaner and more concise.
+Python 3.13+ is used,so instead of use the old style of `Optional[List[str]], or Optional[str]`, we can use the new syntax: `list[str] | None` and `str | None`. This keeps the code cleaner and more concise.
 
 ## Architecture
 

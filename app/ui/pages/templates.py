@@ -60,7 +60,7 @@ async def templates_page() -> None:
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Templates").classes("text-lg font-semibold")
         template_search = (
-            ui.input(label="Search by Template ID or Name")
+            ui.input(label="Search by Template ID, Name, or Service ID")
             .props("clearable")
             .classes("w-full md:w-1/2")
         )
@@ -100,6 +100,7 @@ async def templates_page() -> None:
                     for row in rows
                     if template_search_query in (row.id or "").lower()
                     or template_search_query in (row.name or "").lower()
+                    or template_search_query in (row.service_id or "").lower()
                 ]
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},
