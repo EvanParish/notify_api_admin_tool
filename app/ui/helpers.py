@@ -113,7 +113,7 @@ COPYABLE_CELL_SLOT = """
   <span
     class="cursor-pointer text-primary"
     title="Click to copy"
-    @click="$parent.$emit('copy', props.row['_full_' + props.col.field] || props.value)"
+    @click="$parent.$emit('cell-copy', props.row['_full_' + props.col.field] || props.value)"
   >{{ props.value }}</span>
 </q-td>
 """
@@ -136,7 +136,7 @@ def add_copyable_slots(table, rows: List[Dict[str, Any]]) -> None:
     for field in copyable_fields:
         table.add_slot(f"body-cell-{field}", COPYABLE_CELL_SLOT)
     if copyable_fields:
-        table.on("copy", lambda e: copy_to_clipboard(e.args))
+        table.on("cell-copy", lambda e: copy_to_clipboard(e.args))
 
 
 # ---------------------------------------------------------------------------
