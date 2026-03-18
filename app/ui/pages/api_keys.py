@@ -90,8 +90,14 @@ async def api_keys_page() -> None:
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def page_sync_api_keys(environment: str | None = None):  # pragma: no cover
+    async def page_sync_api_keys(
+        environment: str | None = None,
+        service_ids: list[str] | None = None,
+    ):  # pragma: no cover
         envs = [environment] if environment else None
+        method_kwargs = (
+            {"sync_api_keys": {"service_ids": service_ids}} if service_ids else None
+        )
         await handle_entity_sync(
             ["sync_api_keys"],
             status_badge,
@@ -99,6 +105,7 @@ async def api_keys_page() -> None:
             "API keys",
             pre_sync=["sync_services"],
             environments=envs,
+            method_kwargs=method_kwargs,
         )
 
     refresh_button.on_click(page_refresh)
@@ -187,7 +194,7 @@ async def api_keys_page() -> None:
 
             await refresh_if_needed(render_local_keys)
             create_dialog.close()
-            await page_sync_api_keys(environment)
+            await page_sync_api_keys(environment, service_ids=[service_id])
             await refresh_if_needed(render_table)
 
         async def handle_open_create_dialog() -> None:  # pragma: no cover
@@ -374,8 +381,9 @@ async def api_keys_page() -> None:
             .props("clearable use-chips")
             .classes("w-full md:w-1/2")
         )
-        expires_from = ui.input(label="Expires from").props("clearable type=date")
-        expires_to = ui.input(label="Expires to").props("clearable type=date")
+        with ui.row().classes("gap-2"):
+            expires_from = ui.input(label="Expires from").props("clearable type=date")
+            expires_to = ui.input(label="Expires to").props("clearable type=date")
 
         async def handle_sync_keys() -> None:  # pragma: no cover
             await page_sync_api_keys()
@@ -399,9 +407,9 @@ async def api_keys_page() -> None:
                 {"name": "name", "label": "Name", "field": "name"},
                 {"name": "key_type", "label": "Type", "field": "key_type"},
                 {"name": "expiry_date", "label": "Expires", "field": "expiry_date"},
+                {"name": "revoked", "label": "Revoked", "field": "revoked"},
                 {"name": "created_by", "label": "Created By", "field": "created_by"},
                 {"name": "created_at", "label": "Created", "field": "created_at"},
-                {"name": "revoked", "label": "Revoked", "field": "revoked"},
                 {"name": "version", "label": "Version", "field": "version"},
             ]
             table_rows: List[Dict[str, Any]] = [

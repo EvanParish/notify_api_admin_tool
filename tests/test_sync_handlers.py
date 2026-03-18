@@ -475,3 +475,41 @@ async def test_handle_entity_sync_limits_error_notifications(
             assert "2 more errors" in notified_messages[-1][0]
     finally:
         _st.config, _st.state = original_config, original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_entity_sync_with_method_kwargs(initialized_db, mock_config):
+    """Passes method_kwargs through to the sync method."""
+
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
+    badge, label = _make_mock_badges()
+
+    captured_kwargs = {}
+    mock_manager = MagicMock()
+
+    async def track_api_keys(progress=None, **kwargs):
+        captured_kwargs.update(kwargs)
+        return _make_success_result()
+
+    mock_manager.sync_api_keys = track_api_keys
+
+    try:
+        with (
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
+            patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
+        ):
+            result = await handle_entity_sync(
+                ["sync_api_keys"],
+                badge,
+                label,
+                "API keys",
+                method_kwargs={"sync_api_keys": {"service_ids": ["svc-123"]}},
+            )
+            assert result is True
+            assert captured_kwargs == {"service_ids": ["svc-123"]}
+    finally:
+        _st.config, _st.state = original_config, original_state

@@ -102,6 +102,7 @@ def add_export_button(
 # ---------------------------------------------------------------------------
 COPYABLE_FIELDS = (
     "id",
+    "created_by",
     "email_address",
     "key_name",
     "name",

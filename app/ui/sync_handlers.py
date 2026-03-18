@@ -13,6 +13,7 @@ async def _sync_for_environment(
     method_names: list[str],
     sync_label,
     pre_sync: list[str] | None = None,
+    method_kwargs: dict[str, dict] | None = None,
 ) -> SyncResult:
     """Sync methods for a single environment. Returns SyncResult with details."""
     if not await _st.ensure_admin_auth(environment, sync_label):
@@ -28,13 +29,15 @@ async def _sync_for_environment(
         sync_label.text = f"[{environment}] {msg}"
 
     combined_result = SyncResult()
+    method_kwargs = method_kwargs or {}
     try:
         if pre_sync:
             for method in pre_sync:
                 sub_result = await getattr(manager, method)(progress=progress)
                 combined_result.merge(sub_result)
         for method in method_names:
-            sub_result = await getattr(manager, method)(progress=progress)
+            kwargs = method_kwargs.get(method, {})
+            sub_result = await getattr(manager, method)(progress=progress, **kwargs)
             combined_result.merge(sub_result)
     except httpx.HTTPStatusError as exc:
         if exc.response and exc.response.status_code == 401:
@@ -52,6 +55,7 @@ async def handle_entity_sync(
     label: str,
     pre_sync: list[str] | None = None,
     environments: list[str] | None = None,
+    method_kwargs: dict[str, dict] | None = None,
 ) -> bool:
     """Sync entities across environments.
 
@@ -64,6 +68,8 @@ async def handle_entity_sync(
             (e.g. ``["sync_services"]`` before syncing templates).
         environments: Optional list of specific environments to sync.
             If None, syncs all enabled environments.
+        method_kwargs: Optional dict mapping method names to keyword arguments
+            (e.g. ``{"sync_api_keys": {"service_ids": ["abc123"]}}``).
     """
     if environments is not None:
         envs = environments
@@ -92,7 +98,9 @@ async def handle_entity_sync(
     sync_label.text = f"Syncing {label} for {len(envs)} environment(s)..."
     results = await asyncio.gather(
         *[
-            _sync_for_environment(env, method_names, sync_label, pre_sync)
+            _sync_for_environment(
+                env, method_names, sync_label, pre_sync, method_kwargs
+            )
             for env in envs
         ],
         return_exceptions=True,

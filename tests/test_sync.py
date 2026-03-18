@@ -462,6 +462,35 @@ async def test_sync_api_keys_records_non_404_error(initialized_db):
 
 
 @pytest.mark.asyncio
+async def test_sync_api_keys_with_service_ids_filter(initialized_db):
+    """Test that sync_api_keys respects service_ids filter."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service
+    from app.db import get_session
+
+    async with get_session() as session:
+        session.add(Service(id="svc-a", name="Service A", active=True))
+        session.add(Service(id="svc-b", name="Service B", active=True))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+    synced_services = []
+
+    async def track_get_api_keys(service_id):
+        synced_services.append(service_id)
+        return []
+
+    mock_api.get_api_keys = track_get_api_keys
+
+    manager = SyncManager(mock_api, max_concurrency=5)
+    await manager.sync_api_keys(service_ids=["svc-a"])
+
+    # Only svc-a should have been synced
+    assert synced_services == ["svc-a"]
+
+
+@pytest.mark.asyncio
 async def test_sync_sms_senders_handles_404(initialized_db):
     """Test that sync handles 404 errors gracefully for SMS senders."""
     from app.sync import SyncManager

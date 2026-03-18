@@ -167,9 +167,14 @@ class SyncManager:
                     await progress(f"Error syncing templates: {result.errors[-1]}")
         return result
 
-    async def sync_api_keys(self, progress: ProgressCallback = None) -> SyncResult:
+    async def sync_api_keys(
+        self,
+        progress: ProgressCallback = None,
+        service_ids: list[str] | None = None,
+    ) -> SyncResult:
         result = SyncResult()
-        service_ids = await list_service_ids(self.environment)
+        if service_ids is None:
+            service_ids = await list_service_ids(self.environment)
         tasks = [self._sync_api_keys_for_service(sid, progress) for sid in service_ids]
         sub_results = await asyncio.gather(*tasks)
         for sub_result in sub_results:
