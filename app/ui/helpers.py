@@ -113,7 +113,7 @@ COPYABLE_CELL_SLOT = """
   <span
     class="cursor-pointer text-primary"
     title="Click to copy"
-    @click="$parent.$emit('copy', props.value)"
+    @click="$parent.$emit('copy', props.row['_full_' + props.col.field] || props.value)"
   >{{ props.value }}</span>
 </q-td>
 """

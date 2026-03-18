@@ -121,6 +121,7 @@ async def templates_page() -> None:
                     "environment": format_environment(row.environment),
                     "service_id": row.service_id,
                     "name": truncate_text(row.name),
+                    "_full_name": row.name,
                     "template_type": row.template_type,
                     "version": row.version,
                     "archived": row.archived,
