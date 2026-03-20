@@ -60,6 +60,18 @@ async def bulk_send_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Bulk Send Notification").classes("text-lg font-semibold")
+        with ui.element("div").classes(
+            "w-full p-4 rounded-lg bg-yellow-100 dark:bg-yellow-900 "
+            "border border-yellow-400 dark:border-yellow-600"
+        ):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("warning", color="yellow-800").classes(
+                    "text-2xl dark:text-yellow-300"
+                )
+                ui.label(
+                    "Warning: This page will send notifications to ALL active users "
+                    "in the chosen environment. Use with caution."
+                ).classes("text-yellow-800 dark:text-yellow-200 font-medium")
         env_select = ui.select(
             env_options, value=_st.state.environment, label="Environment"
         ).classes("w-full md:w-1/2")
@@ -370,7 +382,7 @@ async def bulk_send_page() -> None:
             ui.label("Confirm Bulk Send").classes("text-md font-semibold")
             confirm_message = ui.label("")
             with ui.row().classes("gap-2"):
-                ui.button("Send to all", on_click=handle_confirm_send, color="primary")
+                ui.button("Send to ALL", on_click=handle_confirm_send, color="red")
                 ui.button("Cancel", on_click=confirm_dialog.close, color="gray")
         with ui.card().classes("p-6 w-full"):
             ui.label("Preview").classes("text-md font-semibold")

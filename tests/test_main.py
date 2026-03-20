@@ -2104,6 +2104,8 @@ def _ui_patches(mod_path, _make_mock):
         patch(f"{mod_path}.ui.code", side_effect=_make_mock),
         patch(f"{mod_path}.ui.space", side_effect=_make_mock),
         patch(f"{mod_path}.ui.radio", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.element", side_effect=_make_mock),
+        patch(f"{mod_path}.ui.icon", side_effect=_make_mock),
         patch(f"{mod_path}.ui.page", lambda *a, **kw: lambda fn: fn),
     ]
     # Optional patches — only add if the page module imports the name

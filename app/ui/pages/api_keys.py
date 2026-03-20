@@ -297,6 +297,7 @@ async def api_keys_page() -> None:
                 )
             selected_api_key["expiry_date"] = expiry_date
             update_manage_fields(resolve_selected_key())
+            manage_dialog.close()
             await refresh_if_needed(render_table)
 
         async def handle_revoke_request() -> None:  # pragma: no cover
@@ -356,6 +357,7 @@ async def api_keys_page() -> None:
                     color="warning",
                 )
             selected_api_key["revoked"] = True
+            manage_dialog.close()
             await refresh_if_needed(render_table)
 
         update_button.on_click(handle_update_expiry)
