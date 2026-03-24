@@ -143,9 +143,7 @@ class SyncManager:
         self.last_result = result
         return result
 
-    async def _sync_templates_for_service(
-        self, service_id: str, progress: ProgressCallback
-    ) -> SyncResult:
+    async def _sync_templates_for_service(self, service_id: str, progress: ProgressCallback) -> SyncResult:
         result = SyncResult()
         async with self._semaphore:
             if progress:
@@ -182,9 +180,7 @@ class SyncManager:
         self.last_result = result
         return result
 
-    async def _sync_api_keys_for_service(
-        self, service_id: str, progress: ProgressCallback
-    ) -> SyncResult:
+    async def _sync_api_keys_for_service(self, service_id: str, progress: ProgressCallback) -> SyncResult:
         result = SyncResult()
         async with self._semaphore:
             if progress:
@@ -215,18 +211,14 @@ class SyncManager:
     async def sync_sms_senders(self, progress: ProgressCallback = None) -> SyncResult:
         result = SyncResult()
         service_ids = await list_service_ids(self.environment)
-        tasks = [
-            self._sync_sms_senders_for_service(sid, progress) for sid in service_ids
-        ]
+        tasks = [self._sync_sms_senders_for_service(sid, progress) for sid in service_ids]
         sub_results = await asyncio.gather(*tasks)
         for sub_result in sub_results:
             result.merge(sub_result)
         self.last_result = result
         return result
 
-    async def _sync_sms_senders_for_service(
-        self, service_id: str, progress: ProgressCallback
-    ) -> SyncResult:
+    async def _sync_sms_senders_for_service(self, service_id: str, progress: ProgressCallback) -> SyncResult:
         result = SyncResult()
         async with self._semaphore:
             if progress:
@@ -251,9 +243,7 @@ class SyncManager:
                         )
                     )
                     if progress:
-                        await progress(
-                            f"Error syncing SMS senders: {result.errors[-1]}"
-                        )
+                        await progress(f"Error syncing SMS senders: {result.errors[-1]}")
         return result
 
     async def sync_users(self, progress: ProgressCallback = None) -> SyncResult:
@@ -277,9 +267,7 @@ class SyncManager:
         self.last_result = result
         return result
 
-    async def sync_provider_details(
-        self, progress: ProgressCallback = None
-    ) -> SyncResult:
+    async def sync_provider_details(self, progress: ProgressCallback = None) -> SyncResult:
         result = SyncResult()
         if progress:
             await progress("Syncing provider details")
@@ -300,9 +288,7 @@ class SyncManager:
         self.last_result = result
         return result
 
-    async def sync_communication_items(
-        self, progress: ProgressCallback = None
-    ) -> SyncResult:
+    async def sync_communication_items(self, progress: ProgressCallback = None) -> SyncResult:
         result = SyncResult()
         if progress:
             await progress("Syncing communication items")
@@ -319,15 +305,11 @@ class SyncManager:
                 )
             )
             if progress:
-                await progress(
-                    f"Error syncing communication items: {result.errors[-1]}"
-                )
+                await progress(f"Error syncing communication items: {result.errors[-1]}")
         self.last_result = result
         return result
 
-    async def sync_inbound_numbers(
-        self, progress: ProgressCallback = None
-    ) -> SyncResult:
+    async def sync_inbound_numbers(self, progress: ProgressCallback = None) -> SyncResult:
         result = SyncResult()
         if progress:
             await progress("Syncing inbound numbers")

@@ -40,21 +40,13 @@ async def users_page() -> None:
         ui.label("Users").classes("text-lg font-semibold")
         filter_row = ui.row().classes("gap-2 w-full")
         with filter_row:
-            search_input = (
-                ui.input(label="Search by ID, Name, or Email")
-                .props("clearable")
-                .classes("w-full md:w-1/2")
-            )
+            search_input = ui.input(label="Search by ID, Name, or Email").props("clearable").classes("w-full md:w-1/2")
             state_select = (
-                ui.select({}, label="Filter by State", with_input=True)
-                .props("clearable")
-                .classes("w-full md:w-1/2")
+                ui.select({}, label="Filter by State", with_input=True).props("clearable").classes("w-full md:w-1/2")
             )
 
         async def handle_sync_users() -> None:  # pragma: no cover
-            if await handle_entity_sync(
-                ["sync_users"], status_badge, sync_label, "users"
-            ):
+            if await handle_entity_sync(["sync_users"], status_badge, sync_label, "users"):
                 render_table.refresh()
 
         @ui.refreshable
@@ -64,24 +56,14 @@ async def users_page() -> None:
             def normalize_state(value: Optional[str]) -> str:
                 return (value or "").strip().lower()
 
-            state_values = sorted(
-                {
-                    normalize_state(user.state)
-                    for user in users
-                    if normalize_state(user.state)
-                }
-            )
+            state_values = sorted({normalize_state(user.state) for user in users if normalize_state(user.state)})
             state_options = {state: state.title() for state in state_values}
             state_select.set_options(state_options)
             if state_select.value and state_select.value not in state_options:
                 state_select.value = None
             selected_state = state_select.value
             if selected_state:
-                users = [
-                    user
-                    for user in users
-                    if normalize_state(user.state) == selected_state
-                ]
+                users = [user for user in users if normalize_state(user.state) == selected_state]
             if search_query:
                 users = [
                     user

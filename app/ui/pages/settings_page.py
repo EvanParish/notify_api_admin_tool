@@ -36,9 +36,7 @@ async def settings_page() -> None:
 
     async def refresh_service_options() -> None:  # pragma: no cover
         env_value = key_environment.value if key_environment else get_view_environment()
-        options = {
-            svc.id: format_service_label(svc) for svc in await list_services(env_value)
-        }
+        options = {svc.id: format_service_label(svc) for svc in await list_services(env_value)}
         if not key_service:
             return
         key_service.set_options(options)
@@ -63,16 +61,12 @@ async def settings_page() -> None:
             ui.label("API Configuration").classes("text-md font-semibold")
             rows = []
             for env in _st.config.api_hosts:
-                current_url = await get_setting(
-                    f"base_url_{env}"
-                ) or _st.config.api_hosts.get(env)
+                current_url = await get_setting(f"base_url_{env}") or _st.config.api_hosts.get(env)
                 rows.append((env, current_url))
             inputs: Dict[str, ui.input] = {}
             for env, url in rows:
                 inputs[env] = (
-                    ui.input(label=f"{env.title()} Base URL", value=url)
-                    .props("clearable")
-                    .classes("w-full md:w-1/2")
+                    ui.input(label=f"{env.title()} Base URL", value=url).props("clearable").classes("w-full md:w-1/2")
                 )
 
             async def handle_save_urls() -> None:  # pragma: no cover
@@ -84,26 +78,16 @@ async def settings_page() -> None:
             )
 
         with ui.card().classes("p-6 w-full"):
-            ui.label("Global Admin Auth (per environment)").classes(
-                "text-md font-semibold"
-            )
+            ui.label("Global Admin Auth (per environment)").classes("text-md font-semibold")
             auth_inputs: Dict[str, Dict[str, ui.input]] = {}
             for env in _st.config.api_hosts:
-                user_val = (
-                    await get_secure_setting(f"basic_username_{env}", _st.encryption)
-                    or ""
-                )
-                pass_val = (
-                    await get_secure_setting(f"basic_password_{env}", _st.encryption)
-                    or ""
-                )
+                user_val = await get_secure_setting(f"basic_username_{env}", _st.encryption) or ""
+                pass_val = await get_secure_setting(f"basic_password_{env}", _st.encryption) or ""
                 auth_inputs[env] = {
                     "user": ui.input(label=f"{env.title()} Username", value=user_val)
                     .props("clearable")
                     .classes("w-full md:w-1/2"),
-                    "pass": ui.input(
-                        label=f"{env.title()} Password", value=pass_val, password=True
-                    )
+                    "pass": ui.input(label=f"{env.title()} Password", value=pass_val, password=True)
                     .props("clearable")
                     .classes("w-full md:w-1/2"),
                 }
@@ -119,27 +103,16 @@ async def settings_page() -> None:
         with ui.card().classes("p-6 w-full"):
             ui.label("Local API Keys").classes("text-md font-semibold")
             env_options = {env: env.title() for env in _st.config.api_hosts}
-            key_environment = ui.select(
-                env_options, value=_st.state.environment, label="Environment"
-            ).classes("w-full md:w-1/2")
-            service_options = {
-                svc.id: format_service_label(svc)
-                for svc in await list_services(key_environment.value)
-            }
-            key_service = ui.select(
-                service_options, label="Service", with_input=True
-            ).classes("w-full md:w-1/2")
-            key_name = (
-                ui.input(label="Key Name").props("clearable").classes("w-full md:w-1/2")
+            key_environment = ui.select(env_options, value=_st.state.environment, label="Environment").classes(
+                "w-full md:w-1/2"
             )
-            key_secret = (
-                ui.input(label="Key Secret", password=True)
-                .props("clearable")
-                .classes("w-full md:w-1/2")
+            service_options = {svc.id: format_service_label(svc) for svc in await list_services(key_environment.value)}
+            key_service = ui.select(service_options, label="Service", with_input=True).classes("w-full md:w-1/2")
+            key_name = ui.input(label="Key Name").props("clearable").classes("w-full md:w-1/2")
+            key_secret = ui.input(label="Key Secret", password=True).props("clearable").classes("w-full md:w-1/2")
+            key_type = ui.select({"normal": "Normal", "team": "Team", "test": "Test"}, value="normal").classes(
+                "w-full md:w-1/2"
             )
-            key_type = ui.select(
-                {"normal": "Normal", "team": "Team", "test": "Test"}, value="normal"
-            ).classes("w-full md:w-1/2")
 
             async def handle_add_key() -> None:  # pragma: no cover
                 await save_local_key(
@@ -163,35 +136,25 @@ async def settings_page() -> None:
 
         with ui.card().classes("p-6 w-full"):
             ui.label("Clear Cached Data").classes("text-md font-semibold")
-            ui.label(
-                "Remove synced data from the local database by table and environment."
-            ).classes("text-sm text-gray-600")
+            ui.label("Remove synced data from the local database by table and environment.").classes(
+                "text-sm text-gray-600"
+            )
 
-            table_options = {
-                name: name.replace("_", " ").title() for name in CLEARABLE_TABLES
-            }
+            table_options = {name: name.replace("_", " ").title() for name in CLEARABLE_TABLES}
             clear_table_select = (
-                ui.select(table_options, label="Table", value=None)
-                .props("clearable")
-                .classes("w-full md:w-1/3")
+                ui.select(table_options, label="Table", value=None).props("clearable").classes("w-full md:w-1/3")
             )
 
             env_options_with_all = {"": "All Environments"}
-            env_options_with_all.update(
-                {env: env.title() for env in _st.config.api_hosts}
-            )
-            clear_env_select = ui.select(
-                env_options_with_all, label="Environment", value=""
-            ).classes("w-full md:w-1/3")
+            env_options_with_all.update({env: env.title() for env in _st.config.api_hosts})
+            clear_env_select = ui.select(env_options_with_all, label="Environment", value="").classes("w-full md:w-1/3")
 
             with ui.dialog() as confirm_clear_dialog, ui.card().classes("p-6"):
                 ui.label("Confirm Data Deletion").classes("text-md font-semibold")
                 confirm_clear_message = ui.label("")
                 with ui.row().classes("gap-2"):
                     confirm_clear_button = ui.button("Delete Data", color="negative")
-                    ui.button(
-                        "Cancel", on_click=confirm_clear_dialog.close, color="gray"
-                    )
+                    ui.button("Cancel", on_click=confirm_clear_dialog.close, color="gray")
 
             pending_clear: Dict[str, Any] = {}
 
@@ -204,8 +167,7 @@ async def settings_page() -> None:
                 env_label = environment.title() if environment else "all environments"
                 table_label = table_name.replace("_", " ")
                 confirm_clear_message.text = (
-                    f"Are you sure you want to delete all {table_label} data "
-                    f"from {env_label}? This cannot be undone."
+                    f"Are you sure you want to delete all {table_label} data from {env_label}? This cannot be undone."
                 )
                 pending_clear.clear()
                 pending_clear["table"] = table_name
@@ -223,9 +185,7 @@ async def settings_page() -> None:
                     return
                 try:
                     deleted = await clear_table_data(table_name, environment)
-                    env_label = (
-                        environment.title() if environment else "all environments"
-                    )
+                    env_label = environment.title() if environment else "all environments"
                     ui.notify(
                         f"Deleted {deleted} rows from {table_name} ({env_label})",
                         color="green",

@@ -50,9 +50,7 @@ async def communication_items_page() -> None:
             ui.label("Manage Communication Item").classes("text-md font-semibold")
             selected_item_label = ui.label("")
             name_input = ui.input(label="Name").classes("w-full")
-            va_profile_id_input = ui.number(label="VA Profile Item ID", min=1).classes(
-                "w-full"
-            )
+            va_profile_id_input = ui.number(label="VA Profile Item ID", min=1).classes("w-full")
             default_send_checkbox = ui.checkbox("Default Send Indicator")
             with ui.row().classes("gap-2"):
                 update_button = ui.button("Update Item", color="primary")
@@ -88,9 +86,7 @@ async def communication_items_page() -> None:
         async def handle_open_manage_dialog() -> None:  # pragma: no cover
             item = resolve_selected_item()
             if not item:
-                ui.notify(
-                    "Select a communication item from the table first", color="red"
-                )
+                ui.notify("Select a communication item from the table first", color="red")
                 return
             update_manage_fields(item)
             manage_dialog.open()
@@ -106,11 +102,7 @@ async def communication_items_page() -> None:
                 ui.notify("Selected item is missing required details", color="red")
                 return
             name = (name_input.value or "").strip() or None
-            va_profile_id = (
-                int(va_profile_id_input.value)
-                if va_profile_id_input.value is not None
-                else None
-            )
+            va_profile_id = int(va_profile_id_input.value) if va_profile_id_input.value is not None else None
             default_send = default_send_checkbox.value
             if not await ensure_admin_auth(environment, sync_label):
                 return
@@ -195,9 +187,7 @@ async def communication_items_page() -> None:
                 for item in items
             ]
             with ui.row().classes("w-full items-center"):
-                ui.button(
-                    "Sync Communication Items", on_click=handle_sync_communication_items
-                )
+                ui.button("Sync Communication Items", on_click=handle_sync_communication_items)
                 ui.button(
                     "Manage Selected Item",
                     on_click=handle_open_manage_dialog,

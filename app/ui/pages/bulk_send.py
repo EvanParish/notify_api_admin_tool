@@ -32,10 +32,7 @@ async def bulk_send_page() -> None:
     placeholder_pattern = re.compile(r"\(\((.*?)\)\)")
 
     async def refresh_service_options() -> None:  # pragma: no cover
-        options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(_st.state.environment)
-        }
+        options = {svc.id: format_service_label(svc) for svc in await list_services(_st.state.environment)}
         service_select.set_options(options)
         if service_select.value not in options:
             service_select.value = None
@@ -52,56 +49,34 @@ async def bulk_send_page() -> None:
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
-    service_options = {
-        svc.id: format_service_label(svc)
-        for svc in await list_services(_st.state.environment)
-    }
+    service_options = {svc.id: format_service_label(svc) for svc in await list_services(_st.state.environment)}
     env_options = list(_st.config.api_hosts.keys())
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Bulk Send Notification").classes("text-lg font-semibold")
         with ui.element("div").classes(
-            "w-full p-4 rounded-lg bg-yellow-100 dark:bg-yellow-900 "
-            "border border-yellow-400 dark:border-yellow-600"
+            "w-full p-4 rounded-lg bg-yellow-100 dark:bg-yellow-900 border border-yellow-400 dark:border-yellow-600"
         ):
             with ui.row().classes("items-center gap-2"):
-                ui.icon("warning", color="yellow-800").classes(
-                    "text-2xl dark:text-yellow-300"
-                )
+                ui.icon("warning", color="yellow-800").classes("text-2xl dark:text-yellow-300")
                 ui.label(
                     "Warning: This page will send notifications to ALL active users "
                     "in the chosen environment. Use with caution."
                 ).classes("text-yellow-800 dark:text-yellow-200 font-medium")
-        env_select = ui.select(
-            env_options, value=_st.state.environment, label="Environment"
-        ).classes("w-full md:w-1/2")
+        env_select = ui.select(env_options, value=_st.state.environment, label="Environment").classes("w-full md:w-1/2")
         service_select = (
-            ui.select(service_options, label="Service", with_input=True)
-            .props("clearable")
-            .classes("w-full md:w-1/2")
+            ui.select(service_options, label="Service", with_input=True).props("clearable").classes("w-full md:w-1/2")
         )
-        key_select = (
-            ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
-        )
+        key_select = ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
         type_toggle = ui.toggle({"email": "Email", "sms": "SMS"}, value="email")
-        template_select = (
-            ui.select({}, label="Template", with_input=True)
-            .props("clearable")
-            .classes("w-full md:w-1/2")
-        )
+        template_select = ui.select({}, label="Template", with_input=True).props("clearable").classes("w-full md:w-1/2")
         personalisation_area = ui.column().classes("w-full md:w-1/2")
-        response_log = ui.code("", language="json").classes(
-            "w-full bg-gray-50 dark:bg-slate-900"
-        )
+        response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
         progress_label = ui.label("Bulk send progress: idle").classes("text-sm")
-        progress_bar = ui.linear_progress(
-            value=0, show_value=False, color="green"
-        ).classes("w-full")
+        progress_bar = ui.linear_progress(value=0, show_value=False, color="green").classes("w-full")
         personalisation_controls: Dict[str, Any] = {}
 
-        def render_preview_text(
-            content: str, personalisation: Dict[str, str]
-        ) -> str:  # pragma: no cover
+        def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:  # pragma: no cover
             if not content:
                 return ""
 
@@ -113,10 +88,7 @@ async def bulk_send_page() -> None:
             return placeholder_pattern.sub(replace, content)
 
         def build_personalisation() -> Dict[str, str]:  # pragma: no cover
-            return {
-                key: control.value or ""
-                for key, control in personalisation_controls.items()
-            }
+            return {key: control.value or "" for key, control in personalisation_controls.items()}
 
         async def load_keys() -> None:
             selected_service = service_select.value
@@ -126,9 +98,7 @@ async def bulk_send_page() -> None:
         async def load_templates() -> None:
             selected_service = service_select.value
             t_type = type_toggle.value
-            templates = await list_templates(
-                selected_service, t_type, environment=_st.state.environment
-            )
+            templates = await list_templates(selected_service, t_type, environment=_st.state.environment)
             options = {t.id: t.name for t in templates}
             template_select.set_options(options)
             if template_select.value not in options:
@@ -146,15 +116,11 @@ async def bulk_send_page() -> None:
             tmpl = next((t for t in templates if t.id == selected_id), None)
             if not tmpl:
                 return
-            placeholders = extract_placeholders(
-                (tmpl.subject or "") + " " + (tmpl.content or "")
-            )
+            placeholders = extract_placeholders((tmpl.subject or "") + " " + (tmpl.content or ""))
             with personalisation_area:
                 for name in placeholders:
                     personalisation_controls[name] = (
-                        ui.input(label=name, placeholder=name)
-                        .props("clearable")
-                        .classes("w-full md:w-1/2")
+                        ui.input(label=name, placeholder=name).props("clearable").classes("w-full md:w-1/2")
                     )
                     personalisation_controls[name].on_value_change(update_preview)
             await update_preview()
@@ -187,26 +153,18 @@ async def bulk_send_page() -> None:
             selected_key = key_select.value
             selected_template = template_select.value
             t_type = type_toggle.value
-            if not (
-                selected_env and selected_service and selected_key and selected_template
-            ):
-                ui.notify(
-                    "Environment, service, key, and template are required", color="red"
-                )
+            if not (selected_env and selected_service and selected_key and selected_template):
+                ui.notify("Environment, service, key, and template are required", color="red")
                 return
 
             personalisation = build_personalisation()
             missing_key = find_missing_personalisation(personalisation)
             if missing_key:
-                ui.notify(
-                    f"Personalisation field '{missing_key}' is empty", color="red"
-                )
+                ui.notify(f"Personalisation field '{missing_key}' is empty", color="red")
                 return
 
             users = await list_users(selected_env)
-            active_users = [
-                user for user in users if user.state == "active" and not user.blocked
-            ]
+            active_users = [user for user in users if user.state == "active" and not user.blocked]
             if not active_users:
                 ui.notify("No active users found", color="warning")
                 return
@@ -231,9 +189,7 @@ async def bulk_send_page() -> None:
                 semaphore = asyncio.Semaphore(_st.config.max_concurrency)
 
                 async def send_for_user(user, index: int):
-                    recipient = (
-                        user.email_address if t_type == "email" else user.mobile_number
-                    )
+                    recipient = user.email_address if t_type == "email" else user.mobile_number
                     if not recipient:
                         return index, {
                             "user_id": user.id,
@@ -265,10 +221,7 @@ async def bulk_send_page() -> None:
                                 "error": str(exc),
                             }
 
-                tasks = [
-                    asyncio.create_task(send_for_user(user, idx))
-                    for idx, user in enumerate(active_users)
-                ]
+                tasks = [asyncio.create_task(send_for_user(user, idx)) for idx, user in enumerate(active_users)]
                 results: List[Optional[Dict[str, Any]]] = [None] * len(tasks)
                 for task in asyncio.as_completed(tasks):
                     index, result = await task
@@ -284,13 +237,10 @@ async def bulk_send_page() -> None:
                     progress_bar.value = completed / total_users
                     percent = progress_percent()
                     progress_label.text = (
-                        f"Sending {percent}% "
-                        f"(sent {sent_count}, skipped {skipped_count}, errors {error_count})"
+                        f"Sending {percent}% (sent {sent_count}, skipped {skipped_count}, errors {error_count})"
                     )
                 timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-                file_path = os.path.join(
-                    "data", f"bulk_send_responses_{timestamp}.json"
-                )
+                file_path = os.path.join("data", f"bulk_send_responses_{timestamp}.json")
                 final_results = [r for r in results if r is not None]
                 output = {
                     "environment": selected_env,
@@ -319,8 +269,7 @@ async def bulk_send_page() -> None:
                 )
                 progress_bar.value = 1
                 progress_label.text = (
-                    f"Complete: 100% (sent {sent_count}, "
-                    f"skipped {skipped_count}, errors {error_count})"
+                    f"Complete: 100% (sent {sent_count}, skipped {skipped_count}, errors {error_count})"
                 )
                 ui.notify("Bulk send complete", color="green")
             except Exception as exc:
@@ -333,23 +282,14 @@ async def bulk_send_page() -> None:
             selected_service = service_select.value
             selected_key = key_select.value
             selected_template = template_select.value
-            if not (
-                selected_env and selected_service and selected_key and selected_template
-            ):
-                ui.notify(
-                    "Environment, service, key, and template are required", color="red"
-                )
+            if not (selected_env and selected_service and selected_key and selected_template):
+                ui.notify("Environment, service, key, and template are required", color="red")
                 return
             missing_key = find_missing_personalisation(build_personalisation())
             if missing_key:
-                ui.notify(
-                    f"Personalisation field '{missing_key}' is empty", color="red"
-                )
+                ui.notify(f"Personalisation field '{missing_key}' is empty", color="red")
                 return
-            confirm_message.text = (
-                "You are about to send to ALL active users of the platform "
-                f"({selected_env})."
-            )
+            confirm_message.text = f"You are about to send to ALL active users of the platform ({selected_env})."
             confirm_dialog.open()
 
         async def handle_confirm_send() -> None:  # pragma: no cover

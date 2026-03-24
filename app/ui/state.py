@@ -47,9 +47,7 @@ class AppState:
 # Module-level globals (canonical location)
 # ---------------------------------------------------------------------------
 config: AppConfig = load_config()
-encryption: EncryptionManager = EncryptionManager(
-    config.master_key, salt_provider=DbSaltProvider()
-)
+encryption: EncryptionManager = EncryptionManager(config.master_key, salt_provider=DbSaltProvider())
 state: AppState = AppState(environment=next(iter(config.api_hosts.keys()), "dev"))
 service_search_query: str = ""
 _active_api_clients: list[NotificationAPI] = []
@@ -97,9 +95,7 @@ async def build_api_client(env: str) -> NotificationAPI:
         raise RuntimeError(f"Base URL missing for environment {env}")
     basic_user = await get_secure_setting(f"basic_username_{env}", encryption)
     basic_pass = await get_secure_setting(f"basic_password_{env}", encryption)
-    client = HttpNotificationAPI(
-        base_url=base_url, basic_username=basic_user, basic_password=basic_pass
-    )
+    client = HttpNotificationAPI(base_url=base_url, basic_username=basic_user, basic_password=basic_pass)
     _active_api_clients.append(client)
     return client
 
@@ -148,15 +144,9 @@ async def ensure_admin_auth(env: str, sync_label) -> bool:
     missing = await get_missing_credentials(env)
     if missing:
         fields = " and ".join(missing)
-        message = (
-            f"Missing {fields} for {env}. "
-            "Set credentials in Settings > Global Admin Auth."
-        )
+        message = f"Missing {fields} for {env}. Set credentials in Settings > Global Admin Auth."
     else:
-        message = (
-            f"Missing admin auth for {env}. "
-            "Set credentials in Settings > Global Admin Auth."
-        )
+        message = f"Missing admin auth for {env}. Set credentials in Settings > Global Admin Auth."
     sync_label.text = message
     safe_notify(message, color="warning")
     return False

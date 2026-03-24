@@ -67,9 +67,7 @@ async def get_secure_setting(key: str, encryption: EncryptionManager) -> str | N
     return await encryption.decrypt(value)
 
 
-async def set_secure_setting(
-    key: str, value: str, encryption: EncryptionManager
-) -> None:
+async def set_secure_setting(key: str, value: str, encryption: EncryptionManager) -> None:
     encrypted = await encryption.encrypt(value)
     await set_setting(key, encrypted)
 
@@ -162,9 +160,7 @@ async def add_local_key(
 
 async def resolve_local_key(encryption: EncryptionManager, key_id: int) -> str:
     async with get_session() as session:
-        result = await session.execute(
-            select(LocalApiKey).where(LocalApiKey.id == key_id)
-        )
+        result = await session.execute(select(LocalApiKey).where(LocalApiKey.id == key_id))
         record = result.scalar_one()
         return await encryption.decrypt(record.key_secret)
 
@@ -193,13 +189,9 @@ async def update_api_key_expiry(
     environment: str | None = None,
 ) -> bool:
     async with get_session() as session:
-        query = select(ApiKey).where(
-            ApiKey.id == key_id, ApiKey.service_id == service_id
-        )
+        query = select(ApiKey).where(ApiKey.id == key_id, ApiKey.service_id == service_id)
         if environment:
-            query = query.where(
-                or_(ApiKey.environment == environment, ApiKey.environment.is_(None))
-            )
+            query = query.where(or_(ApiKey.environment == environment, ApiKey.environment.is_(None)))
         result = await session.execute(query)
         record = result.scalar_one_or_none()
         if not record:
@@ -209,17 +201,11 @@ async def update_api_key_expiry(
         return True
 
 
-async def mark_api_key_revoked(
-    service_id: str, key_id: str, environment: str | None = None
-) -> bool:
+async def mark_api_key_revoked(service_id: str, key_id: str, environment: str | None = None) -> bool:
     async with get_session() as session:
-        query = select(ApiKey).where(
-            ApiKey.id == key_id, ApiKey.service_id == service_id
-        )
+        query = select(ApiKey).where(ApiKey.id == key_id, ApiKey.service_id == service_id)
         if environment:
-            query = query.where(
-                or_(ApiKey.environment == environment, ApiKey.environment.is_(None))
-            )
+            query = query.where(or_(ApiKey.environment == environment, ApiKey.environment.is_(None)))
         result = await session.execute(query)
         record = result.scalar_one_or_none()
         if not record:
@@ -243,11 +229,7 @@ async def list_sms_senders(
         if env_clause is not None:
             query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
-        return [
-            row
-            for row in rows
-            if not _is_archived(row.id, row.sms_sender, row.description)
-        ]
+        return [row for row in rows if not _is_archived(row.id, row.sms_sender, row.description)]
 
 
 async def update_sms_sender(
@@ -374,11 +356,7 @@ async def list_users(
         if env_clause is not None:
             query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
-        return [
-            row
-            for row in rows
-            if not (row.email_address or "").lower().startswith("_archived")
-        ]
+        return [row for row in rows if not (row.email_address or "").lower().startswith("_archived")]
 
 
 async def list_inbound_numbers(
@@ -488,9 +466,7 @@ async def list_service_environments(service_id: str) -> list[str]:
 async def get_service_by_name(name: str, environment: str) -> Service | None:
     """Return a service by name and environment, or None if not found."""
     async with get_session() as session:
-        query = select(Service).where(
-            Service.name == name, Service.environment == environment
-        )
+        query = select(Service).where(Service.name == name, Service.environment == environment)
         return (await session.execute(query)).scalar_one_or_none()
 
 
@@ -529,17 +505,13 @@ async def upsert_services(raw: list[dict], environment: str) -> None:
         await session.commit()
 
 
-async def upsert_templates(
-    raw: list[dict], environment: str, fallback_service_id: str | None = None
-) -> None:
+async def upsert_templates(raw: list[dict], environment: str, fallback_service_id: str | None = None) -> None:
     async with get_session() as session:
         for tmpl in raw:
             record = Template(
                 id=tmpl.get("id"),
                 environment=environment,
-                service_id=tmpl.get("service")
-                or tmpl.get("service_id")
-                or fallback_service_id,
+                service_id=tmpl.get("service") or tmpl.get("service_id") or fallback_service_id,
                 name=tmpl.get("name", ""),
                 template_type=tmpl.get("type") or tmpl.get("template_type"),
                 content=tmpl.get("content", ""),
@@ -576,9 +548,7 @@ async def upsert_api_keys(raw: list[dict], environment: str, service_id: str) ->
         await session.commit()
 
 
-async def upsert_sms_senders(
-    raw: list[dict], environment: str, fallback_service_id: str
-) -> None:
+async def upsert_sms_senders(raw: list[dict], environment: str, fallback_service_id: str) -> None:
     async with get_session() as session:
         for sender in raw:
             record = SmsSender(

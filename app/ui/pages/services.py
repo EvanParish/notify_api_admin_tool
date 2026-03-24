@@ -39,9 +39,7 @@ async def services_page() -> None:
         await handle_full_sync(status_badge, sync_label)
 
     async def page_sync_services():  # pragma: no cover
-        if await handle_entity_sync(
-            ["sync_services"], status_badge, sync_label, "services"
-        ):
+        if await handle_entity_sync(["sync_services"], status_badge, sync_label, "services"):
             await refresh_if_needed(services_table)
 
     refresh_button.on_click(page_refresh)
@@ -49,11 +47,7 @@ async def services_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Services").classes("text-lg font-semibold")
-        service_search = (
-            ui.input(label="Search by Service ID or Name")
-            .props("clearable")
-            .classes("w-full md:w-1/2")
-        )
+        service_search = ui.input(label="Search by Service ID or Name").props("clearable").classes("w-full md:w-1/2")
         service_search.on_value_change(handle_service_search_event)
         await services_table(page_sync_services)
 

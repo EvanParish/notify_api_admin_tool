@@ -53,9 +53,7 @@ class NotificationAPI:
     ) -> Dict[str, Any]:
         raise NotImplementedError
 
-    async def update_api_key_expiry(
-        self, service_id: str, key_id: str, expiry_date: str
-    ) -> Dict[str, Any]:
+    async def update_api_key_expiry(self, service_id: str, key_id: str, expiry_date: str) -> Dict[str, Any]:
         raise NotImplementedError
 
     async def revoke_api_key(self, service_id: str, key_id: str) -> Dict[str, Any]:
@@ -187,17 +185,13 @@ class HttpNotificationAPI(NotificationAPI):
 
     @http_retry
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
-        resp = await self.client.get(
-            f"{self.base_url}/service/{service_id}/template", auth=self._basic_auth
-        )
+        resp = await self.client.get(f"{self.base_url}/service/{service_id}/template", auth=self._basic_auth)
         resp.raise_for_status()
         return resp.json().get("data", [])
 
     @http_retry
     async def get_api_keys(self, service_id: str) -> List[Dict[str, Any]]:
-        resp = await self.client.get(
-            f"{self.base_url}/service/{service_id}/api-keys", auth=self._basic_auth
-        )
+        resp = await self.client.get(f"{self.base_url}/service/{service_id}/api-keys", auth=self._basic_auth)
         resp.raise_for_status()
         return resp.json().get("apiKeys", [])
 
@@ -221,9 +215,7 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json()
 
     @http_retry
-    async def update_api_key_expiry(
-        self, service_id: str, key_id: str, expiry_date: str
-    ) -> Dict[str, Any]:
+    async def update_api_key_expiry(self, service_id: str, key_id: str, expiry_date: str) -> Dict[str, Any]:
         payload = {"expiry_date": expiry_date}
         resp = await self.client.post(
             f"{self.base_url}/service/{service_id}/api-key/{key_id}",
@@ -244,9 +236,7 @@ class HttpNotificationAPI(NotificationAPI):
 
     @http_retry
     async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
-        resp = await self.client.get(
-            f"{self.base_url}/service/{service_id}/sms-sender", auth=self._basic_auth
-        )
+        resp = await self.client.get(f"{self.base_url}/service/{service_id}/sms-sender", auth=self._basic_auth)
         resp.raise_for_status()
         payload = resp.json()
         if isinstance(payload, list):
@@ -338,9 +328,7 @@ class HttpNotificationAPI(NotificationAPI):
 
     @http_retry
     async def get_provider_details(self) -> List[Dict[str, Any]]:
-        resp = await self.client.get(
-            f"{self.base_url}/provider-details", auth=self._basic_auth
-        )
+        resp = await self.client.get(f"{self.base_url}/provider-details", auth=self._basic_auth)
         resp.raise_for_status()
         payload = resp.json()
         if isinstance(payload, list):
@@ -372,9 +360,7 @@ class HttpNotificationAPI(NotificationAPI):
 
     @http_retry
     async def get_communication_items(self) -> List[Dict[str, Any]]:
-        resp = await self.client.get(
-            f"{self.base_url}/communication-item", auth=self._basic_auth
-        )
+        resp = await self.client.get(f"{self.base_url}/communication-item", auth=self._basic_auth)
         resp.raise_for_status()
         payload = resp.json()
         if isinstance(payload, list):
@@ -406,9 +392,7 @@ class HttpNotificationAPI(NotificationAPI):
 
     @http_retry
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
-        resp = await self.client.get(
-            f"{self.base_url}/inbound-number", auth=self._basic_auth
-        )
+        resp = await self.client.get(f"{self.base_url}/inbound-number", auth=self._basic_auth)
         resp.raise_for_status()
         payload = resp.json()
         if isinstance(payload, list):
@@ -505,18 +489,14 @@ class HttpNotificationAPI(NotificationAPI):
             if sms_sender_id:
                 payload["sms_sender_id"] = sms_sender_id
 
-        resp = await self.client.post(
-            f"{self.base_url}{endpoint}", json=payload, headers=headers
-        )
+        resp = await self.client.post(f"{self.base_url}{endpoint}", json=payload, headers=headers)
         resp.raise_for_status()
         return resp.json()
 
     @http_retry
     async def healthcheck(self) -> bool:
         try:
-            resp = await self.client.get(
-                f"{self.base_url}/_status", auth=self._basic_auth
-            )
+            resp = await self.client.get(f"{self.base_url}/_status", auth=self._basic_auth)
             resp.raise_for_status()
             return True
         except Exception:
@@ -528,9 +508,7 @@ class HttpNotificationAPI(NotificationAPI):
     def _make_jwt(self, service_id: str, secret: str) -> str:
         now = int(time.time())
         payload = {"iss": service_id, "iat": now}
-        token = jwt.encode(
-            payload, secret, algorithm="HS256", headers={"typ": "JWT", "alg": "HS256"}
-        )
+        token = jwt.encode(payload, secret, algorithm="HS256", headers={"typ": "JWT", "alg": "HS256"})
         return token
 
 
@@ -596,9 +574,7 @@ class MockNotificationAPI(NotificationAPI):
         await asyncio.sleep(self._sleep)
         return {"data": "secret_api_key_1234567890abcdef"}
 
-    async def update_api_key_expiry(
-        self, service_id: str, key_id: str, expiry_date: str
-    ) -> Dict[str, Any]:
+    async def update_api_key_expiry(self, service_id: str, key_id: str, expiry_date: str) -> Dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "id": key_id,

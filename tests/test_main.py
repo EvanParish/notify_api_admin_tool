@@ -125,12 +125,8 @@ async def test_build_api_client_http(initialized_db, mock_config, mock_encryptio
     try:
         # Set up required settings
         await set_setting("base_url_development", "http://api.test.com")
-        await set_secure_setting(
-            "basic_username_development", "testuser", mock_encryption
-        )
-        await set_secure_setting(
-            "basic_password_development", "testpass", mock_encryption
-        )
+        await set_secure_setting("basic_username_development", "testuser", mock_encryption)
+        await set_secure_setting("basic_password_development", "testpass", mock_encryption)
 
         api = await _st.build_api_client("development")
         assert isinstance(api, HttpNotificationAPI)
@@ -277,9 +273,7 @@ async def test_handle_full_sync(initialized_db, mock_config):
     mock_sync_label.text = ""
 
     try:
-        result = await sync_handlers.handle_full_sync(
-            mock_status_badge, mock_sync_label
-        )
+        result = await sync_handlers.handle_full_sync(mock_status_badge, mock_sync_label)
 
         # Verify sync messages were set
         assert mock_sync_label.text == "Sync complete"
@@ -359,15 +353,11 @@ async def test_save_local_key_success(initialized_db, mock_encryption):
         # Mock ui.notify and render_local_keys.refresh()
         with (
             patch("app.ui.pages.settings_page.ui.notify"),
-            patch.object(
-                page_settings, "render_local_keys", create=True
-            ) as mock_render,
+            patch.object(page_settings, "render_local_keys", create=True) as mock_render,
         ):
             mock_render.refresh = AsyncMock()
 
-            await page_settings.save_local_key(
-                "dev", "svc-1", "Test Key", "secret123", "normal"
-            )
+            await page_settings.save_local_key("dev", "svc-1", "Test Key", "secret123", "normal")
 
             # Verify key was saved
             keys = await list_local_keys(service_id="svc-1", environment="dev")
@@ -389,16 +379,12 @@ async def test_save_local_key_missing_params(initialized_db, mock_encryption):
         # Mock ui.notify and render_local_keys.refresh()
         with (
             patch("app.ui.pages.settings_page.ui.notify"),
-            patch.object(
-                page_settings, "render_local_keys", create=True
-            ) as mock_render,
+            patch.object(page_settings, "render_local_keys", create=True) as mock_render,
         ):
             mock_render.refresh = AsyncMock()
 
             # Should not raise error, just notify user
-            await page_settings.save_local_key(
-                None, "svc-1", "name", "secret", "normal"
-            )
+            await page_settings.save_local_key(None, "svc-1", "name", "secret", "normal")
             await page_settings.save_local_key("dev", None, "name", "secret", "normal")
             await page_settings.save_local_key("dev", "svc-1", "", "secret", "normal")
             await page_settings.save_local_key("dev", "svc-1", "name", "", "normal")
@@ -437,9 +423,7 @@ def test_app_state_creation():
     assert state.api_status == "unknown"
     assert state.sync_message == ""
 
-    state2 = AppState(
-        environment="prod", api_status="online", sync_message="Syncing..."
-    )
+    state2 = AppState(environment="prod", api_status="online", sync_message="Syncing...")
     assert state2.environment == "prod"
     assert state2.api_status == "online"
     assert state2.sync_message == "Syncing..."
@@ -449,9 +433,7 @@ def test_get_copyable_fields():
     """Test extraction of copy-enabled fields from table rows."""
 
     assert helpers.get_copyable_fields([]) == []
-    assert helpers.get_copyable_fields(
-        [{"id": "svc-1", "name": "Service", "active": True}]
-    ) == [
+    assert helpers.get_copyable_fields([{"id": "svc-1", "name": "Service", "active": True}]) == [
         "id",
         "name",
     ]
@@ -555,9 +537,7 @@ def test_build_shell():
 
         # Verify it returns a tuple
         assert isinstance(result, tuple)
-        assert (
-            len(result) == 5
-        )  # status_badge, sync_label, refresh_button, dark_mode, theme_button
+        assert len(result) == 5  # status_badge, sync_label, refresh_button, dark_mode, theme_button
 
 
 def test_module_level_initialization():
@@ -643,9 +623,7 @@ async def test_handle_full_sync_only_syncs_enabled_envs(initialized_db, mock_con
     mock_sync_label.text = ""
 
     try:
-        result = await sync_handlers.handle_full_sync(
-            mock_status_badge, mock_sync_label
-        )
+        result = await sync_handlers.handle_full_sync(mock_status_badge, mock_sync_label)
 
         # Sync completes for the enabled environment (development)
         assert mock_sync_label.text == "Sync complete"
@@ -687,9 +665,7 @@ async def test_handle_full_sync_dev_only_mode_allows_dev(initialized_db, mock_co
     mock_sync_label.text = ""
 
     try:
-        result = await sync_handlers.handle_full_sync(
-            mock_status_badge, mock_sync_label
-        )
+        result = await sync_handlers.handle_full_sync(mock_status_badge, mock_sync_label)
 
         # Verify sync completed
         assert mock_sync_label.text == "Sync complete"
@@ -731,9 +707,7 @@ async def test_handle_full_sync_multiple_envs_enabled(initialized_db, mock_confi
     mock_sync_label.text = ""
 
     try:
-        result = await sync_handlers.handle_full_sync(
-            mock_status_badge, mock_sync_label
-        )
+        result = await sync_handlers.handle_full_sync(mock_status_badge, mock_sync_label)
 
         # Verify sync completed - may show partial success if not all envs work
         assert "Sync complete" in mock_sync_label.text
@@ -809,9 +783,7 @@ class TestSafeClientDelete:
     def test_keyerror_sets_deleted(self):
         mock_self = MagicMock()
         mock_self.id = "test-id"
-        with patch.object(
-            shell, "_original_client_delete", side_effect=KeyError("already deleted")
-        ):
+        with patch.object(shell, "_original_client_delete", side_effect=KeyError("already deleted")):
             shell._safe_client_delete(mock_self)
             assert mock_self._deleted is True
 
@@ -957,9 +929,7 @@ class TestBuildKeyEmail:
             "id": "key-id-123",
             "expiry_date": "2025-12-31T00:00:00Z",
         }
-        result = email_helpers._build_key_email(
-            "secret-abc", created_key, "dev", "My Service", "svc-1"
-        )
+        result = email_helpers._build_key_email("secret-abc", created_key, "dev", "My Service", "svc-1")
         assert "secret-abc" in result
         assert "my-key" in result
         assert "key-id-123" in result
@@ -976,9 +946,7 @@ class TestBuildEnvSection:
             "id": "key-id-123",
             "expiry_date": "2025-12-31T00:00:00Z",
         }
-        result = email_helpers._build_env_section(
-            "dev", "secret-abc", created_key, "My Service", "svc-1"
-        )
+        result = email_helpers._build_env_section("dev", "secret-abc", created_key, "My Service", "svc-1")
         assert "secret-abc" in result
         assert "my-key" in result
         assert "key-id-123" in result
@@ -1113,33 +1081,23 @@ class TestBuildEnvSectionWithEndpoints:
 
 class TestBuildKeyNameForEnv:
     def test_normal_key(self):
-        result = page_api_key_service._build_key_name_for_env(
-            "dev", "myapp", False, False
-        )
+        result = page_api_key_service._build_key_name_for_env("dev", "myapp", False, False)
         assert result == "dev-myapp-key"
 
     def test_uuid_key(self):
-        result = page_api_key_service._build_key_name_for_env(
-            "staging", "myapp", True, False
-        )
+        result = page_api_key_service._build_key_name_for_env("staging", "myapp", True, False)
         assert result == "staging-myapp-uuid-key"
 
     def test_test_key(self):
-        result = page_api_key_service._build_key_name_for_env(
-            "prod", "myapp", False, True
-        )
+        result = page_api_key_service._build_key_name_for_env("prod", "myapp", False, True)
         assert result == "prod-myapp-test-key"
 
     def test_uuid_test_key(self):
-        result = page_api_key_service._build_key_name_for_env(
-            "dev", "myapp", True, True
-        )
+        result = page_api_key_service._build_key_name_for_env("dev", "myapp", True, True)
         assert result == "dev-myapp-uuid-test-key"
 
     def test_env_alias_normalized(self):
-        result = page_api_key_service._build_key_name_for_env(
-            "development", "myapp", False, False
-        )
+        result = page_api_key_service._build_key_name_for_env("development", "myapp", False, False)
         assert result == "dev-myapp-key"
 
 
@@ -1172,6 +1130,65 @@ class TestTruncateText:
         assert result == "a" * 50 + "..."
 
 
+class TestBuildServiceNameMap:
+    def test_builds_map(self):
+        svc1 = MagicMock()
+        svc1.id = "id-1"
+        svc1.name = "Service One"
+        svc2 = MagicMock()
+        svc2.id = "id-2"
+        svc2.name = "Service Two"
+        result = helpers.build_service_name_map([svc1, svc2])
+        assert result == {"id-1": "Service One", "id-2": "Service Two"}
+
+    def test_empty_list(self):
+        assert helpers.build_service_name_map([]) == {}
+
+
+class TestTruncateServiceName:
+    def test_short_name_unchanged(self):
+        assert helpers.truncate_service_name("Short Name") == "Short Name"
+
+    def test_exact_limit_unchanged(self):
+        name = "a" * 21
+        assert helpers.truncate_service_name(name, 21) == name
+
+    def test_long_name_truncated(self):
+        name = "a" * 25
+        assert helpers.truncate_service_name(name, 21) == "a" * 20 + "\u2026"
+
+    def test_none_returns_empty(self):
+        assert helpers.truncate_service_name(None) == ""
+
+    def test_empty_returns_empty(self):
+        assert helpers.truncate_service_name("") == ""
+
+    def test_custom_limit(self):
+        assert helpers.truncate_service_name("abcdef", 4) == "abc\u2026"
+
+
+class TestResolveServiceName:
+    def test_found_and_short(self):
+        name_map = {"id-1": "Short"}
+        assert helpers.resolve_service_name("id-1", name_map) == "Short"
+
+    def test_found_and_truncated(self):
+        name_map = {"id-1": "A Very Long Service Name Here"}
+        result = helpers.resolve_service_name("id-1", name_map, 21)
+        assert result == "A Very Long Service " + "\u2026"
+        assert len(result) == 21
+
+    def test_not_found_returns_service_id(self):
+        result = helpers.resolve_service_name("unknown-id", {})
+        assert result == "unknown-id"
+
+    def test_none_service_id_returns_empty(self):
+        assert helpers.resolve_service_name(None, {"a": "b"}) == ""
+
+    def test_empty_service_id_returns_empty(self):
+        assert helpers.resolve_service_name("", {"a": "b"}) == ""
+
+
 class TestGetViewEnvironment:
     def test_empty_list_returns_none(self):
         original_state = _st.state
@@ -1200,9 +1217,7 @@ class TestGetViewEnvironment:
 
     def test_multiple_envs_returns_list(self):
         original_state = _st.state
-        _st.state = SharedTestState(
-            environment="dev", view_environments=["dev", "staging"]
-        )
+        _st.state = SharedTestState(environment="dev", view_environments=["dev", "staging"])
         try:
             assert _st.get_view_environment() == ["dev", "staging"]
         finally:
@@ -1268,9 +1283,7 @@ class TestParseFilterDate:
     def test_valid_iso_datetime(self):
         from datetime import date
 
-        assert page_api_keys._parse_filter_date("2025-06-15T12:00:00Z") == date(
-            2025, 6, 15
-        )
+        assert page_api_keys._parse_filter_date("2025-06-15T12:00:00Z") == date(2025, 6, 15)
 
     def test_invalid_date(self):
         assert page_api_keys._parse_filter_date("not-a-date") is None
@@ -1283,38 +1296,23 @@ class TestMatchesExpiryRange:
     def test_no_expiry_with_range_returns_false(self):
         from datetime import date
 
-        assert (
-            page_api_keys._matches_expiry_range(None, date(2025, 1, 1), None) is False
-        )
-        assert (
-            page_api_keys._matches_expiry_range("", None, date(2025, 12, 31)) is False
-        )
+        assert page_api_keys._matches_expiry_range(None, date(2025, 1, 1), None) is False
+        assert page_api_keys._matches_expiry_range("", None, date(2025, 12, 31)) is False
 
     def test_before_start_returns_false(self):
         from datetime import date
 
-        assert (
-            page_api_keys._matches_expiry_range("2025-01-01", date(2025, 6, 1), None)
-            is False
-        )
+        assert page_api_keys._matches_expiry_range("2025-01-01", date(2025, 6, 1), None) is False
 
     def test_after_end_returns_false(self):
         from datetime import date
 
-        assert (
-            page_api_keys._matches_expiry_range("2025-12-31", None, date(2025, 6, 1))
-            is False
-        )
+        assert page_api_keys._matches_expiry_range("2025-12-31", None, date(2025, 6, 1)) is False
 
     def test_within_range_returns_true(self):
         from datetime import date
 
-        assert (
-            page_api_keys._matches_expiry_range(
-                "2025-06-15", date(2025, 1, 1), date(2025, 12, 31)
-            )
-            is True
-        )
+        assert page_api_keys._matches_expiry_range("2025-06-15", date(2025, 1, 1), date(2025, 12, 31)) is True
 
 
 class TestExtractApiKeySecret:
@@ -1331,9 +1329,7 @@ class TestExtractApiKeySecret:
             page_api_keys._extract_api_key_secret({"data": ""})
 
     def test_valid_data(self):
-        assert (
-            page_api_keys._extract_api_key_secret({"data": "my-secret"}) == "my-secret"
-        )
+        assert page_api_keys._extract_api_key_secret({"data": "my-secret"}) == "my-secret"
 
 
 class TestCopyToClipboard:
@@ -1492,9 +1488,7 @@ async def test_shutdown():
     _st._active_api_clients.extend([mock_client1, mock_client2])
 
     try:
-        with patch.object(
-            _st, "dispose_engine", new_callable=AsyncMock
-        ) as mock_dispose:
+        with patch.object(_st, "dispose_engine", new_callable=AsyncMock) as mock_dispose:
             # shutdown is wrapped by @app.on_shutdown and returns None,
             # so replicate its logic directly.
             for c in _st._active_api_clients:
@@ -1662,9 +1656,7 @@ async def test_handle_service_search():
 
     original_query = _st.service_search_query
     try:
-        with patch.object(
-            page_services, "refresh_if_needed", new_callable=AsyncMock
-        ) as mock_refresh:
+        with patch.object(page_services, "refresh_if_needed", new_callable=AsyncMock) as mock_refresh:
             await page_services.handle_service_search("Test Query")
             assert _st.service_search_query == "test query"
             mock_refresh.assert_called_once()
@@ -1689,9 +1681,7 @@ async def test_handle_service_search_event():
 
     mock_event = MagicMock()
     mock_event.value = "hello"
-    with patch.object(
-        page_services, "handle_service_search", new_callable=AsyncMock
-    ) as mock_search:
+    with patch.object(page_services, "handle_service_search", new_callable=AsyncMock) as mock_search:
         await page_services.handle_service_search_event(mock_event)
         mock_search.assert_called_once_with("hello")
 
@@ -1699,9 +1689,7 @@ async def test_handle_service_search_event():
 @pytest.mark.asyncio
 async def test_handle_service_search_event_no_value():
     mock_event = MagicMock(spec=[])
-    with patch.object(
-        page_services, "handle_service_search", new_callable=AsyncMock
-    ) as mock_search:
+    with patch.object(page_services, "handle_service_search", new_callable=AsyncMock) as mock_search:
         await page_services.handle_service_search_event(mock_event)
         mock_search.assert_called_once_with(None)
 
@@ -1732,11 +1720,7 @@ def _make_mock_badges():
 async def test_startup(initialized_db, mock_config):
     from nicegui import app as nicegui_app
 
-    startup_fn = [
-        h
-        for h in nicegui_app._startup_handlers
-        if getattr(h, "__name__", "") == "startup"
-    ][-1]
+    startup_fn = [h for h in nicegui_app._startup_handlers if getattr(h, "__name__", "") == "startup"][-1]
 
     original = _st.config
     _st.config = mock_config
@@ -1751,11 +1735,7 @@ async def test_shutdown_via_handler(initialized_db):
     from nicegui import app as nicegui_app
 
     # app.on_shutdown doesn't return the function; retrieve from handlers
-    shutdown_fn = [
-        h
-        for h in nicegui_app._shutdown_handlers
-        if getattr(h, "__name__", "") == "shutdown"
-    ][-1]
+    shutdown_fn = [h for h in nicegui_app._shutdown_handlers if getattr(h, "__name__", "") == "shutdown"][-1]
 
     mock_client = AsyncMock()
     _st._active_api_clients.append(mock_client)
@@ -1785,9 +1765,7 @@ async def test_refresh_status_badge_auth_missing(initialized_db, mock_config):
     mock_badge.props = MagicMock()
 
     try:
-        with patch.object(
-            _st, "has_admin_auth", new_callable=AsyncMock, return_value=False
-        ):
+        with patch.object(_st, "has_admin_auth", new_callable=AsyncMock, return_value=False):
             await _st.refresh_status_badge(mock_badge)
             assert _st.state.api_status == "auth missing"
             assert mock_badge.text == "API Status: Auth Missing"
@@ -1833,14 +1811,10 @@ async def test_handle_full_sync_auth_missing(initialized_db, mock_config):
 
     try:
         with (
-            patch.object(
-                _st, "ensure_admin_auth", new_callable=AsyncMock, return_value=False
-            ),
+            patch.object(_st, "ensure_admin_auth", new_callable=AsyncMock, return_value=False),
             patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
         ):
-            result = await sync_handlers.handle_full_sync(
-                mock_status_badge, mock_sync_label
-            )
+            result = await sync_handlers.handle_full_sync(mock_status_badge, mock_sync_label)
             assert result is False
     finally:
         _st.config = original_config
@@ -1859,9 +1833,7 @@ async def test_handle_full_sync_unauthorized(initialized_db, mock_config):
     mock_response = MagicMock()
     mock_response.status_code = 401
     mock_response.is_client_error = True
-    exc = httpx.HTTPStatusError(
-        "Unauthorized", request=MagicMock(), response=mock_response
-    )
+    exc = httpx.HTTPStatusError("Unauthorized", request=MagicMock(), response=mock_response)
 
     try:
         with (
@@ -1888,9 +1860,7 @@ async def test_handle_full_sync_unauthorized(initialized_db, mock_config):
 
 
 @pytest.mark.asyncio
-async def test_has_admin_auth_real_with_creds(
-    initialized_db, mock_config, mock_encryption
-):
+async def test_has_admin_auth_real_with_creds(initialized_db, mock_config, mock_encryption):
     from app.repository import set_secure_setting
 
     original_config = _st.config
@@ -1904,12 +1874,8 @@ async def test_has_admin_auth_real_with_creds(
             result = await _st.has_admin_auth("development")
             assert result is False
 
-            await set_secure_setting(
-                "basic_username_development", "user", mock_encryption
-            )
-            await set_secure_setting(
-                "basic_password_development", "pass", mock_encryption
-            )
+            await set_secure_setting("basic_username_development", "user", mock_encryption)
+            await set_secure_setting("basic_password_development", "pass", mock_encryption)
             result = await _st.has_admin_auth("development")
             assert result is True
     finally:
@@ -1931,9 +1897,7 @@ async def test_get_missing_credentials_mock_api(mock_config):
 
 
 @pytest.mark.asyncio
-async def test_get_missing_credentials_real_both_missing(
-    initialized_db, mock_config, mock_encryption
-):
+async def test_get_missing_credentials_real_both_missing(initialized_db, mock_config, mock_encryption):
     """get_missing_credentials returns both fields when both missing."""
     original_config = _st.config
     original_encryption = _st.encryption
@@ -1952,9 +1916,7 @@ async def test_get_missing_credentials_real_both_missing(
 
 
 @pytest.mark.asyncio
-async def test_get_missing_credentials_only_password_missing(
-    initialized_db, mock_config, mock_encryption
-):
+async def test_get_missing_credentials_only_password_missing(initialized_db, mock_config, mock_encryption):
     """get_missing_credentials returns only password when username exists."""
     from app.repository import set_secure_setting
 
@@ -1966,9 +1928,7 @@ async def test_get_missing_credentials_only_password_missing(
 
     try:
         with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": ""}, clear=False):
-            await set_secure_setting(
-                "basic_username_development", "user", mock_encryption
-            )
+            await set_secure_setting("basic_username_development", "user", mock_encryption)
             result = await _st.get_missing_credentials("development")
             assert result == ["password"]
     finally:
@@ -1977,9 +1937,7 @@ async def test_get_missing_credentials_only_password_missing(
 
 
 @pytest.mark.asyncio
-async def test_get_missing_credentials_only_username_missing(
-    initialized_db, mock_config, mock_encryption
-):
+async def test_get_missing_credentials_only_username_missing(initialized_db, mock_config, mock_encryption):
     """get_missing_credentials returns only username when password exists."""
     from app.repository import set_secure_setting
 
@@ -1991,9 +1949,7 @@ async def test_get_missing_credentials_only_username_missing(
 
     try:
         with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": ""}, clear=False):
-            await set_secure_setting(
-                "basic_password_development", "pass", mock_encryption
-            )
+            await set_secure_setting("basic_password_development", "pass", mock_encryption)
             result = await _st.get_missing_credentials("development")
             assert result == ["username"]
     finally:
@@ -2002,9 +1958,7 @@ async def test_get_missing_credentials_only_username_missing(
 
 
 @pytest.mark.asyncio
-async def test_check_environments_credentials_all_configured(
-    initialized_db, mock_config, mock_encryption
-):
+async def test_check_environments_credentials_all_configured(initialized_db, mock_config, mock_encryption):
     """check_environments_credentials returns empty dict when all configured."""
     from app.repository import set_secure_setting
 
@@ -2017,12 +1971,8 @@ async def test_check_environments_credentials_all_configured(
     try:
         with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": ""}, clear=False):
             for env in ["dev", "staging"]:
-                await set_secure_setting(
-                    f"basic_username_{env}", "user", mock_encryption
-                )
-                await set_secure_setting(
-                    f"basic_password_{env}", "pass", mock_encryption
-                )
+                await set_secure_setting(f"basic_username_{env}", "user", mock_encryption)
+                await set_secure_setting(f"basic_password_{env}", "pass", mock_encryption)
 
             result = await _st.check_environments_credentials(["dev", "staging"])
             assert result == {}
@@ -2032,9 +1982,7 @@ async def test_check_environments_credentials_all_configured(
 
 
 @pytest.mark.asyncio
-async def test_check_environments_credentials_some_missing(
-    initialized_db, mock_config, mock_encryption
-):
+async def test_check_environments_credentials_some_missing(initialized_db, mock_config, mock_encryption):
     """check_environments_credentials returns dict with missing fields per env."""
     from app.repository import set_secure_setting
 
@@ -2053,9 +2001,7 @@ async def test_check_environments_credentials_some_missing(
             await set_secure_setting("basic_username_staging", "user", mock_encryption)
             # Prod: nothing configured
 
-            result = await _st.check_environments_credentials(
-                ["dev", "staging", "prod"]
-            )
+            result = await _st.check_environments_credentials(["dev", "staging", "prod"])
             assert "dev" not in result  # Fully configured
             assert result["staging"] == ["password"]
             assert set(result["prod"]) == {"username", "password"}
@@ -2120,38 +2066,18 @@ def _ui_patches(mod_path, _make_mock):
                 MagicMock(),
             ),
         ),
-        "ensure_theme_preference": patch(
-            f"{mod_path}.ensure_theme_preference", new_callable=AsyncMock
-        ),
-        "refresh_status_badge": patch(
-            f"{mod_path}.refresh_status_badge", new_callable=AsyncMock
-        ),
-        "refresh_if_needed": patch(
-            f"{mod_path}.refresh_if_needed", new_callable=AsyncMock
-        ),
+        "ensure_theme_preference": patch(f"{mod_path}.ensure_theme_preference", new_callable=AsyncMock),
+        "refresh_status_badge": patch(f"{mod_path}.refresh_status_badge", new_callable=AsyncMock),
+        "refresh_if_needed": patch(f"{mod_path}.refresh_if_needed", new_callable=AsyncMock),
         "add_copyable_slots": patch(f"{mod_path}.add_copyable_slots"),
-        "handle_full_sync": patch(
-            f"{mod_path}.handle_full_sync", new_callable=AsyncMock
-        ),
-        "handle_entity_sync": patch(
-            f"{mod_path}.handle_entity_sync", new_callable=AsyncMock
-        ),
+        "handle_full_sync": patch(f"{mod_path}.handle_full_sync", new_callable=AsyncMock),
+        "handle_entity_sync": patch(f"{mod_path}.handle_entity_sync", new_callable=AsyncMock),
         "metric_card": patch(f"{mod_path}.metric_card"),
-        "list_services": patch(
-            f"{mod_path}.list_services", new_callable=AsyncMock, return_value=[]
-        ),
-        "list_templates": patch(
-            f"{mod_path}.list_templates", new_callable=AsyncMock, return_value=[]
-        ),
-        "list_api_keys": patch(
-            f"{mod_path}.list_api_keys", new_callable=AsyncMock, return_value=[]
-        ),
-        "list_users": patch(
-            f"{mod_path}.list_users", new_callable=AsyncMock, return_value=[]
-        ),
-        "list_sms_senders": patch(
-            f"{mod_path}.list_sms_senders", new_callable=AsyncMock, return_value=[]
-        ),
+        "list_services": patch(f"{mod_path}.list_services", new_callable=AsyncMock, return_value=[]),
+        "list_templates": patch(f"{mod_path}.list_templates", new_callable=AsyncMock, return_value=[]),
+        "list_api_keys": patch(f"{mod_path}.list_api_keys", new_callable=AsyncMock, return_value=[]),
+        "list_users": patch(f"{mod_path}.list_users", new_callable=AsyncMock, return_value=[]),
+        "list_sms_senders": patch(f"{mod_path}.list_sms_senders", new_callable=AsyncMock, return_value=[]),
         "list_provider_details": patch(
             f"{mod_path}.list_provider_details",
             new_callable=AsyncMock,
@@ -2183,33 +2109,19 @@ def _ui_patches(mod_path, _make_mock):
             return_value=None,
         ),
         "set_setting": patch(f"{mod_path}.set_setting", new_callable=AsyncMock),
-        "set_secure_setting": patch(
-            f"{mod_path}.set_secure_setting", new_callable=AsyncMock
-        ),
+        "set_secure_setting": patch(f"{mod_path}.set_secure_setting", new_callable=AsyncMock),
         "resolve_local_key": patch(
             f"{mod_path}.resolve_local_key",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        "mark_api_key_revoked": patch(
-            f"{mod_path}.mark_api_key_revoked", new_callable=AsyncMock
-        ),
-        "update_api_key_expiry": patch(
-            f"{mod_path}.update_api_key_expiry", new_callable=AsyncMock
-        ),
+        "mark_api_key_revoked": patch(f"{mod_path}.mark_api_key_revoked", new_callable=AsyncMock),
+        "update_api_key_expiry": patch(f"{mod_path}.update_api_key_expiry", new_callable=AsyncMock),
         "add_local_key": patch(f"{mod_path}.add_local_key", new_callable=AsyncMock),
-        "render_local_keys": patch(
-            f"{mod_path}.render_local_keys", new_callable=AsyncMock
-        ),
-        "update_provider_detail": patch(
-            f"{mod_path}.update_provider_detail", new_callable=AsyncMock
-        ),
-        "update_communication_item": patch(
-            f"{mod_path}.update_communication_item", new_callable=AsyncMock
-        ),
-        "clear_table_data": patch(
-            f"{mod_path}.clear_table_data", new_callable=AsyncMock, return_value=0
-        ),
+        "render_local_keys": patch(f"{mod_path}.render_local_keys", new_callable=AsyncMock),
+        "update_provider_detail": patch(f"{mod_path}.update_provider_detail", new_callable=AsyncMock),
+        "update_communication_item": patch(f"{mod_path}.update_communication_item", new_callable=AsyncMock),
+        "clear_table_data": patch(f"{mod_path}.clear_table_data", new_callable=AsyncMock, return_value=0),
         "CLEARABLE_TABLES": patch(f"{mod_path}.CLEARABLE_TABLES", {}),
         "make_sortable": patch(f"{mod_path}.make_sortable"),
     }
@@ -2467,9 +2379,7 @@ async def test_settings_page(initialized_db, mock_config):
     original_encryption = _st.encryption
     _st.config = mock_config
     _st.state = SharedTestState(environment="development")
-    _st.encryption = EncryptionManager(
-        mock_config.master_key, salt_provider=DbSaltProvider()
-    )
+    _st.encryption = EncryptionManager(mock_config.master_key, salt_provider=DbSaltProvider())
     try:
         with mock_page_ui("app.ui.pages.settings_page"):
             await page_settings.settings_page()
@@ -2532,9 +2442,7 @@ async def test_handle_full_sync_reraises_non_401(initialized_db, mock_config):
 
     mock_response = MagicMock()
     mock_response.status_code = 500
-    exc = httpx.HTTPStatusError(
-        "Server Error", request=MagicMock(), response=mock_response
-    )
+    exc = httpx.HTTPStatusError("Server Error", request=MagicMock(), response=mock_response)
 
     try:
         with (

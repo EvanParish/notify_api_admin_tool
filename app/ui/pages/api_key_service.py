@@ -35,9 +35,7 @@ from app.ui.state import (
 from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 
-def _build_key_name_for_env(
-    env: str, prefix: str, uuid_key: bool, test_key: bool
-) -> str:
+def _build_key_name_for_env(env: str, prefix: str, uuid_key: bool, test_key: bool) -> str:
     """Build the key name for a specific environment."""
     env_token = _normalize_email_env(env).lower()
     uuid_part = "uuid-" if uuid_key else ""
@@ -74,27 +72,18 @@ async def api_key_emails_page() -> None:
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("API Key Email Generator").classes("text-lg font-semibold")
-        ui.markdown(
-            "Generate API keys for a service across one or more environments "
-            "and get email-ready content."
-        )
+        ui.markdown("Generate API keys for a service across one or more environments and get email-ready content.")
 
         with ui.card().classes("p-6 w-full"):
             service_select = (
-                ui.select({}, label="Service (by name)", with_input=True)
-                .props("clearable")
-                .classes("w-full md:w-1/2")
+                ui.select({}, label="Service (by name)", with_input=True).props("clearable").classes("w-full md:w-1/2")
             )
             ui.label("Environments").classes("text-sm font-medium mt-4")
             env_checkbox_container = ui.row().classes("gap-4 flex-wrap")
-            env_status_label = ui.label(
-                "Select a service to see available environments"
-            ).classes("text-sm text-gray-500 dark:text-slate-400")
-            key_prefix = (
-                ui.input(label="Key Name Prefix")
-                .props("clearable")
-                .classes("w-full md:w-1/2 mt-4")
+            env_status_label = ui.label("Select a service to see available environments").classes(
+                "text-sm text-gray-500 dark:text-slate-400"
             )
+            key_prefix = ui.input(label="Key Name Prefix").props("clearable").classes("w-full md:w-1/2 mt-4")
             with ui.row().classes("gap-4 items-center"):
                 uuid_checkbox = ui.checkbox("Vets-api (UUID) key", value=False)
                 test_checkbox = ui.checkbox("Test key (non-sending)", value=False)
@@ -106,37 +95,26 @@ async def api_key_emails_page() -> None:
                 },
                 value=EmailTemplate.NEW_SERVICE.value,
             ).props("inline")
-            key_name_preview = ui.label(
-                "Generated key names will appear here."
-            ).classes("text-sm text-gray-600 dark:text-slate-300")
-            key_name_conflict = ui.label("").classes(
-                "text-sm text-red-600 dark:text-red-400"
+            key_name_preview = ui.label("Generated key names will appear here.").classes(
+                "text-sm text-gray-600 dark:text-slate-300"
             )
+            key_name_conflict = ui.label("").classes("text-sm text-red-600 dark:text-red-400")
             key_name_conflict.visible = False
             generate_button = ui.button("Generate API Key Email", color="green")
-            progress_label = ui.label("").classes(
-                "text-sm text-blue-600 dark:text-blue-400"
-            )
+            progress_label = ui.label("").classes("text-sm text-blue-600 dark:text-blue-400")
             progress_label.visible = False
 
         with ui.card().classes("p-6 w-full"):
             ui.label("Generated Email Content").classes("text-md font-semibold")
             ui.label(
-                "This generated email content will NOT be shown again after you leave this page. "
-                "Copy it now."
+                "This generated email content will NOT be shown again after you leave this page. Copy it now."
             ).classes("text-sm text-red-600 dark:text-red-400")
-            output_area = (
-                ui.textarea(label="Email Content").props("readonly").classes("w-full")
-            )
+            output_area = ui.textarea(label="Email Content").props("readonly").classes("w-full")
             copy_button = ui.button("Copy Email Content")
 
     def get_selected_envs() -> list[str]:
         """Get list of selected environments in config order."""
-        return [
-            env
-            for env in _st.config.api_hosts
-            if env in env_checkboxes and env_checkboxes[env].value
-        ]
+        return [env for env in _st.config.api_hosts if env in env_checkboxes and env_checkboxes[env].value]
 
     async def refresh_service_options() -> None:
         """Load services and deduplicate by name."""
@@ -194,18 +172,14 @@ async def api_key_emails_page() -> None:
         if not prefix:
             return {}
         return {
-            env: _build_key_name_for_env(
-                env, prefix, uuid_checkbox.value, test_checkbox.value
-            )
+            env: _build_key_name_for_env(env, prefix, uuid_checkbox.value, test_checkbox.value)
             for env in get_selected_envs()
         }
 
     async def update_key_name_preview() -> None:  # pragma: no cover
         key_names = build_key_names()
         if key_names:
-            names_display = ", ".join(
-                f"{env.title()}: {name}" for env, name in key_names.items()
-            )
+            names_display = ", ".join(f"{env.title()}: {name}" for env, name in key_names.items())
             key_name_preview.text = f"Generated key names: {names_display}"
         else:
             key_name_preview.text = "Generated key names will appear here."
@@ -233,15 +207,11 @@ async def api_key_emails_page() -> None:
             service = await get_service_by_name(service_name, env)
             if not service:
                 continue
-            existing_api_keys = await list_api_keys(
-                service_id=service.id, environment=env
-            )
-            existing_local_keys = await list_local_keys(
-                service_id=service.id, environment=env
-            )
-            if any(
-                k.name == key_name and not k.revoked for k in existing_api_keys
-            ) or any(k.key_name == key_name for k in existing_local_keys):
+            existing_api_keys = await list_api_keys(service_id=service.id, environment=env)
+            existing_local_keys = await list_local_keys(service_id=service.id, environment=env)
+            if any(k.name == key_name and not k.revoked for k in existing_api_keys) or any(
+                k.key_name == key_name for k in existing_local_keys
+            ):
                 conflicts.append(f"{env.title()}: {key_name}")
         return conflicts
 
@@ -288,9 +258,7 @@ async def api_key_emails_page() -> None:
         try:
             for i, env in enumerate(selected_envs, 1):
                 key_name = key_names[env]
-                progress_label.text = (
-                    f"Creating key in {env.title()}... ({i}/{len(selected_envs)})"
-                )
+                progress_label.text = f"Creating key in {env.title()}... ({i}/{len(selected_envs)})"
 
                 # Look up the service ID for this environment by name
                 service = await get_service_by_name(service_name, env)
@@ -304,9 +272,7 @@ async def api_key_emails_page() -> None:
 
                 api = await build_api_client(env)
                 try:
-                    payload = await api.create_api_key(
-                        service.id, key_name, key_type, secret_type
-                    )
+                    payload = await api.create_api_key(service.id, key_name, key_type, secret_type)
                 except (httpx.ConnectError, httpx.ConnectTimeout):
                     failed_envs.append(f"{env} (offline/unreachable)")
                     continue
@@ -351,9 +317,7 @@ async def api_key_emails_page() -> None:
 
             # Get selected template type
             template = EmailTemplate(template_select.value)
-            output_area.value = _build_multi_env_key_email(
-                env_keys, service_name, template=template
-            )
+            output_area.value = _build_multi_env_key_email(env_keys, service_name, template=template)
 
             if failed_envs:
                 ui.notify(

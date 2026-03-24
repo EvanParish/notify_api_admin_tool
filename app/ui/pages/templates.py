@@ -8,11 +8,13 @@ from app.repository import list_services, list_templates
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
+    build_service_name_map,
     format_environment,
     format_service_label,
     make_row_key,
     make_sortable,
     refresh_if_needed,
+    resolve_service_name,
     truncate_text,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
@@ -25,10 +27,7 @@ async def templates_page() -> None:
     template_search_query = ""
 
     async def refresh_service_options() -> None:  # pragma: no cover
-        options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
-        }
+        options = {svc.id: format_service_label(svc) for svc in await list_services(get_view_environment())}
         service_select.set_options(options)
         if service_select.value:
             service_select.value = [v for v in service_select.value if v in options]
@@ -60,15 +59,14 @@ async def templates_page() -> None:
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Templates").classes("text-lg font-semibold")
         template_search = (
-            ui.input(label="Search by Template ID, Name, or Service ID")
+            ui.input(label="Search by Template ID, Name, Service ID, or Service Name")
             .props("clearable")
             .classes("w-full md:w-1/2")
         )
         filter_row = ui.row().classes("gap-2")  # noqa: F841
-        service_options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
-        }
+        _services = await list_services(get_view_environment())
+        service_options = {svc.id: format_service_label(svc) for svc in _services}
+        service_name_map = build_service_name_map(_services)
         type_options = {"email": "Email", "sms": "SMS"}
         service_select = (
             ui.select(service_options, label="Service", with_input=True, multiple=True)
@@ -76,9 +74,7 @@ async def templates_page() -> None:
             .classes("w-full md:w-1/2")
         )
         type_select = (
-            ui.select(type_options, label="Type", with_input=True)
-            .props("clearable")
-            .classes("w-full md:w-1/2")
+            ui.select(type_options, label="Type", with_input=True).props("clearable").classes("w-full md:w-1/2")
         )
 
         async def handle_sync_templates() -> None:  # pragma: no cover
@@ -101,11 +97,12 @@ async def templates_page() -> None:
                     if template_search_query in (row.id or "").lower()
                     or template_search_query in (row.name or "").lower()
                     or template_search_query in (row.service_id or "").lower()
+                    or template_search_query in (service_name_map.get(row.service_id, "")).lower()
                 ]
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},
                 {"name": "environment", "label": "Environment", "field": "environment"},
-                {"name": "service_id", "label": "Service", "field": "service_id"},
+                {"name": "service_id", "label": "Service", "field": "service_name"},
                 {"name": "name", "label": "Name", "field": "name"},
                 {"name": "template_type", "label": "Type", "field": "template_type"},
                 {"name": "version", "label": "Version", "field": "version"},
@@ -121,15 +118,15 @@ async def templates_page() -> None:
                     "id": row.id,
                     "environment": format_environment(row.environment),
                     "service_id": row.service_id,
+                    "service_name": resolve_service_name(row.service_id, service_name_map),
+                    "_full_service_name": service_name_map.get(row.service_id, row.service_id),
                     "name": truncate_text(row.name),
                     "_full_name": row.name,
                     "template_type": row.template_type,
                     "version": row.version,
                     "archived": row.archived,
                     "hidden": row.hidden,
-                    "updated_at": row.updated_at[:10]
-                    if row.updated_at
-                    else None,  # Show date only
+                    "updated_at": row.updated_at[:10] if row.updated_at else None,  # Show date only
                     "subject": truncate_text(row.subject),
                     "content": truncate_text(row.content),
                 }

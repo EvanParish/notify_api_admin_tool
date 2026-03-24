@@ -88,8 +88,7 @@ async def handle_entity_sync(
             fields = " and ".join(missing_fields)
             error_parts.append(f"{env}: {fields}")
         message = (
-            f"Missing credentials for: {', '.join(error_parts)}. "
-            "Update Settings > Global Admin Auth before syncing."
+            f"Missing credentials for: {', '.join(error_parts)}. Update Settings > Global Admin Auth before syncing."
         )
         sync_label.text = message
         _st.safe_notify(message, color="warning")
@@ -97,12 +96,7 @@ async def handle_entity_sync(
 
     sync_label.text = f"Syncing {label} for {len(envs)} environment(s)..."
     results = await asyncio.gather(
-        *[
-            _sync_for_environment(
-                env, method_names, sync_label, pre_sync, method_kwargs
-            )
-            for env in envs
-        ],
+        *[_sync_for_environment(env, method_names, sync_label, pre_sync, method_kwargs) for env in envs],
         return_exceptions=True,
     )
 
@@ -116,11 +110,7 @@ async def handle_entity_sync(
             status_code = None
             if isinstance(result, httpx.HTTPStatusError) and result.response:
                 status_code = result.response.status_code
-            error_msg = (
-                f"[{env}] HTTP {status_code}: {result}"
-                if status_code
-                else f"[{env}] {result}"
-            )
+            error_msg = f"[{env}] HTTP {status_code}: {result}" if status_code else f"[{env}] {result}"
             all_errors.append((env, error_msg))
         elif isinstance(result, SyncResult):
             total_success += result.success_count
@@ -137,9 +127,7 @@ async def handle_entity_sync(
         for env, error_msg in all_errors[:3]:
             _st.safe_notify(error_msg, color="negative")
         if len(all_errors) > 3:
-            _st.safe_notify(
-                f"... and {len(all_errors) - 3} more errors", color="negative"
-            )
+            _st.safe_notify(f"... and {len(all_errors) - 3} more errors", color="negative")
 
     if total_errors > 0:
         sync_label.text = f"Sync complete: {total_success} ok, {total_errors} failed"

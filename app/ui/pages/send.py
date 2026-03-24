@@ -31,10 +31,7 @@ async def send_page() -> None:
     placeholder_pattern = re.compile(r"\(\((.*?)\)\)")
 
     async def refresh_service_options() -> None:  # pragma: no cover
-        options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(_st.state.environment)
-        }
+        options = {svc.id: format_service_label(svc) for svc in await list_services(_st.state.environment)}
         service_select.set_options(options)
         if service_select.value not in options:
             service_select.value = None
@@ -51,35 +48,20 @@ async def send_page() -> None:
     refresh_button.on_click(page_refresh)
     await refresh_status_badge(status_badge)
 
-    service_options = {
-        svc.id: format_service_label(svc)
-        for svc in await list_services(_st.state.environment)
-    }
+    service_options = {svc.id: format_service_label(svc) for svc in await list_services(_st.state.environment)}
     env_options = list(_st.config.api_hosts.keys())
 
     with ui.column().classes("p-8 gap-6 w-full max-w-none"):
         ui.label("Send Notification").classes("text-lg font-semibold")
-        env_select = ui.select(
-            env_options, value=_st.state.environment, label="Environment"
-        ).classes("w-full md:w-1/2")
+        env_select = ui.select(env_options, value=_st.state.environment, label="Environment").classes("w-full md:w-1/2")
         service_select = (
-            ui.select(service_options, label="Service", with_input=True)
-            .props("clearable")
-            .classes("w-full md:w-1/2")
+            ui.select(service_options, label="Service", with_input=True).props("clearable").classes("w-full md:w-1/2")
         )
-        key_select = (
-            ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
-        )
+        key_select = ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
         type_toggle = ui.toggle({"email": "Email", "sms": "SMS"}, value="email")
-        template_select = (
-            ui.select({}, label="Template", with_input=True)
-            .props("clearable")
-            .classes("w-full md:w-1/2")
-        )
+        template_select = ui.select({}, label="Template", with_input=True).props("clearable").classes("w-full md:w-1/2")
         sms_sender_select = (
-            ui.select({}, label="SMS Sender (optional)", with_input=True)
-            .props("clearable")
-            .classes("w-full md:w-1/2")
+            ui.select({}, label="SMS Sender (optional)", with_input=True).props("clearable").classes("w-full md:w-1/2")
         )
         sms_sender_select.set_visibility(False)
         recipient_input = (
@@ -91,14 +73,10 @@ async def send_page() -> None:
             .classes("w-full md:w-1/2")
         )
         personalisation_area = ui.column().classes("w-full md:w-1/2")
-        response_log = ui.code("", language="json").classes(
-            "w-full bg-gray-50 dark:bg-slate-900"
-        )
+        response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
         personalisation_controls: Dict[str, Any] = {}
 
-        def render_preview_text(
-            content: str, personalisation: Dict[str, str]
-        ) -> str:  # pragma: no cover
+        def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:  # pragma: no cover
             if not content:
                 return ""
 
@@ -110,10 +88,7 @@ async def send_page() -> None:
             return placeholder_pattern.sub(replace, content)
 
         def build_personalisation() -> Dict[str, str]:  # pragma: no cover
-            return {
-                key: control.value or ""
-                for key, control in personalisation_controls.items()
-            }
+            return {key: control.value or "" for key, control in personalisation_controls.items()}
 
         async def load_keys() -> None:
             selected_service = service_select.value
@@ -123,9 +98,7 @@ async def send_page() -> None:
         async def load_templates() -> None:
             selected_service = service_select.value
             t_type = type_toggle.value
-            templates = await list_templates(
-                selected_service, t_type, environment=_st.state.environment
-            )
+            templates = await list_templates(selected_service, t_type, environment=_st.state.environment)
             options = {t.id: t.name for t in templates}
             template_select.set_options(options)
             if template_select.value not in options:
@@ -135,13 +108,8 @@ async def send_page() -> None:
             selected_service = service_select.value
             t_type = type_toggle.value
             if t_type == "sms" and selected_service:
-                senders = await list_sms_senders(
-                    selected_service, environment=_st.state.environment
-                )
-                options = {
-                    s.id: f"{s.sms_sender}{' (default)' if s.is_default else ''}"
-                    for s in senders
-                }
+                senders = await list_sms_senders(selected_service, environment=_st.state.environment)
+                options = {s.id: f"{s.sms_sender}{' (default)' if s.is_default else ''}" for s in senders}
                 sms_sender_select.set_options(options)
                 sms_sender_select.set_visibility(True)
             else:
@@ -161,15 +129,11 @@ async def send_page() -> None:
             tmpl = next((t for t in templates if t.id == selected_id), None)
             if not tmpl:
                 return
-            placeholders = extract_placeholders(
-                (tmpl.subject or "") + " " + (tmpl.content or "")
-            )
+            placeholders = extract_placeholders((tmpl.subject or "") + " " + (tmpl.content or ""))
             with personalisation_area:
                 for name in placeholders:
                     personalisation_controls[name] = (
-                        ui.input(label=name, placeholder=name)
-                        .props("clearable")
-                        .classes("w-full md:w-1/2")
+                        ui.input(label=name, placeholder=name).props("clearable").classes("w-full md:w-1/2")
                     )
                     personalisation_controls[name].on_value_change(update_preview)
             await update_preview()
@@ -204,22 +168,14 @@ async def send_page() -> None:
             selected_sms_sender = sms_sender_select.value
             t_type = type_toggle.value
             recipient_value = recipient_input.value or ""
-            if not (
-                selected_env and selected_service and selected_key and selected_template
-            ):
-                ui.notify(
-                    "Environment, service, key, and template are required", color="red"
-                )
+            if not (selected_env and selected_service and selected_key and selected_template):
+                ui.notify("Environment, service, key, and template are required", color="red")
                 return
             recipients = parse_recipients(recipient_value)
             if not recipients:
                 ui.notify("At least one recipient is required", color="red")
                 return
-            invalid_recipients = [
-                recipient
-                for recipient in recipients
-                if not validate_recipient(t_type, recipient)
-            ]
+            invalid_recipients = [recipient for recipient in recipients if not validate_recipient(t_type, recipient)]
             if invalid_recipients:
                 sample = ", ".join(invalid_recipients[:3])
                 suffix = "..." if len(invalid_recipients) > 3 else ""
@@ -229,9 +185,7 @@ async def send_page() -> None:
             personalisation = build_personalisation()
             missing_key = find_missing_personalisation(personalisation)
             if missing_key:
-                ui.notify(
-                    f"Personalisation field '{missing_key}' is empty", color="red"
-                )
+                ui.notify(f"Personalisation field '{missing_key}' is empty", color="red")
                 return
 
             try:
@@ -249,9 +203,7 @@ async def send_page() -> None:
                                 api_key=api_key_secret,
                                 service_id=selected_service,
                                 template_type=t_type,
-                                sms_sender_id=selected_sms_sender
-                                if t_type == "sms"
-                                else None,
+                                sms_sender_id=selected_sms_sender if t_type == "sms" else None,
                             )
                             return index, {
                                 "recipient": recipient,
@@ -266,8 +218,7 @@ async def send_page() -> None:
                             }
 
                 tasks = [
-                    asyncio.create_task(send_to_recipient(recipient, idx))
-                    for idx, recipient in enumerate(recipients)
+                    asyncio.create_task(send_to_recipient(recipient, idx)) for idx, recipient in enumerate(recipients)
                 ]
                 results: List[Optional[Dict[str, Any]]] = [None] * len(tasks)
                 sent_count = 0

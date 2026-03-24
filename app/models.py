@@ -21,9 +21,7 @@ class Service(Base):
     __tablename__ = "services"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[str] = mapped_column(
-        String, primary_key=True, default="unknown", index=True
-    )
+    environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
     name: Mapped[str] = mapped_column(String, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     restricted: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -35,9 +33,7 @@ class Service(Base):
     count_as_live: Mapped[bool] = mapped_column(Boolean, default=True)
     prefix_sms: Mapped[bool] = mapped_column(Boolean, default=False)
     email_from: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    permissions: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True
-    )  # JSON array as text
+    permissions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array as text
     organisation_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     crown: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     go_live_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -59,9 +55,7 @@ class Template(Base):
     environment: Mapped[str] = mapped_column(String, default="unknown", index=True)
     service_id: Mapped[str] = mapped_column(String)
     name: Mapped[str] = mapped_column(String)
-    template_type: Mapped[str] = mapped_column(
-        Enum("email", "sms", name="template_type")
-    )
+    template_type: Mapped[str] = mapped_column(Enum("email", "sms", name="template_type"))
     content: Mapped[str] = mapped_column(Text)
     subject: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -88,9 +82,7 @@ class ApiKey(Base):
     __tablename__ = "api_keys"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True, index=True
-    )
+    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     service_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String)
     key_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -105,9 +97,7 @@ class SmsSender(Base):
     __tablename__ = "sms_senders"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True, index=True
-    )
+    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     service_id: Mapped[str] = mapped_column(ForeignKey("services.id"))
     sms_sender: Mapped[str] = mapped_column(String)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -127,9 +117,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[str] = mapped_column(
-        String, primary_key=True, default="unknown", index=True
-    )
+    environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
     email_address: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     state: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -141,9 +129,7 @@ class User(Base):
     logged_in_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     password_changed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     current_session_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    identity_provider_user_id: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )
+    identity_provider_user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     additional_information: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     permissions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     services: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
@@ -154,22 +140,16 @@ class ProviderDetail(Base):
     __tablename__ = "provider_details"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[str] = mapped_column(
-        String, primary_key=True, default="unknown", index=True
-    )
+    environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    current_month_billable_sms: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
+    current_month_billable_sms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     display_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     identifier: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     load_balancing_weight: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     notification_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    supports_international: Mapped[Optional[bool]] = mapped_column(
-        Boolean, nullable=True
-    )
+    supports_international: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
@@ -177,9 +157,7 @@ class CommunicationItem(Base):
     __tablename__ = "communication_items"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[str] = mapped_column(
-        String, primary_key=True, default="unknown", index=True
-    )
+    environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
     name: Mapped[str] = mapped_column(String)
     va_profile_item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     default_send_indicator: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -189,9 +167,7 @@ class InboundNumber(Base):
     __tablename__ = "inbound_numbers"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[str] = mapped_column(
-        String, primary_key=True, default="unknown", index=True
-    )
+    environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
     number: Mapped[str] = mapped_column(String)
     provider: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -207,14 +183,10 @@ class LocalApiKey(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     service_id: Mapped[str] = mapped_column(String)
-    environment: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True, index=True
-    )
+    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
     key_name: Mapped[str] = mapped_column(String)
     key_secret: Mapped[str] = mapped_column(Text)
-    key_type: Mapped[str] = mapped_column(
-        Enum("normal", "team", "test", name="key_type")
-    )
+    key_type: Mapped[str] = mapped_column(Enum("normal", "team", "test", name="key_type"))
 
 
 class Setting(Base):

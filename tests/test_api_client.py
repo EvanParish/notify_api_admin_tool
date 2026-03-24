@@ -241,9 +241,7 @@ async def test_http_api_get_templates():
     with patch.object(api.client, "get", return_value=mock_response) as mock_get:
         templates = await api.get_templates("svc-1")
 
-        mock_get.assert_called_once_with(
-            "https://api.example.com/service/svc-1/template", auth=None
-        )
+        mock_get.assert_called_once_with("https://api.example.com/service/svc-1/template", auth=None)
         assert len(templates) == 1
 
 
@@ -258,9 +256,7 @@ async def test_http_api_get_api_keys():
     with patch.object(api.client, "get", return_value=mock_response) as mock_get:
         keys = await api.get_api_keys("svc-1")
 
-        mock_get.assert_called_once_with(
-            "https://api.example.com/service/svc-1/api-keys", auth=None
-        )
+        mock_get.assert_called_once_with("https://api.example.com/service/svc-1/api-keys", auth=None)
         assert len(keys) == 1
 
 
@@ -828,9 +824,7 @@ async def test_http_api_update_sms_sender():
         assert result["id"] == "sms-1"
         assert mock_post.called
         call_args = mock_post.call_args
-        assert (
-            call_args[0][0] == "https://api.example.com/service/svc-1/sms-sender/sms-1"
-        )
+        assert call_args[0][0] == "https://api.example.com/service/svc-1/sms-sender/sms-1"
         payload = call_args[1]["json"]
         assert payload["sms_sender"] == "+15551111111"
         assert payload["description"] == "Updated"
@@ -1017,9 +1011,7 @@ async def test_http_api_get_inbound_numbers_data_key():
 async def test_http_api_create_inbound_number():
     api = HttpNotificationAPI("https://api.example.com")
     mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "data": {"id": "inbound-new", "number": "+12025551212"}
-    }
+    mock_response.json.return_value = {"data": {"id": "inbound-new", "number": "+12025551212"}}
     mock_response.raise_for_status = MagicMock()
 
     with patch.object(api.client, "post", return_value=mock_response) as mock_post:
@@ -1066,9 +1058,7 @@ async def test_http_api_create_inbound_number_minimal():
 async def test_http_api_update_inbound_number():
     api = HttpNotificationAPI("https://api.example.com")
     mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "data": {"id": "inbound-1", "number": "+12025559999"}
-    }
+    mock_response.json.return_value = {"data": {"id": "inbound-1", "number": "+12025559999"}}
     mock_response.raise_for_status = MagicMock()
 
     with patch.object(api.client, "post", return_value=mock_response) as mock_post:
@@ -1244,9 +1234,7 @@ async def test_http_api_no_retry_on_http_error():
         mock_request = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 500
-        raise httpx.HTTPStatusError(
-            "Server Error", request=mock_request, response=mock_response
-        )
+        raise httpx.HTTPStatusError("Server Error", request=mock_request, response=mock_response)
 
     with patch.object(api.client, "get", side_effect=raise_http_error):
         with pytest.raises(httpx.HTTPStatusError):

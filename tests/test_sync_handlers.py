@@ -50,9 +50,7 @@ async def test_handle_entity_sync_success(initialized_db, mock_config):
 
     try:
         with patch.object(_st, "refresh_status_badge", new_callable=AsyncMock):
-            result = await handle_entity_sync(
-                ["sync_services"], badge, label, "services"
-            )
+            result = await handle_entity_sync(["sync_services"], badge, label, "services")
             assert result is True
             assert label.text == "Sync complete"
     finally:
@@ -77,9 +75,7 @@ async def test_handle_entity_sync_no_envs_enabled(initialized_db, mock_config):
 
 
 @pytest.mark.asyncio
-async def test_handle_entity_sync_pre_validation_missing_credentials(
-    initialized_db, mock_config
-):
+async def test_handle_entity_sync_pre_validation_missing_credentials(initialized_db, mock_config):
     """Returns False and shows missing credentials before starting sync."""
 
     original_config, original_state = _st.config, _st.state
@@ -102,9 +98,7 @@ async def test_handle_entity_sync_pre_validation_missing_credentials(
             patch.object(_st, "build_api_client", new_callable=AsyncMock) as mock_build,
             patch.object(_st, "safe_notify") as mock_notify,
         ):
-            result = await handle_entity_sync(
-                ["sync_services"], badge, label, "services"
-            )
+            result = await handle_entity_sync(["sync_services"], badge, label, "services")
             assert result is False
             mock_build.assert_not_called()
             # Label should show what's missing
@@ -140,9 +134,7 @@ async def test_handle_entity_sync_auth_missing(initialized_db, mock_config):
             patch.object(_st, "build_api_client", new_callable=AsyncMock) as mock_build,
             patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
         ):
-            result = await handle_entity_sync(
-                ["sync_services"], badge, label, "services"
-            )
+            result = await handle_entity_sync(["sync_services"], badge, label, "services")
             # Returns False because all envs failed auth
             assert result is False
             mock_build.assert_not_called()
@@ -163,9 +155,7 @@ async def test_handle_entity_sync_unauthorized(initialized_db, mock_config):
     mock_response = MagicMock()
     mock_response.status_code = 401
     mock_response.is_client_error = True
-    exc = httpx.HTTPStatusError(
-        "Unauthorized", request=MagicMock(), response=mock_response
-    )
+    exc = httpx.HTTPStatusError("Unauthorized", request=MagicMock(), response=mock_response)
 
     try:
         with (
@@ -177,9 +167,7 @@ async def test_handle_entity_sync_unauthorized(initialized_db, mock_config):
                 return_value=MagicMock(sync_services=AsyncMock(side_effect=exc)),
             ),
         ):
-            result = await handle_entity_sync(
-                ["sync_services"], badge, label, "services"
-            )
+            result = await handle_entity_sync(["sync_services"], badge, label, "services")
             assert result is False
             assert "failed" in label.text
     finally:
@@ -198,9 +186,7 @@ async def test_handle_entity_sync_reraises_non_401(initialized_db, mock_config):
 
     mock_response = MagicMock()
     mock_response.status_code = 500
-    exc = httpx.HTTPStatusError(
-        "Server Error", request=MagicMock(), response=mock_response
-    )
+    exc = httpx.HTTPStatusError("Server Error", request=MagicMock(), response=mock_response)
 
     try:
         with (
@@ -324,9 +310,7 @@ async def test_handle_entity_sync_multiple_envs(initialized_db, mock_config):
             patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
             patch("app.ui.sync_handlers.SyncManager", side_effect=make_manager),
         ):
-            result = await handle_entity_sync(
-                ["sync_services"], badge, label, "services"
-            )
+            result = await handle_entity_sync(["sync_services"], badge, label, "services")
             assert result is True
             assert set(synced_envs) == {"dev", "staging"}
     finally:
@@ -362,9 +346,7 @@ async def test_handle_entity_sync_explicit_environments(initialized_db, mock_con
             patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
             patch("app.ui.sync_handlers.SyncManager", side_effect=make_manager),
         ):
-            result = await handle_entity_sync(
-                ["sync_services"], badge, label, "services", environments=["prod"]
-            )
+            result = await handle_entity_sync(["sync_services"], badge, label, "services", environments=["prod"])
             assert result is True
             # Should only sync prod, not dev/staging
             assert synced_envs == ["prod"]
@@ -373,9 +355,7 @@ async def test_handle_entity_sync_explicit_environments(initialized_db, mock_con
 
 
 @pytest.mark.asyncio
-async def test_handle_entity_sync_displays_errors_with_status_codes(
-    initialized_db, mock_config
-):
+async def test_handle_entity_sync_displays_errors_with_status_codes(initialized_db, mock_config):
     """Errors are displayed via notifications with HTTP status codes."""
     from app.sync import SyncResult, SyncError
 
@@ -412,9 +392,7 @@ async def test_handle_entity_sync_displays_errors_with_status_codes(
             ),
             patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
         ):
-            result = await handle_entity_sync(
-                ["sync_sms_senders"], badge, label, "sms_senders"
-            )
+            result = await handle_entity_sync(["sync_sms_senders"], badge, label, "sms_senders")
             assert result is False
             assert "failed" in label.text
             # Check that notification includes status code
@@ -428,9 +406,7 @@ async def test_handle_entity_sync_displays_errors_with_status_codes(
 
 
 @pytest.mark.asyncio
-async def test_handle_entity_sync_limits_error_notifications(
-    initialized_db, mock_config
-):
+async def test_handle_entity_sync_limits_error_notifications(initialized_db, mock_config):
     """Only first 3 errors are shown as notifications, plus a summary."""
     from app.sync import SyncResult, SyncError
 

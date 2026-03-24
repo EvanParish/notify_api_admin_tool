@@ -50,9 +50,7 @@ async def provider_details_page() -> None:
             ui.label("Manage Provider").classes("text-md font-semibold")
             selected_provider_label = ui.label("")
             priority_input = ui.number(label="Priority", min=0).classes("w-full")
-            weight_input = ui.number(label="Load Balancing Weight", min=0).classes(
-                "w-full"
-            )
+            weight_input = ui.number(label="Load Balancing Weight", min=0).classes("w-full")
             active_checkbox = ui.checkbox("Active")
             with ui.row().classes("gap-2"):
                 update_button = ui.button("Update Provider", color="primary")
@@ -81,9 +79,7 @@ async def provider_details_page() -> None:
             provider_id = provider.get("id")
             display_name = provider.get("name") or provider.get("display_name") or ""
             identifier = provider.get("identifier") or ""
-            selected_provider_label.text = (
-                f"Selected: {display_name} ({identifier}) - ID {provider_id}"
-            )
+            selected_provider_label.text = f"Selected: {display_name} ({identifier}) - ID {provider_id}"
             priority_input.value = provider.get("priority")
             weight_input.value = provider.get("load_balancing_weight")
             active_checkbox.value = bool(provider.get("active"))
@@ -106,9 +102,7 @@ async def provider_details_page() -> None:
             if not (environment and provider_id):
                 ui.notify("Selected provider is missing required details", color="red")
                 return
-            priority = (
-                int(priority_input.value) if priority_input.value is not None else None
-            )
+            priority = int(priority_input.value) if priority_input.value is not None else None
             weight = int(weight_input.value) if weight_input.value is not None else None
             active = active_checkbox.value
             if not await ensure_admin_auth(environment, sync_label):
@@ -151,9 +145,7 @@ async def provider_details_page() -> None:
         update_button.on_click(handle_update_provider)
 
         async def handle_sync_provider_details() -> None:  # pragma: no cover
-            if await handle_entity_sync(
-                ["sync_provider_details"], status_badge, sync_label, "provider details"
-            ):
+            if await handle_entity_sync(["sync_provider_details"], status_badge, sync_label, "provider details"):
                 render_table.refresh()
 
         @ui.refreshable
@@ -215,9 +207,7 @@ async def provider_details_page() -> None:
                 for provider in providers
             ]
             with ui.row().classes("w-full items-center"):
-                ui.button(
-                    "Sync Provider Details", on_click=handle_sync_provider_details
-                )
+                ui.button("Sync Provider Details", on_click=handle_sync_provider_details)
                 ui.button(
                     "Manage Selected Provider",
                     on_click=handle_open_manage_dialog,

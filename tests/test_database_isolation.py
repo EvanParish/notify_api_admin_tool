@@ -19,9 +19,7 @@ def test_database_isolation_check(isolate_database):
         )
 
         # Should not be using the app's database path
-        assert "data/app.db" not in db_url, (
-            "Tests should not use the application database"
-        )
+        assert "data/app.db" not in db_url, "Tests should not use the application database"
 
 
 def test_app_database_not_created_by_tests():
@@ -52,9 +50,7 @@ async def test_multiple_tests_use_different_databases(initialized_db):
 
     # Add a service
     async with get_session() as session:
-        session.add(
-            Service(id="test-svc", name="Test Service", active=True, restricted=False)
-        )
+        session.add(Service(id="test-svc", name="Test Service", active=True, restricted=False))
         await session.commit()
 
     # Verify it exists

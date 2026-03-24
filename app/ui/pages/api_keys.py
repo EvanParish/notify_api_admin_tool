@@ -17,11 +17,13 @@ from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
+    build_service_name_map,
     format_environment,
     format_service_label,
     make_row_key,
     make_sortable,
     refresh_if_needed,
+    resolve_service_name,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
@@ -43,9 +45,7 @@ def _parse_filter_date(value: Optional[str]) -> Optional[date]:
         return None
 
 
-def _matches_expiry_range(
-    expiry_value: Optional[str], start_date: Optional[date], end_date: Optional[date]
-) -> bool:
+def _matches_expiry_range(expiry_value: Optional[str], start_date: Optional[date], end_date: Optional[date]) -> bool:
     if not start_date and not end_date:
         return True
     expiry_date = _parse_filter_date(expiry_value)
@@ -70,10 +70,7 @@ def _extract_api_key_secret(payload: Dict[str, Any]) -> str:
 @ui.page("/api-keys")
 async def api_keys_page() -> None:
     async def refresh_service_options() -> None:  # pragma: no cover
-        options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
-        }
+        options = {svc.id: format_service_label(svc) for svc in await list_services(get_view_environment())}
         service_select.set_options(options)
         if service_select.value:
             service_select.value = [v for v in service_select.value if v in options]
@@ -95,9 +92,7 @@ async def api_keys_page() -> None:
         service_ids: list[str] | None = None,
     ):  # pragma: no cover
         envs = [environment] if environment else None
-        method_kwargs = (
-            {"sync_api_keys": {"service_ids": service_ids}} if service_ids else None
-        )
+        method_kwargs = {"sync_api_keys": {"service_ids": service_ids}} if service_ids else None
         await handle_entity_sync(
             ["sync_api_keys"],
             status_badge,
@@ -122,13 +117,9 @@ async def api_keys_page() -> None:
                 label="Environment",
             ).classes("w-full md:w-1/2")
             create_service = (
-                ui.select({}, label="Service", with_input=True)
-                .props("clearable")
-                .classes("w-full md:w-1/2")
+                ui.select({}, label="Service", with_input=True).props("clearable").classes("w-full md:w-1/2")
             )
-            create_name = (
-                ui.input(label="Key Name").props("clearable").classes("w-full md:w-1/2")
-            )
+            create_name = ui.input(label="Key Name").props("clearable").classes("w-full md:w-1/2")
             create_type = ui.select(
                 {"normal": "Normal", "team": "Team", "test": "Test"},
                 value="normal",
@@ -139,10 +130,7 @@ async def api_keys_page() -> None:
                 ui.button("Cancel", on_click=create_dialog.close, color="gray")
 
         async def refresh_create_service_options() -> None:  # pragma: no cover
-            options = {
-                svc.id: format_service_label(svc)
-                for svc in await list_services(create_env.value)
-            }
+            options = {svc.id: format_service_label(svc) for svc in await list_services(create_env.value)}
             create_service.set_options(options)
             if create_service.value not in options:
                 create_service.value = None
@@ -178,9 +166,7 @@ async def api_keys_page() -> None:
                 return
             data = payload.get("data") if isinstance(payload, dict) else None
             stored_name = name
-            stored_type = (
-                data.get("key_type") if isinstance(data, dict) else None
-            ) or key_type
+            stored_type = (data.get("key_type") if isinstance(data, dict) else None) or key_type
             await add_local_key(
                 _st.encryption,
                 service_id,
@@ -245,9 +231,7 @@ async def api_keys_page() -> None:
             key_id = key.get("id")
             key_name = key.get("name") or ""
             service_id = key.get("service_id") or ""
-            selected_key_label.text = (
-                f"Selected: {key_name} ({key_id}) - Service {service_id}"
-            )
+            selected_key_label.text = f"Selected: {key_name} ({key_id}) - Service {service_id}"
             expiry_value = key.get("expiry_date") or ""
             expiry_input.value = expiry_value.split("T", 1)[0] if expiry_value else ""
 
@@ -365,14 +349,13 @@ async def api_keys_page() -> None:
         confirm_revoke_button.on_click(handle_confirm_revoke)
 
         search_input = (
-            ui.input(label="Search by ID, Service ID, or Name")
+            ui.input(label="Search by ID, Service ID, Service Name, or Name")
             .props("clearable")
             .classes("w-full md:w-1/2")
         )
-        service_options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
-        }
+        _services = await list_services(get_view_environment())
+        service_options = {svc.id: format_service_label(svc) for svc in _services}
+        service_name_map = build_service_name_map(_services)
         service_select = (
             ui.select(
                 service_options,
@@ -399,13 +382,11 @@ async def api_keys_page() -> None:
             start_date = _parse_filter_date(expires_from.value)
             end_date = _parse_filter_date(expires_to.value)
             search_term = (search_input.value or "").strip().lower()
-            keys = await list_api_keys(
-                selected_services or None, environment=get_view_environment()
-            )
+            keys = await list_api_keys(selected_services or None, environment=get_view_environment())
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},
                 {"name": "environment", "label": "Environment", "field": "environment"},
-                {"name": "service_id", "label": "Service ID", "field": "service_id"},
+                {"name": "service_id", "label": "Service", "field": "service_name"},
                 {"name": "name", "label": "Name", "field": "name"},
                 {"name": "key_type", "label": "Type", "field": "key_type"},
                 {"name": "expiry_date", "label": "Expires", "field": "expiry_date"},
@@ -421,6 +402,8 @@ async def api_keys_page() -> None:
                     "environment": format_environment(key.environment),
                     "environment_value": key.environment,
                     "service_id": key.service_id,
+                    "service_name": resolve_service_name(key.service_id, service_name_map),
+                    "_full_service_name": service_name_map.get(key.service_id or "", key.service_id or ""),
                     "name": key.name,
                     "key_type": key.key_type,
                     "expiry_date": key.expiry_date,
@@ -435,6 +418,7 @@ async def api_keys_page() -> None:
                     not search_term
                     or search_term in (key.id or "").lower()
                     or search_term in (key.service_id or "").lower()
+                    or search_term in (service_name_map.get(key.service_id, "")).lower()
                     or search_term in (key.name or "").lower()
                 )
             ]

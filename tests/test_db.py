@@ -50,9 +50,7 @@ async def test_service_model(initialized_db):
 
         from sqlalchemy import select
 
-        result = await session.execute(
-            select(Service).where(Service.id == "test-svc-1")
-        )
+        result = await session.execute(select(Service).where(Service.id == "test-svc-1"))
         retrieved = result.scalar_one()
 
         assert retrieved.id == "test-svc-1"
@@ -193,9 +191,7 @@ async def test_template_service_relationship(initialized_db):
         from sqlalchemy.orm import selectinload
 
         result = await session.execute(
-            select(Service)
-            .where(Service.id == "svc-1")
-            .options(selectinload(Service.templates))
+            select(Service).where(Service.id == "svc-1").options(selectinload(Service.templates))
         )
         retrieved_service = result.scalar_one()
 

@@ -64,11 +64,7 @@ async def test_set_setting_update_existing(initialized_db):
 
     # Verify only one record exists
     async with get_session() as session:
-        records = (
-            (await session.execute(select(Setting).where(Setting.key == "key1")))
-            .scalars()
-            .all()
-        )
+        records = (await session.execute(select(Setting).where(Setting.key == "key1"))).scalars().all()
         assert len(records) == 1
 
 
@@ -102,12 +98,8 @@ async def test_list_services_empty(initialized_db):
 @pytest.mark.asyncio
 async def test_list_services(initialized_db):
     async with get_session() as session:
-        session.add(
-            Service(id="svc-1", name="Service 1", active=True, restricted=False)
-        )
-        session.add(
-            Service(id="svc-2", name="Service 2", active=False, restricted=True)
-        )
+        session.add(Service(id="svc-1", name="Service 1", active=True, restricted=False))
+        session.add(Service(id="svc-2", name="Service 2", active=False, restricted=True))
         await session.commit()
 
     services = await list_services()
@@ -300,12 +292,8 @@ async def test_list_templates_all(initialized_db):
 @pytest.mark.asyncio
 async def test_list_templates_by_service(initialized_db):
     async with get_session() as session:
-        session.add(
-            Service(id="svc-1", name="Service 1", active=True, restricted=False)
-        )
-        session.add(
-            Service(id="svc-2", name="Service 2", active=True, restricted=False)
-        )
+        session.add(Service(id="svc-1", name="Service 1", active=True, restricted=False))
+        session.add(Service(id="svc-2", name="Service 2", active=True, restricted=False))
         session.add(
             Template(
                 id="t1",
@@ -368,12 +356,8 @@ async def test_list_templates_by_type(initialized_db):
 @pytest.mark.asyncio
 async def test_list_templates_by_service_and_type(initialized_db):
     async with get_session() as session:
-        session.add(
-            Service(id="svc-1", name="Service 1", active=True, restricted=False)
-        )
-        session.add(
-            Service(id="svc-2", name="Service 2", active=True, restricted=False)
-        )
+        session.add(Service(id="svc-1", name="Service 1", active=True, restricted=False))
+        session.add(Service(id="svc-2", name="Service 2", active=True, restricted=False))
         session.add(
             Template(
                 id="t1",
@@ -521,14 +505,8 @@ async def test_list_api_keys_empty(initialized_db):
 @pytest.mark.asyncio
 async def test_list_api_keys(initialized_db):
     async with get_session() as session:
-        session.add(
-            ApiKey(
-                id="key-1", name="Key 1", expiry_date="2025-12-31", created_by="user-1"
-            )
-        )
-        session.add(
-            ApiKey(id="key-2", name="Key 2", expiry_date=None, created_by="user-2")
-        )
+        session.add(ApiKey(id="key-1", name="Key 1", expiry_date="2025-12-31", created_by="user-1"))
+        session.add(ApiKey(id="key-2", name="Key 2", expiry_date=None, created_by="user-2"))
         await session.commit()
 
     keys = await list_api_keys()
@@ -559,9 +537,7 @@ async def test_update_api_key_expiry(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(select(ApiKey).where(ApiKey.id == "key-1"))
-        ).scalar_one()
+        record = (await session.execute(select(ApiKey).where(ApiKey.id == "key-1"))).scalar_one()
         assert record.expiry_date == "2026-04-08"
 
 
@@ -579,15 +555,11 @@ async def test_mark_api_key_revoked(initialized_db):
         )
         await session.commit()
 
-    updated = await mark_api_key_revoked(
-        service_id="svc-1", key_id="key-1", environment="dev"
-    )
+    updated = await mark_api_key_revoked(service_id="svc-1", key_id="key-1", environment="dev")
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(select(ApiKey).where(ApiKey.id == "key-1"))
-        ).scalar_one()
+        record = (await session.execute(select(ApiKey).where(ApiKey.id == "key-1"))).scalar_one()
         assert record.revoked is True
 
 
@@ -597,9 +569,7 @@ async def test_multiple_operations(initialized_db):
 
     # Add services
     async with get_session() as session:
-        session.add(
-            Service(id="svc-1", name="Service 1", active=True, restricted=False)
-        )
+        session.add(Service(id="svc-1", name="Service 1", active=True, restricted=False))
         await session.commit()
 
     # Add local key
@@ -648,9 +618,7 @@ async def test_list_services_with_environment(initialized_db):
 async def test_list_services_with_multiple_environments(initialized_db):
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
-        session.add(
-            Service(id="svc-2", name="Svc2", active=True, environment="staging")
-        )
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="staging"))
         session.add(Service(id="svc-3", name="Svc3", active=True, environment="prod"))
         await session.commit()
 
@@ -716,9 +684,7 @@ async def test_list_api_keys_with_environment(initialized_db):
 
 @pytest.mark.asyncio
 async def test_update_api_key_expiry_not_found(initialized_db):
-    result = await update_api_key_expiry(
-        service_id="nonexistent", key_id="nonexistent", expiry_date="2026-01-01"
-    )
+    result = await update_api_key_expiry(service_id="nonexistent", key_id="nonexistent", expiry_date="2026-01-01")
     assert result is False
 
 
@@ -844,11 +810,7 @@ async def test_list_users_empty(initialized_db):
 @pytest.mark.asyncio
 async def test_list_users_with_environment(initialized_db):
     async with get_session() as session:
-        session.add(
-            User(
-                id="u1", environment="dev", email_address="user1@test.com", name="User1"
-            )
-        )
+        session.add(User(id="u1", environment="dev", email_address="user1@test.com", name="User1"))
         session.add(
             User(
                 id="u2",
@@ -887,16 +849,8 @@ async def test_list_api_keys_by_service_id(initialized_db):
 @pytest.mark.asyncio
 async def test_list_inbound_numbers_by_service_id(initialized_db):
     async with get_session() as session:
-        session.add(
-            InboundNumber(
-                id="n1", environment="dev", number="+1111", service_id="svc-1"
-            )
-        )
-        session.add(
-            InboundNumber(
-                id="n2", environment="dev", number="+2222", service_id="svc-2"
-            )
-        )
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
+        session.add(InboundNumber(id="n2", environment="dev", number="+2222", service_id="svc-2"))
         await session.commit()
 
     numbers = await list_inbound_numbers(service_id="svc-1")
@@ -941,9 +895,7 @@ async def test_update_inbound_number(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(select(InboundNumber).where(InboundNumber.id == "n1"))
-        ).scalar_one()
+        record = (await session.execute(select(InboundNumber).where(InboundNumber.id == "n1"))).scalar_one()
         assert record.number == "+15559876543"
         assert record.active is False
         assert record.url_endpoint == "https://example.com/callback"
@@ -983,9 +935,7 @@ async def test_update_inbound_number_partial_update(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(select(InboundNumber).where(InboundNumber.id == "n2"))
-        ).scalar_one()
+        record = (await session.execute(select(InboundNumber).where(InboundNumber.id == "n2"))).scalar_one()
         assert record.active is False
         assert record.number == "+15551234567"  # Unchanged
         assert record.provider == "pinpoint"  # Unchanged
@@ -1015,11 +965,7 @@ async def test_update_provider_detail(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(
-                select(ProviderDetail).where(ProviderDetail.id == "prov-1")
-            )
-        ).scalar_one()
+        record = (await session.execute(select(ProviderDetail).where(ProviderDetail.id == "prov-1"))).scalar_one()
         assert record.priority == 10
         assert record.active is True
         assert record.load_balancing_weight == 50
@@ -1058,11 +1004,7 @@ async def test_update_provider_detail_partial_update(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(
-                select(ProviderDetail).where(ProviderDetail.id == "prov-2")
-            )
-        ).scalar_one()
+        record = (await session.execute(select(ProviderDetail).where(ProviderDetail.id == "prov-2"))).scalar_one()
         assert record.priority == 15
         assert record.active is True  # Unchanged
         assert record.load_balancing_weight == 100  # Unchanged
@@ -1095,9 +1037,7 @@ async def test_update_sms_sender(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(select(SmsSender).where(SmsSender.id == "sms-1"))
-        ).scalar_one()
+        record = (await session.execute(select(SmsSender).where(SmsSender.id == "sms-1"))).scalar_one()
         assert record.sms_sender == "+15559876543"
         assert record.description == "Updated"
         assert record.is_default is True
@@ -1139,9 +1079,7 @@ async def test_update_sms_sender_partial_update(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(select(SmsSender).where(SmsSender.id == "sms-2"))
-        ).scalar_one()
+        record = (await session.execute(select(SmsSender).where(SmsSender.id == "sms-2"))).scalar_one()
         assert record.is_default is True
         assert record.sms_sender == "+15551234567"  # Unchanged
         assert record.description == "Original description"  # Unchanged
@@ -1172,9 +1110,7 @@ async def test_update_sms_sender_with_specifics(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(select(SmsSender).where(SmsSender.id == "sms-3"))
-        ).scalar_one()
+        record = (await session.execute(select(SmsSender).where(SmsSender.id == "sms-3"))).scalar_one()
         assert record.sms_sender_specifics == sender_specifics
 
 
@@ -1202,11 +1138,7 @@ async def test_update_communication_item(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(
-                select(CommunicationItem).where(CommunicationItem.id == "comm-1")
-            )
-        ).scalar_one()
+        record = (await session.execute(select(CommunicationItem).where(CommunicationItem.id == "comm-1"))).scalar_one()
         assert record.name == "Updated Item"
         assert record.default_send_indicator is True
         assert record.va_profile_item_id == 10
@@ -1245,11 +1177,7 @@ async def test_update_communication_item_partial_update(initialized_db):
     assert updated is True
 
     async with get_session() as session:
-        record = (
-            await session.execute(
-                select(CommunicationItem).where(CommunicationItem.id == "comm-2")
-            )
-        ).scalar_one()
+        record = (await session.execute(select(CommunicationItem).where(CommunicationItem.id == "comm-2"))).scalar_one()
         assert record.name == "New Name"
         assert record.va_profile_item_id == 20  # Unchanged
         assert record.default_send_indicator is True  # Unchanged
@@ -1387,15 +1315,9 @@ async def test_list_api_keys_by_multiple_services(initialized_db):
 @pytest.mark.asyncio
 async def test_list_sms_senders_by_multiple_services(initialized_db):
     async with get_session() as session:
-        session.add(
-            SmsSender(id="s1", environment="dev", service_id="svc-1", sms_sender="+111")
-        )
-        session.add(
-            SmsSender(id="s2", environment="dev", service_id="svc-2", sms_sender="+222")
-        )
-        session.add(
-            SmsSender(id="s3", environment="dev", service_id="svc-3", sms_sender="+333")
-        )
+        session.add(SmsSender(id="s1", environment="dev", service_id="svc-1", sms_sender="+111"))
+        session.add(SmsSender(id="s2", environment="dev", service_id="svc-2", sms_sender="+222"))
+        session.add(SmsSender(id="s3", environment="dev", service_id="svc-3", sms_sender="+333"))
         await session.commit()
 
     senders = await list_sms_senders(service_id=["svc-2", "svc-3"])
@@ -1406,21 +1328,9 @@ async def test_list_sms_senders_by_multiple_services(initialized_db):
 @pytest.mark.asyncio
 async def test_list_inbound_numbers_by_multiple_services(initialized_db):
     async with get_session() as session:
-        session.add(
-            InboundNumber(
-                id="n1", environment="dev", number="+1111", service_id="svc-1"
-            )
-        )
-        session.add(
-            InboundNumber(
-                id="n2", environment="dev", number="+2222", service_id="svc-2"
-            )
-        )
-        session.add(
-            InboundNumber(
-                id="n3", environment="dev", number="+3333", service_id="svc-3"
-            )
-        )
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
+        session.add(InboundNumber(id="n2", environment="dev", number="+2222", service_id="svc-2"))
+        session.add(InboundNumber(id="n3", environment="dev", number="+3333", service_id="svc-3"))
         await session.commit()
 
     numbers = await list_inbound_numbers(service_id=["svc-1", "svc-2"])

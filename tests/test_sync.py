@@ -183,11 +183,7 @@ async def test_sync_templates_concurrency(setup_db):
     # Add multiple services
     async with get_session() as session:
         for i in range(5):
-            session.add(
-                Service(
-                    id=f"svc-{i}", name=f"Service {i}", active=True, restricted=False
-                )
-            )
+            session.add(Service(id=f"svc-{i}", name=f"Service {i}", active=True, restricted=False))
         await session.commit()
 
     # Create API with a generator that returns unique templates per service
@@ -390,9 +386,7 @@ async def test_sync_api_keys_handles_404(initialized_db):
     mock_api = MockNotificationAPI()
 
     async def raise_404(service_id: str):
-        raise httpx.HTTPStatusError(
-            "Client error '404 NOT FOUND'", request=None, response=None
-        )
+        raise httpx.HTTPStatusError("Client error '404 NOT FOUND'", request=None, response=None)
 
     mock_api.get_api_keys = raise_404
 
@@ -545,9 +539,7 @@ async def test_sync_sms_senders_records_non_404_error(initialized_db):
     )()
 
     async def raise_500(service_id):
-        raise httpx.HTTPStatusError(
-            "Server Error", request=None, response=mock_response
-        )
+        raise httpx.HTTPStatusError("Server Error", request=None, response=mock_response)
 
     mock_api.get_sms_senders = raise_500
 
@@ -596,9 +588,7 @@ async def test_sync_extracts_error_message_from_json_response(initialized_db):
             return {"message": "Invalid service configuration"}
 
     async def raise_with_json():
-        raise httpx.HTTPStatusError(
-            "Bad Request", request=None, response=MockResponse()
-        )
+        raise httpx.HTTPStatusError("Bad Request", request=None, response=MockResponse())
 
     mock_api.get_services = raise_with_json
 

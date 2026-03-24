@@ -12,9 +12,7 @@ def test_extract_placeholders_single():
 
 
 def test_extract_placeholders_multiple():
-    result = extract_placeholders(
-        "Hello ((first_name)) ((last_name)), your code is ((code))"
-    )
+    result = extract_placeholders("Hello ((first_name)) ((last_name)), your code is ((code))")
     assert result == ["first_name", "last_name", "code"]
 
 
@@ -34,7 +32,9 @@ def test_extract_placeholders_no_placeholders():
 
 
 def test_extract_placeholders_mixed_content():
-    content = "Subject: Welcome ((title))\n\nDear ((first_name)) ((last_name)),\n\nYour account ((account_id)) is ready."
+    content = (
+        "Subject: Welcome ((title))\n\nDear ((first_name)) ((last_name)),\n\nYour account ((account_id)) is ready."
+    )
     result = extract_placeholders(content)
     assert result == ["title", "first_name", "last_name", "account_id"]
 

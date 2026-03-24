@@ -16,11 +16,13 @@ from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
+    build_service_name_map,
     format_environment,
     format_service_label,
     make_row_key,
     make_sortable,
     refresh_if_needed,
+    resolve_service_name,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
@@ -38,10 +40,7 @@ async def sms_senders_page() -> None:
     sms_sender_search_query = ""
 
     async def refresh_service_options() -> None:  # pragma: no cover
-        options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
-        }
+        options = {svc.id: format_service_label(svc) for svc in await list_services(get_view_environment())}
         service_select.set_options(options)
         if service_select.value:
             service_select.value = [v for v in service_select.value if v in options]
@@ -86,49 +85,28 @@ async def sms_senders_page() -> None:
                 label="Environment",
             ).classes("w-full md:w-1/2")
             create_service = (
-                ui.select({}, label="Service", with_input=True)
-                .props("clearable")
-                .classes("w-full md:w-1/2")
+                ui.select({}, label="Service", with_input=True).props("clearable").classes("w-full md:w-1/2")
             )
             create_sms_sender = (
-                ui.input(label="SMS Sender (phone number)")
-                .props("clearable")
-                .classes("w-full md:w-1/2")
+                ui.input(label="SMS Sender (phone number)").props("clearable").classes("w-full md:w-1/2")
             )
-            create_description = (
-                ui.input(label="Description")
-                .props("clearable")
-                .classes("w-full md:w-1/2")
-            )
+            create_description = ui.input(label="Description").props("clearable").classes("w-full md:w-1/2")
             create_provider = (
-                ui.select({}, label="Provider", with_input=True)
-                .props("clearable")
-                .classes("w-full md:w-1/2")
+                ui.select({}, label="Provider", with_input=True).props("clearable").classes("w-full md:w-1/2")
             )
             create_is_default = ui.checkbox("Set as default")
-            create_rate_limit = ui.number(label="Rate Limit", min=1).classes(
+            create_rate_limit = ui.number(label="Rate Limit", min=1).classes("w-full md:w-1/2")
+            create_rate_limit_interval = ui.number(label="Rate Limit Interval (seconds)", min=1).classes(
                 "w-full md:w-1/2"
             )
-            create_rate_limit_interval = ui.number(
-                label="Rate Limit Interval (seconds)", min=1
-            ).classes("w-full md:w-1/2")
-            create_sender_specifics = (
-                ui.textarea(label="Sender Specifics (JSON)")
-                .props("clearable")
-                .classes("w-full")
-            )
-            ui.label('e.g., {"messaging_service_sid": "MG000..."}').classes(
-                "text-xs text-gray-500"
-            )
+            create_sender_specifics = ui.textarea(label="Sender Specifics (JSON)").props("clearable").classes("w-full")
+            ui.label('e.g., {"messaging_service_sid": "MG000..."}').classes("text-xs text-gray-500")
             with ui.row().classes("gap-2"):
                 create_submit_button = ui.button("Create SMS Sender", color="green")
                 ui.button("Cancel", on_click=create_dialog.close, color="gray")
 
         async def refresh_create_service_options() -> None:  # pragma: no cover
-            options = {
-                svc.id: format_service_label(svc)
-                for svc in await list_services(create_env.value)
-            }
+            options = {svc.id: format_service_label(svc) for svc in await list_services(create_env.value)}
             create_service.set_options(options)
             if create_service.value not in options:
                 create_service.value = None
@@ -136,9 +114,7 @@ async def sms_senders_page() -> None:
         async def refresh_create_provider_options() -> None:  # pragma: no cover
             providers = await list_provider_details(create_env.value)
             sms_providers = [p for p in providers if p.notification_type == "sms"]
-            options = {
-                p.id: f"{p.display_name} ({p.identifier})" for p in sms_providers
-            }
+            options = {p.id: f"{p.display_name} ({p.identifier})" for p in sms_providers}
             create_provider.set_options(options)
             if create_provider.value not in options:
                 create_provider.value = None
@@ -154,15 +130,9 @@ async def sms_senders_page() -> None:
             description = (create_description.value or "").strip()
             provider_id = create_provider.value
             is_default = create_is_default.value
-            rate_limit = (
-                int(create_rate_limit.value)
-                if create_rate_limit.value is not None
-                else None
-            )
+            rate_limit = int(create_rate_limit.value) if create_rate_limit.value is not None else None
             rate_limit_interval = (
-                int(create_rate_limit_interval.value)
-                if create_rate_limit_interval.value is not None
-                else None
+                int(create_rate_limit_interval.value) if create_rate_limit_interval.value is not None else None
             )
             sender_specifics_raw = (create_sender_specifics.value or "").strip()
             sender_specifics: dict | None = None
@@ -175,13 +145,7 @@ async def sms_senders_page() -> None:
                 except json.JSONDecodeError as exc:
                     ui.notify(f"Invalid JSON for Sender Specifics: {exc}", color="red")
                     return
-            if not (
-                environment
-                and service_id
-                and sms_sender
-                and description
-                and provider_id
-            ):
+            if not (environment and service_id and sms_sender and description and provider_id):
                 ui.notify(
                     "Environment, service, SMS sender, description, and provider are required",
                     color="red",
@@ -236,32 +200,14 @@ async def sms_senders_page() -> None:
         with ui.dialog() as edit_dialog, ui.card().classes("p-6 w-full max-w-lg"):
             ui.label("Edit SMS Sender").classes("text-md font-semibold")
             selected_sender_label = ui.label("")
-            edit_sms_sender = (
-                ui.input(label="SMS Sender (phone number)")
-                .props("clearable")
-                .classes("w-full")
-            )
-            edit_description = (
-                ui.input(label="Description").props("clearable").classes("w-full")
-            )
-            edit_provider = (
-                ui.select({}, label="Provider", with_input=True)
-                .props("clearable")
-                .classes("w-full")
-            )
+            edit_sms_sender = ui.input(label="SMS Sender (phone number)").props("clearable").classes("w-full")
+            edit_description = ui.input(label="Description").props("clearable").classes("w-full")
+            edit_provider = ui.select({}, label="Provider", with_input=True).props("clearable").classes("w-full")
             edit_is_default = ui.checkbox("Set as default")
             edit_rate_limit = ui.number(label="Rate Limit", min=1).classes("w-full")
-            edit_rate_limit_interval = ui.number(
-                label="Rate Limit Interval (seconds)", min=1
-            ).classes("w-full")
-            edit_sender_specifics = (
-                ui.textarea(label="Sender Specifics (JSON)")
-                .props("clearable")
-                .classes("w-full")
-            )
-            ui.label('e.g., {"messaging_service_sid": "MG000..."}').classes(
-                "text-xs text-gray-500"
-            )
+            edit_rate_limit_interval = ui.number(label="Rate Limit Interval (seconds)", min=1).classes("w-full")
+            edit_sender_specifics = ui.textarea(label="Sender Specifics (JSON)").props("clearable").classes("w-full")
+            ui.label('e.g., {"messaging_service_sid": "MG000..."}').classes("text-xs text-gray-500")
             with ui.row().classes("gap-2"):
                 edit_update_button = ui.button("Update SMS Sender", color="primary")
                 ui.button("Close", on_click=edit_dialog.close, color="gray")
@@ -314,9 +260,7 @@ async def sms_senders_page() -> None:
             if environment:
                 providers = await list_provider_details(environment)
                 sms_providers = [p for p in providers if p.notification_type == "sms"]
-                options = {
-                    p.id: f"{p.display_name} ({p.identifier})" for p in sms_providers
-                }
+                options = {p.id: f"{p.display_name} ({p.identifier})" for p in sms_providers}
                 edit_provider.set_options(options)
             update_edit_fields(sender)
             edit_dialog.open()
@@ -330,23 +274,15 @@ async def sms_senders_page() -> None:
             sender_id = sender.get("id")
             service_id = sender.get("service_id")
             if not (environment and sender_id and service_id):
-                ui.notify(
-                    "Selected SMS sender is missing required details", color="red"
-                )
+                ui.notify("Selected SMS sender is missing required details", color="red")
                 return
             sms_sender_val = (edit_sms_sender.value or "").strip() or None
             description = (edit_description.value or "").strip() or None
             provider_id = edit_provider.value
             is_default = edit_is_default.value
-            rate_limit = (
-                int(edit_rate_limit.value)
-                if edit_rate_limit.value is not None
-                else None
-            )
+            rate_limit = int(edit_rate_limit.value) if edit_rate_limit.value is not None else None
             rate_limit_interval = (
-                int(edit_rate_limit_interval.value)
-                if edit_rate_limit_interval.value is not None
-                else None
+                int(edit_rate_limit_interval.value) if edit_rate_limit_interval.value is not None else None
             )
             sender_specifics_raw = (edit_sender_specifics.value or "").strip()
             sender_specifics: dict | None = None
@@ -390,9 +326,7 @@ async def sms_senders_page() -> None:
                 provider_id=provider_id,
                 is_default=is_default,
                 rate_limit=rate_limit,
-                rate_limit_interval=str(rate_limit_interval)
-                if rate_limit_interval
-                else None,
+                rate_limit_interval=str(rate_limit_interval) if rate_limit_interval else None,
                 sms_sender_specifics=sender_specifics,
                 environment=environment,
             )
@@ -419,14 +353,13 @@ async def sms_senders_page() -> None:
         filter_row = ui.row().classes("gap-2 w-full")
         with filter_row:
             sms_sender_search = (
-                ui.input(label="Search by SMS Sender, ID, or Service ID")
+                ui.input(label="Search by SMS Sender, ID, Service ID, or Service Name")
                 .props("clearable")
                 .classes("w-full md:w-1/2")
             )
-        service_options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
-        }
+        _services = await list_services(get_view_environment())
+        service_options = {svc.id: format_service_label(svc) for svc in _services}
+        service_name_map = build_service_name_map(_services)
         service_select = (
             ui.select(
                 service_options,
@@ -452,9 +385,7 @@ async def sms_senders_page() -> None:
             selected_sender.clear()
             update_edit_fields(None)
             selected_services = service_select.value or []
-            senders = await list_sms_senders(
-                selected_services or None, environment=get_view_environment()
-            )
+            senders = await list_sms_senders(selected_services or None, environment=get_view_environment())
             if sms_sender_search_query:
                 senders = [
                     sender
@@ -462,11 +393,16 @@ async def sms_senders_page() -> None:
                     if sms_sender_search_query in (sender.sms_sender or "").lower()
                     or sms_sender_search_query in (sender.id or "").lower()
                     or sms_sender_search_query in (sender.service_id or "").lower()
+                    or sms_sender_search_query in (service_name_map.get(sender.service_id, "")).lower()
                 ]
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},
                 {"name": "environment", "label": "Environment", "field": "environment"},
-                {"name": "service_id", "label": "Service", "field": "service_id"},
+                {
+                    "name": "service_id",
+                    "label": "Service",
+                    "field": "service_name",
+                },
                 {"name": "sms_sender", "label": "SMS Sender", "field": "sms_sender"},
                 {"name": "is_default", "label": "Default", "field": "is_default"},
                 {"name": "archived", "label": "Archived", "field": "archived"},
@@ -492,11 +428,7 @@ async def sms_senders_page() -> None:
             ]
 
             def format_sender_specifics(specifics: dict | None) -> str:
-                if (
-                    not specifics
-                    or not isinstance(specifics, dict)
-                    or len(specifics) == 0
-                ):
+                if not specifics or not isinstance(specifics, dict) or len(specifics) == 0:
                     return ""
                 return json.dumps(specifics, separators=(",", ":"))
 
@@ -507,6 +439,8 @@ async def sms_senders_page() -> None:
                     "environment": format_environment(sender.environment),
                     "environment_value": sender.environment,
                     "service_id": sender.service_id,
+                    "service_name": resolve_service_name(sender.service_id, service_name_map),
+                    "_full_service_name": service_name_map.get(sender.service_id, sender.service_id),
                     "sms_sender": sender.sms_sender,
                     "is_default": sender.is_default,
                     "archived": sender.archived,
@@ -516,9 +450,7 @@ async def sms_senders_page() -> None:
                     "rate_limit": sender.rate_limit,
                     "rate_limit_interval": sender.rate_limit_interval,
                     "sms_sender_specifics": sender.sms_sender_specifics,
-                    "sms_sender_specifics_display": format_sender_specifics(
-                        sender.sms_sender_specifics
-                    ),
+                    "sms_sender_specifics_display": format_sender_specifics(sender.sms_sender_specifics),
                     "created_at": sender.created_at[:10] if sender.created_at else None,
                     "updated_at": sender.updated_at[:10] if sender.updated_at else None,
                 }

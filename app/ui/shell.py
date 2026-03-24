@@ -90,8 +90,7 @@ def _nav_link(icon: str, label: str, href: str) -> None:
 def _nav_section(title: str) -> None:
     """Create a section header in the navigation."""
     ui.label(title).classes(
-        "text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 "
-        "px-4 pt-4 pb-2"
+        "text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-4 pt-4 pb-2"
     )
 
 
@@ -100,9 +99,7 @@ def build_shell(on_view_env_change=None) -> tuple:
     drawer = (
         ui.left_drawer(value=True)
         .props("show-if-above bordered width=240")
-        .classes(
-            "bg-slate-100 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700"
-        )
+        .classes("bg-slate-100 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700")
     )
     with drawer:
         with ui.column().classes("w-full py-4 gap-0.5"):
@@ -128,14 +125,10 @@ def build_shell(on_view_env_change=None) -> tuple:
             _nav_link("settings", "Settings", "/settings")
 
     dark_mode = ui.dark_mode()
-    with ui.header().classes(
-        "items-center justify-between bg-gray-200 dark:bg-slate-800"
-    ):
+    with ui.header().classes("items-center justify-between bg-gray-200 dark:bg-slate-800"):
         with ui.row().classes("items-center gap-3"):
             ui.button(icon="menu", on_click=drawer.toggle).props("flat round dense")
-            ui.label("Notification Admin Dashboard").classes(
-                "text-xl font-medium text-slate-900 dark:text-white"
-            )
+            ui.label("Notification Admin Dashboard").classes("text-xl font-medium text-slate-900 dark:text-white")
         with ui.row().classes("items-center gap-4"):
             status_badge = ui.badge("API Status: Unknown", color="gray")
             sync_label = ui.label("").classes("text-slate-900 dark:text-white")
@@ -165,9 +158,7 @@ def build_shell(on_view_env_change=None) -> tuple:
                 env_select.on_value_change(handle_env_change)  # pragma: no cover
             else:
                 env_select.on_value_change(
-                    lambda e: setattr(
-                        _st.state, "view_environments", e.value if e.value else []
-                    )
+                    lambda e: setattr(_st.state, "view_environments", e.value if e.value else [])
                 )
 
             with ui.dropdown_button("Sync Settings", auto_close=False).props("flat"):
@@ -197,9 +188,7 @@ def build_shell(on_view_env_change=None) -> tuple:
                                 )
                             else:
                                 _st.state.enabled_sync_environments.discard(environment)
-                                ui.notify(
-                                    f"Syncing disabled for {environment}", color="info"
-                                )
+                                ui.notify(f"Syncing disabled for {environment}", color="info")
 
                         return handler
 

@@ -10,11 +10,13 @@ from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
+    build_service_name_map,
     format_environment,
     format_service_label,
     make_row_key,
     make_sortable,
     refresh_if_needed,
+    resolve_service_name,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
@@ -32,10 +34,7 @@ async def inbound_numbers_page() -> None:
     inbound_search_query = ""
 
     async def refresh_service_options() -> None:  # pragma: no cover
-        options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
-        }
+        options = {svc.id: format_service_label(svc) for svc in await list_services(get_view_environment())}
         service_select.set_options(options)
         if service_select.value:
             service_select.value = [v for v in service_select.value if v in options]
@@ -78,27 +77,13 @@ async def inbound_numbers_page() -> None:
                 value=_st.state.environment,
                 label="Environment",
             ).classes("w-full")
-            create_number = (
-                ui.input(label="Number (e.g., +12025551212)")
-                .props("clearable")
-                .classes("w-full")
-            )
-            create_provider = (
-                ui.input(label="Provider (e.g., pinpoint)")
-                .props("clearable")
-                .classes("w-full")
-            )
+            create_number = ui.input(label="Number (e.g., +12025551212)").props("clearable").classes("w-full")
+            create_provider = ui.input(label="Provider (e.g., pinpoint)").props("clearable").classes("w-full")
             create_active = ui.checkbox("Active", value=True)
             create_self_managed = ui.checkbox("Self Managed")
-            create_auth_parameter = (
-                ui.input(label="Auth Parameter").props("clearable").classes("w-full")
-            )
-            create_url_endpoint = (
-                ui.input(label="URL Endpoint").props("clearable").classes("w-full")
-            )
-            ui.label("URL Endpoint is required when Self Managed is checked").classes(
-                "text-xs text-gray-500"
-            )
+            create_auth_parameter = ui.input(label="Auth Parameter").props("clearable").classes("w-full")
+            create_url_endpoint = ui.input(label="URL Endpoint").props("clearable").classes("w-full")
+            ui.label("URL Endpoint is required when Self Managed is checked").classes("text-xs text-gray-500")
             with ui.row().classes("gap-2"):
                 create_submit_button = ui.button("Create Inbound Number", color="green")
                 ui.button("Cancel", on_click=create_dialog.close, color="gray")
@@ -168,20 +153,12 @@ async def inbound_numbers_page() -> None:
             ui.label("Edit Inbound Number").classes("text-md font-semibold")
             selected_number_label = ui.label("")
             edit_number = ui.input(label="Number").props("clearable").classes("w-full")
-            edit_provider = (
-                ui.input(label="Provider").props("clearable").classes("w-full")
-            )
+            edit_provider = ui.input(label="Provider").props("clearable").classes("w-full")
             edit_active = ui.checkbox("Active")
             edit_self_managed = ui.checkbox("Self Managed")
-            edit_auth_parameter = (
-                ui.input(label="Auth Parameter").props("clearable").classes("w-full")
-            )
-            edit_url_endpoint = (
-                ui.input(label="URL Endpoint").props("clearable").classes("w-full")
-            )
-            ui.label("URL Endpoint is required when Self Managed is checked").classes(
-                "text-xs text-gray-500"
-            )
+            edit_auth_parameter = ui.input(label="Auth Parameter").props("clearable").classes("w-full")
+            edit_url_endpoint = ui.input(label="URL Endpoint").props("clearable").classes("w-full")
+            ui.label("URL Endpoint is required when Self Managed is checked").classes("text-xs text-gray-500")
             with ui.row().classes("gap-2"):
                 edit_update_button = ui.button("Update Inbound Number", color="primary")
                 ui.button("Close", on_click=edit_dialog.close, color="gray")
@@ -235,9 +212,7 @@ async def inbound_numbers_page() -> None:
             environment = resolve_selected_environment(num)
             num_id = num.get("id")
             if not (environment and num_id):
-                ui.notify(
-                    "Selected inbound number is missing required details", color="red"
-                )
+                ui.notify("Selected inbound number is missing required details", color="red")
                 return
             number_val = (edit_number.value or "").strip() or None
             provider = (edit_provider.value or "").strip() or None
@@ -305,14 +280,13 @@ async def inbound_numbers_page() -> None:
         filter_row = ui.row().classes("gap-2 w-full")
         with filter_row:
             inbound_search = (
-                ui.input(label="Search by Number, ID, or Service ID")
+                ui.input(label="Search by Number, ID, Service ID, or Service Name")
                 .props("clearable")
                 .classes("w-full md:w-1/2")
             )
-        service_options = {
-            svc.id: format_service_label(svc)
-            for svc in await list_services(get_view_environment())
-        }
+        _services = await list_services(get_view_environment())
+        service_options = {svc.id: format_service_label(svc) for svc in _services}
+        service_name_map = build_service_name_map(_services)
         service_select = (
             ui.select(
                 service_options,
@@ -338,9 +312,7 @@ async def inbound_numbers_page() -> None:
             selected_number.clear()
             update_edit_fields(None)
             selected_services = service_select.value or []
-            numbers = await list_inbound_numbers(
-                selected_services or None, environment=get_view_environment()
-            )
+            numbers = await list_inbound_numbers(selected_services or None, environment=get_view_environment())
             if inbound_search_query:
                 numbers = [
                     n
@@ -348,6 +320,7 @@ async def inbound_numbers_page() -> None:
                     if inbound_search_query in (n.number or "").lower()
                     or inbound_search_query in (n.id or "").lower()
                     or inbound_search_query in (n.service_id or "").lower()
+                    or inbound_search_query in (service_name_map.get(n.service_id or "", "")).lower()
                 ]
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},
@@ -388,7 +361,8 @@ async def inbound_numbers_page() -> None:
                     "active": n.active,
                     "self_managed": n.self_managed,
                     "service_id": n.service_id,
-                    "service_name": n.service_name,
+                    "service_name": resolve_service_name(n.service_id, service_name_map),
+                    "_full_service_name": service_name_map.get(n.service_id or "", n.service_id or ""),
                     "auth_parameter": n.auth_parameter,
                     "url_endpoint": n.url_endpoint,
                 }

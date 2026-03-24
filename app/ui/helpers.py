@@ -92,9 +92,7 @@ def add_export_button(
         csv_content = rows_to_csv(rows, columns)
         download_csv(csv_content, filename)
 
-    return ui.button("Export CSV", icon="download", on_click=handle_export).props(
-        "flat dense"
-    )
+    return ui.button("Export CSV", icon="download", on_click=handle_export).props("flat dense")
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +147,32 @@ def format_environment(value: Optional[str]) -> str:
 
 def format_service_label(service) -> str:
     return f"{service.name} ({format_environment(service.environment)})"
+
+
+def build_service_name_map(services) -> Dict[str, str]:
+    """Build a {service_id: service_name} lookup from a list of Service objects."""
+    return {svc.id: svc.name for svc in services}
+
+
+def truncate_service_name(name: str | None, limit: int = 21) -> str:
+    """Truncate a service name to *limit* characters, appending '…' if needed."""
+    if not name:
+        return ""
+    return name[: limit - 1] + "…" if len(name) > limit else name
+
+
+def resolve_service_name(
+    service_id: str | None,
+    name_map: Dict[str, str],
+    limit: int = 21,
+) -> str:
+    """Look up a service name by ID and truncate.  Falls back to *service_id*."""
+    if not service_id:
+        return ""
+    name = name_map.get(service_id)
+    if name is None:
+        return service_id
+    return truncate_service_name(name, limit)
 
 
 def truncate_text(value: Optional[str], limit: int = 50) -> Optional[str]:
