@@ -117,8 +117,8 @@ def build_shell(on_view_env_change=None) -> tuple:
             _nav_link("add_circle", "Create API Key", "/api-key-service")
             _nav_link("people", "Users", "/users")
             _nav_link("sms", "SMS Senders", "/sms-senders")
-            _nav_link("forum", "Communication Items", "/communication-items")
             _nav_link("call", "Inbound Numbers", "/inbound-numbers")
+            _nav_link("forum", "Communication Items", "/communication-items")
             _nav_link("cloud", "Provider Details", "/provider-details")
 
             _nav_section("Configuration")

@@ -9,7 +9,7 @@ import os
 import pytest
 import httpx
 from contextlib import contextmanager
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
+from unittest.mock import ANY, AsyncMock, MagicMock, patch, Mock
 from dataclasses import dataclass
 
 from app.api_client import MockNotificationAPI, HttpNotificationAPI
@@ -1363,6 +1363,45 @@ class TestAddCopyableSlots:
         mock_table = MagicMock()
         helpers.add_copyable_slots(mock_table, [])
         mock_table.add_slot.assert_not_called()
+
+
+class TestAddServiceContextMenu:
+    def test_adds_slot_default_id_field(self):
+        mock_table = MagicMock()
+        helpers.add_service_context_menu(mock_table, column_name="service_id")
+        mock_table.add_slot.assert_called_once()
+        slot_name = mock_table.add_slot.call_args[0][0]
+        assert slot_name == "body-cell-service_id"
+        slot_html = mock_table.add_slot.call_args[0][1]
+        assert "service_id" in slot_html
+        assert "Copy Service Name" in slot_html
+        assert "Copy Service ID" in slot_html
+        mock_table.on.assert_called_once_with("svc-ctx-copy", ANY)
+
+    def test_adds_slot_custom_id_field(self):
+        mock_table = MagicMock()
+        helpers.add_service_context_menu(mock_table, column_name="name", id_field="id")
+        slot_name = mock_table.add_slot.call_args[0][0]
+        assert slot_name == "body-cell-name"
+        slot_html = mock_table.add_slot.call_args[0][1]
+        assert "props.row['id']" in slot_html
+
+    def test_slot_contains_context_menu(self):
+        mock_table = MagicMock()
+        helpers.add_service_context_menu(mock_table, column_name="service_id")
+        slot_html = mock_table.add_slot.call_args[0][1]
+        assert "context-menu" in slot_html
+        assert "q-menu" in slot_html
+
+    def test_event_handler_copies(self):
+        mock_table = MagicMock()
+        helpers.add_service_context_menu(mock_table, column_name="service_id")
+        handler = mock_table.on.call_args[0][1]
+        with (
+            patch("app.ui.helpers.ui.run_javascript"),
+            patch("app.ui.state.safe_notify"),
+        ):
+            handler(MagicMock(args="test-id-123"))
 
 
 class TestMakeSortable:

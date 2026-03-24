@@ -8,6 +8,7 @@ from app.repository import list_services, list_templates
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
+    add_service_context_menu,
     build_service_name_map,
     format_environment,
     format_service_label,
@@ -143,6 +144,7 @@ async def templates_page() -> None:
             )
             table.props("row-key=_row_key").classes("w-full")
             add_copyable_slots(table, table_rows)
+            add_service_context_menu(table, column_name="service_id")
 
         async def handle_template_search_event(e) -> None:  # pragma: no cover
             nonlocal template_search_query

@@ -17,6 +17,7 @@ from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
+    add_service_context_menu,
     build_service_name_map,
     format_environment,
     format_service_label,
@@ -458,6 +459,7 @@ async def api_keys_page() -> None:
             )
             table.props("row-key=_row_key").classes("w-full")
             add_copyable_slots(table, table_rows)
+            add_service_context_menu(table, column_name="service_id")
 
         search_input.on_value_change(lambda _: render_table.refresh())
         service_select.on_value_change(lambda _: render_table.refresh())

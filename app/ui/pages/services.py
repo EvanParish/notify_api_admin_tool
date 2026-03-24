@@ -9,6 +9,7 @@ from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
+    add_service_context_menu,
     format_environment,
     make_row_key,
     make_sortable,
@@ -103,3 +104,4 @@ async def services_table(sync_callback) -> None:
     )
     table.props("row-key=_row_key").classes("w-full")
     add_copyable_slots(table, table_rows)
+    add_service_context_menu(table, column_name="name", id_field="id")

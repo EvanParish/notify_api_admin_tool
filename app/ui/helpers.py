@@ -104,6 +104,7 @@ COPYABLE_FIELDS = (
     "email_address",
     "key_name",
     "name",
+    "number",
     "service_id",
     "sms_sender",
 )
@@ -136,6 +137,45 @@ def add_copyable_slots(table, rows: List[Dict[str, Any]]) -> None:
         table.add_slot(f"body-cell-{field}", COPYABLE_CELL_SLOT)
     if copyable_fields:
         table.on("cell-copy", lambda e: copy_to_clipboard(e.args))
+
+
+# ---------------------------------------------------------------------------
+# Service-name context menu (right-click → Copy Name / Copy ID)
+# ---------------------------------------------------------------------------
+_SERVICE_CONTEXT_MENU_SLOT = """
+<q-td :props="props">
+  <span
+    class="cursor-pointer text-primary"
+    title="Click to copy · Right-click for options"
+    @click="$parent.$emit('cell-copy', props.row['_full_' + props.col.field] || props.value)"
+  >{{ props.value }}</span>
+  <q-menu context-menu>
+    <q-list dense style="min-width: 180px">
+      <q-item clickable v-close-popup
+        @click="$parent.$emit('svc-ctx-copy', props.row['_full_' + props.col.field] || props.value)">
+        <q-item-section side><q-icon name="badge" size="xs" /></q-item-section>
+        <q-item-section>Copy Service Name</q-item-section>
+      </q-item>
+      <q-item clickable v-close-popup
+        @click="$parent.$emit('svc-ctx-copy', props.row['__id_field__'])">
+        <q-item-section side><q-icon name="fingerprint" size="xs" /></q-item-section>
+        <q-item-section>Copy Service ID</q-item-section>
+      </q-item>
+    </q-list>
+  </q-menu>
+</q-td>
+"""
+
+
+def add_service_context_menu(table, *, column_name: str, id_field: str = "service_id") -> None:
+    """Add a right-click context menu to a service-name column.
+
+    The menu offers *Copy Service Name* and *Copy Service ID*.
+    Left-click-to-copy behaviour is preserved.
+    """
+    slot_html = _SERVICE_CONTEXT_MENU_SLOT.replace("__id_field__", id_field)
+    table.add_slot(f"body-cell-{column_name}", slot_html)
+    table.on("svc-ctx-copy", lambda e: copy_to_clipboard(e.args))
 
 
 # ---------------------------------------------------------------------------
