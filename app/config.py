@@ -18,6 +18,7 @@ class AppConfig(BaseModel):
     use_mock_api: bool = True
     database_path: str = "data/app.db"
     max_concurrency: int = 25
+    container_host: str | None = None
 
     @field_validator("api_hosts", mode="before")
     @classmethod
@@ -65,10 +66,22 @@ def load_config() -> AppConfig:
     if not master_key:
         raise RuntimeError("MASTER_KEY is required in the environment for encryption")
 
-    return AppConfig(
+    config = AppConfig(
         api_hosts=api_hosts_raw,
         master_key=master_key,
         use_mock_api=_parse_bool(os.getenv("USE_MOCK_API"), True),
         database_path=os.getenv("DATABASE_PATH", "data/app.db"),
         max_concurrency=os.getenv("MAX_CONCURRENCY", "25"),
+        container_host=os.getenv("CONTAINER_HOST"),
     )
+
+    # When running in Docker, remap localhost URLs to reach the host machine.
+    if config.container_host:
+        config.api_hosts = {env: _remap_host(url, config.container_host) for env, url in config.api_hosts.items()}
+
+    return config
+
+
+def _remap_host(url: str, container_host: str) -> str:
+    """Replace localhost/127.0.0.1 with *container_host* in a URL."""
+    return url.replace("localhost", container_host).replace("127.0.0.1", container_host)

@@ -16,7 +16,7 @@ from typing import List, Optional
 from nicegui import app, ui
 
 from app.api_client import HttpNotificationAPI, MockNotificationAPI, NotificationAPI
-from app.config import AppConfig, load_config
+from app.config import AppConfig, _remap_host, load_config
 from app.crypto import EncryptionManager
 from app.db import create_all, dispose_engine, init_engine
 from app.repository import DbSaltProvider, get_secure_setting, get_setting, set_setting
@@ -93,6 +93,8 @@ async def build_api_client(env: str) -> NotificationAPI:
     base_url = await get_setting(f"base_url_{env}") or config.api_hosts.get(env)
     if not base_url:
         raise RuntimeError(f"Base URL missing for environment {env}")
+    if config.container_host:
+        base_url = _remap_host(base_url, config.container_host)
     basic_user = await get_secure_setting(f"basic_username_{env}", encryption)
     basic_pass = await get_secure_setting(f"basic_password_{env}", encryption)
     client = HttpNotificationAPI(base_url=base_url, basic_username=basic_user, basic_password=basic_pass)

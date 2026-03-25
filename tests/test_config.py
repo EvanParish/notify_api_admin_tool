@@ -2,7 +2,7 @@ import json
 import os
 import pytest
 from unittest.mock import patch
-from app.config import AppConfig, load_config, _parse_bool
+from app.config import AppConfig, _parse_bool, _remap_host, load_config
 
 
 def test_parse_bool_true_values():
@@ -133,3 +133,70 @@ def test_load_config_missing_master_key_patched():
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(RuntimeError, match="MASTER_KEY is required"):
                 load_config()
+
+
+def test_load_config_container_host_remaps_localhost():
+    env = {
+        "MASTER_KEY": "test-key",
+        "API_PUBLIC_HOSTS": json.dumps(
+            {
+                "local": "http://localhost:6011",
+                "dev": "https://dev-api.va.gov/vanotify",
+            }
+        ),
+        "CONTAINER_HOST": "host.docker.internal",
+    }
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+        assert config.api_hosts["local"] == "http://host.docker.internal:6011"
+        assert config.api_hosts["dev"] == "https://dev-api.va.gov/vanotify"
+
+
+def test_load_config_container_host_remaps_127():
+    env = {
+        "MASTER_KEY": "test-key",
+        "API_PUBLIC_HOSTS": json.dumps({"local": "http://127.0.0.1:6011"}),
+        "CONTAINER_HOST": "host.docker.internal",
+    }
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+        assert config.api_hosts["local"] == "http://host.docker.internal:6011"
+
+
+def test_load_config_no_container_host_keeps_localhost():
+    env = {
+        "MASTER_KEY": "test-key",
+        "API_PUBLIC_HOSTS": json.dumps({"local": "http://localhost:6011"}),
+    }
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+        assert config.api_hosts["local"] == "http://localhost:6011"
+
+
+def test_load_config_stores_container_host():
+    env = {
+        "MASTER_KEY": "test-key",
+        "CONTAINER_HOST": "host.docker.internal",
+    }
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+        assert config.container_host == "host.docker.internal"
+
+
+def test_load_config_container_host_none_by_default():
+    env = {"MASTER_KEY": "test-key"}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+        assert config.container_host is None
+
+
+def test_remap_host_localhost():
+    assert _remap_host("http://localhost:6011", "host.docker.internal") == "http://host.docker.internal:6011"
+
+
+def test_remap_host_127():
+    assert _remap_host("http://127.0.0.1:6011", "host.docker.internal") == "http://host.docker.internal:6011"
+
+
+def test_remap_host_no_match():
+    assert _remap_host("https://api.va.gov/vanotify", "host.docker.internal") == "https://api.va.gov/vanotify"

@@ -157,6 +157,36 @@ async def test_build_api_client_missing_url(initialized_db, mock_config):
 
 
 @pytest.mark.asyncio
+async def test_build_api_client_remaps_db_url(initialized_db, mock_config, mock_encryption):
+    """Test that build_api_client remaps localhost in DB URLs when CONTAINER_HOST is set."""
+    from app.repository import set_secure_setting, set_setting
+
+    original_config = _st.config
+    original_encryption = _st.encryption
+    _st.config = AppConfig(
+        master_key=mock_config.master_key,
+        api_hosts={"local": "http://localhost:6011"},
+        use_mock_api=False,
+        database_path=mock_config.database_path,
+        max_concurrency=5,
+        container_host="host.docker.internal",
+    )
+    _st.encryption = mock_encryption
+
+    try:
+        await set_setting("base_url_local", "http://localhost:6011")
+        await set_secure_setting("basic_username_local", "user", mock_encryption)
+        await set_secure_setting("basic_password_local", "pass", mock_encryption)
+
+        api = await _st.build_api_client("local")
+        assert isinstance(api, HttpNotificationAPI)
+        assert api.base_url == "http://host.docker.internal:6011"
+    finally:
+        _st.config = original_config
+        _st.encryption = original_encryption
+
+
+@pytest.mark.asyncio
 async def test_refresh_status_badge(initialized_db, mock_config):
     """Test refreshing the status badge."""
 
