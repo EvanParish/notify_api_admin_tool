@@ -51,14 +51,19 @@ async def api_key_emails_page() -> None:
     async def page_refresh():  # pragma: no cover
         await handle_full_sync(status_badge, sync_label)
 
-    async def sync_api_keys(environments: list[str] | None = None):  # pragma: no cover
+    async def sync_api_keys(
+        environments: list[str] | None = None,
+        service_ids: list[str] | None = None,
+    ):  # pragma: no cover
+        method_kwargs = {"sync_api_keys": {"service_ids": service_ids}} if service_ids else None
         await handle_entity_sync(
             ["sync_api_keys"],
             status_badge,
             sync_label,
             "API keys",
-            pre_sync=["sync_services"],
+            pre_sync=None if service_ids else ["sync_services"],
             environments=environments,
+            method_kwargs=method_kwargs,
         )
 
     refresh_button.on_click(page_refresh)
@@ -330,7 +335,10 @@ async def api_key_emails_page() -> None:
                     color="green",
                 )
 
-            await sync_api_keys([item["env"] for item in env_keys])
+            await sync_api_keys(
+                [item["env"] for item in env_keys],
+                service_ids=list({item["service_id"] for item in env_keys}),
+            )
 
         finally:
             generate_button.enable()

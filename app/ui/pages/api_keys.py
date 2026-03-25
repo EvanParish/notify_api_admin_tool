@@ -99,7 +99,7 @@ async def api_keys_page() -> None:
             status_badge,
             sync_label,
             "API keys",
-            pre_sync=["sync_services"],
+            pre_sync=None if service_ids else ["sync_services"],
             environments=envs,
             method_kwargs=method_kwargs,
         )
