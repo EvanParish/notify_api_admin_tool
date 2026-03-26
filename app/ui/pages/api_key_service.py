@@ -97,6 +97,7 @@ async def api_key_emails_page() -> None:
                 {
                     EmailTemplate.NEW_SERVICE.value: "New Service (includes API endpoints)",
                     EmailTemplate.KEY_ROTATION.value: "Key Rotation (key details only)",
+                    EmailTemplate.FORCED_ROTATION.value: "Forced Rotation (initial rotation onboarding)",
                 },
                 value=EmailTemplate.NEW_SERVICE.value,
             ).props("inline")

@@ -1087,6 +1087,52 @@ class TestBuildMultiEnvKeyEmail:
         # Key rotation template has same intro as new key template
         assert "API key(s)" in result
 
+    def test_forced_rotation_template(self):
+        env_keys = [
+            {
+                "env": "dev",
+                "secret": "secret-dev",
+                "service_id": "svc-dev-1",
+                "created_key": {
+                    "name": "dev-app-key",
+                    "id": "key-dev-123",
+                    "expiry_date": "2025-12-31",
+                },
+            },
+            {
+                "env": "staging",
+                "secret": "secret-staging",
+                "service_id": "svc-staging-2",
+                "created_key": {
+                    "name": "staging-app-key",
+                    "id": "key-staging-456",
+                    "expiry_date": "2025-12-31",
+                },
+            },
+        ]
+        result = email_helpers._build_multi_env_key_email(
+            env_keys, "My Service", template=email_helpers.EmailTemplate.FORCED_ROTATION
+        )
+        # Key details present for both envs
+        assert "secret-dev" in result
+        assert "dev-app-key" in result
+        assert "Dev Details" in result
+        assert "secret-staging" in result
+        assert "staging-app-key" in result
+        assert "Staging Details" in result
+        assert "My Service" in result
+        # Forced rotation-specific content
+        assert "Hello everyone!" in result
+        assert "expire in 45 days" in result
+        assert "Acknowledge the receipt" in result
+        assert "rotated every 180 days" in result
+        assert "Office Hours" in result
+        assert "Tuesdays or Thursdays 2:30 PM ET" in result
+        assert "Thank you," in result
+        # No endpoints (same as key rotation)
+        assert "api.notifications.va.gov" not in result
+        assert "VA Notify Endpoints" not in result
+
 
 class TestBuildEnvSectionWithEndpoints:
     def test_include_endpoints_true(self):

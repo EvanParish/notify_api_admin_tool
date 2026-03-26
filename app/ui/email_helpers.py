@@ -33,6 +33,7 @@ class EmailTemplate(Enum):
 
     NEW_SERVICE = "new_service"
     KEY_ROTATION = "key_rotation"
+    FORCED_ROTATION = "forced_rotation"
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +169,8 @@ def _build_multi_env_key_email(
     Args:
         env_keys: List of dicts with keys: env, secret, created_key, service_id
         service_name: Name of the service
-        template: EmailTemplate.NEW_SERVICE includes endpoints, KEY_ROTATION omits them
+        template: EmailTemplate.NEW_SERVICE includes endpoints,
+            KEY_ROTATION and FORCED_ROTATION omit them
     """
     include_endpoints = template == EmailTemplate.NEW_SERVICE
 
@@ -196,6 +198,41 @@ def _build_multi_env_key_email(
             f"{env_sections}\n"
             "If you need anything else, please don't hesitate to reach out - contact us via email "
             "oitoctovanotify@va.gov or Slack #va-notify-public channel!\n"
+        )
+    elif template == EmailTemplate.FORCED_ROTATION:
+        return (
+            "\nHello everyone!\n\n"
+            "This is a follow-up to our message sent earlier regarding VA Notify's "
+            "transition to a new model for API key rotation.\n\n"
+            "As part of this change, we are now initiating the first API key rotation "
+            "for services that have not yet been onboarded to the new API key rotation schedule.\n\n"
+            "Your current API key will expire in 45 days. A new API key has been issued "
+            "for your service and is included below.\n\n"
+            "Action Required:\n"
+            "- Acknowledge the receipt of this email\n"
+            "- Update your application configuration to use the new API key\n"
+            "- Confirm with us once the update has been completed\n\n\n"
+            "New API key Details:\n"
+            f"{env_sections}\n\n"
+            "After this initial rotation, your service will follow the standard VA Notify "
+            "key rotation schedule. Here is what to expect moving forward:\n"
+            "- Rotation Schedule: Future keys will need to be rotated every 180 days (~ 6 months)\n"
+            "- Future Rotations: Your designated Technical and Business contacts will receive "
+            "automated instructions when it's time to request and complete the next rotation.\n"
+            "- Action Required: To ensure you receive these important notifications, please keep "
+            "your account active by logging in at least once every 90 days.\n\n"
+            "If you have questions or would like to walk through the process, you are welcome to "
+            "join VA Notify Office Hours: Tuesdays or Thursdays 2:30 PM ET\n"
+            "Please note that multiple teams may attend these sessions, so we recommend planning "
+            "ahead and allowing sufficient time before your API key expiration date. If you would "
+            "like to join office hours, please request a slot at least 24 hours in advance to "
+            "ensure availability.\n\n"
+            "If office hours do not work for you, feel free to reply to this email, and we will "
+            "coordinate support.\n\n"
+            "If you need anything else, please reach out in Slack #va-notify-public or via email "
+            "oitoctovanotify@va.gov\n\n"
+            "Thank you,\n"
+            "VA Notify team\n"
         )
     else:
         # Key rotation template
