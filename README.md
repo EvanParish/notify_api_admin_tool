@@ -4,6 +4,8 @@ An admin dashboard for the [VA Notification API](https://github.com/department-o
 
 Built with Python 3.13, [NiceGUI](https://nicegui.io/), SQLite, and SQLAlchemy.
 
+<img width="1238" height="819" alt="_admin_dashboard_vanotify" src="https://github.com/user-attachments/assets/2e741d4e-e0c6-446d-abdd-d58dcbb7216f" />
+
 ## Prerequisites
 
 - **Python 3.13+**
