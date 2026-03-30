@@ -27,6 +27,7 @@ from app.ui.helpers import (
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
+    PAGE_RESPONSE_TIMEOUT,
     build_api_client,
     ensure_admin_auth,
     get_view_environment,
@@ -36,7 +37,7 @@ from app.ui.state import (
 from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 
-@ui.page("/sms-senders")
+@ui.page("/sms-senders", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def sms_senders_page() -> None:
     sms_sender_search_query = ""
 

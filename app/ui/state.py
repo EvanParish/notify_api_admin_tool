@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from nicegui import app, ui
+from starlette.requests import Request
+from starlette.responses import HTMLResponse
 
 from app.api_client import HttpNotificationAPI, MockNotificationAPI, NotificationAPI
 from app.config import AppConfig, _remap_host, load_config
@@ -22,6 +24,11 @@ from app.db import create_all, dispose_engine, init_engine
 from app.repository import DbSaltProvider, get_secure_setting, get_setting, set_setting
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Page timeout
+# ---------------------------------------------------------------------------
+PAGE_RESPONSE_TIMEOUT: float = 10.0
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +82,37 @@ async def shutdown() -> None:
         await c.aclose()
     _active_api_clients.clear()
     await dispose_engine()
+
+
+@app.exception_handler(TimeoutError)
+async def handle_timeout_error(request: Request, exc: TimeoutError) -> HTMLResponse:
+    """Return a friendly retry page instead of a 500 error on page-load timeouts."""
+    logger.warning("Page timed out: %s %s – %s", request.method, request.url.path, exc)
+    page_url = str(request.url)
+    html = (
+        "<!DOCTYPE html>"
+        '<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        "<title>Page Load Timeout</title>"
+        "<style>"
+        "body{margin:0;min-height:100vh;display:flex;align-items:center;"
+        "justify-content:center;background:#0b0f14;color:#e2e8f0;"
+        "font-family:system-ui,sans-serif}"
+        ".card{text-align:center;padding:2.5rem;border-radius:12px;"
+        "background:#161b22;border:1px solid #30363d;max-width:480px}"
+        "h1{font-size:1.5rem;margin:0 0 .75rem}"
+        "p{color:#8b949e;margin:0 0 1.5rem;line-height:1.5}"
+        "a{display:inline-block;padding:.625rem 1.5rem;background:#238636;"
+        "color:#fff;text-decoration:none;border-radius:6px;font-weight:600}"
+        "a:hover{background:#2ea043}"
+        "</style></head><body><div class='card'>"
+        "<h1>⏱️ Page Load Timeout</h1>"
+        "<p>The page took too long to load. This is usually temporary "
+        "&mdash; please try again.</p>"
+        f'<a href="{page_url}">Retry</a>'
+        "</div></body></html>"
+    )
+    return HTMLResponse(content=html, status_code=504)
 
 
 # ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@ from app.ui.helpers import (
     refresh_if_needed,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
-from app.ui.state import get_view_environment, refresh_status_badge
+from app.ui.state import PAGE_RESPONSE_TIMEOUT, get_view_environment, refresh_status_badge
 from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 
@@ -29,7 +29,7 @@ async def handle_service_search_event(e) -> None:
     await handle_service_search(getattr(e, "value", None))
 
 
-@ui.page("/services")
+@ui.page("/services", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def services_page() -> None:
     status_badge, sync_label, refresh_button, dark_mode, theme_button = build_shell(
         on_view_env_change=lambda: refresh_if_needed(services_table)

@@ -21,12 +21,12 @@ from app.ui.helpers import (
     parse_recipients,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
-from app.ui.state import build_api_client, refresh_status_badge
+from app.ui.state import PAGE_RESPONSE_TIMEOUT, build_api_client, refresh_status_badge
 from app.ui.sync_handlers import handle_full_sync
 from app.utils import extract_placeholders, validate_recipient
 
 
-@ui.page("/send")
+@ui.page("/send", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def send_page() -> None:
     placeholder_pattern = re.compile(r"\(\((.*?)\)\)")
 

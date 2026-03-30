@@ -19,11 +19,11 @@ from app.ui.helpers import (
     truncate_text,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
-from app.ui.state import get_view_environment, refresh_status_badge
+from app.ui.state import PAGE_RESPONSE_TIMEOUT, get_view_environment, refresh_status_badge
 from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 
-@ui.page("/templates")
+@ui.page("/templates", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def templates_page() -> None:
     template_search_query = ""
 

@@ -25,11 +25,11 @@ from app.ui.helpers import (
     refresh_if_needed,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
-from app.ui.state import get_view_environment, refresh_status_badge
+from app.ui.state import PAGE_RESPONSE_TIMEOUT, get_view_environment, refresh_status_badge
 from app.ui.sync_handlers import handle_full_sync
 
 
-@ui.page("/settings")
+@ui.page("/settings", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def settings_page() -> None:
     key_environment = None
     key_service = None

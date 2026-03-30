@@ -28,6 +28,7 @@ from app.ui.helpers import (
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
+    PAGE_RESPONSE_TIMEOUT,
     build_api_client,
     ensure_admin_auth,
     get_view_environment,
@@ -68,7 +69,7 @@ def _extract_api_key_secret(payload: Dict[str, Any]) -> str:
     raise ValueError("API key secret missing in response; expected data string")
 
 
-@ui.page("/api-keys")
+@ui.page("/api-keys", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def api_keys_page() -> None:
     async def refresh_service_options() -> None:  # pragma: no cover
         options = {svc.id: format_service_label(svc) for svc in await list_services(get_view_environment())}

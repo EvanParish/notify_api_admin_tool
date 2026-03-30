@@ -15,11 +15,11 @@ from app.repository import (
 )
 from app.ui.helpers import metric_card, refresh_if_needed
 from app.ui.shell import build_shell, ensure_theme_preference
-from app.ui.state import get_view_environment, refresh_status_badge
+from app.ui.state import PAGE_RESPONSE_TIMEOUT, get_view_environment, refresh_status_badge
 from app.ui.sync_handlers import handle_full_sync
 
 
-@ui.page("/")
+@ui.page("/", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def dashboard_page() -> None:
     @ui.refreshable
     async def render_dashboard() -> None:

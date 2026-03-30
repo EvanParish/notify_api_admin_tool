@@ -16,6 +16,7 @@ from app.ui.helpers import (
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
+    PAGE_RESPONSE_TIMEOUT,
     build_api_client,
     ensure_admin_auth,
     get_view_environment,
@@ -25,7 +26,7 @@ from app.ui.state import (
 from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 
-@ui.page("/communication-items")
+@ui.page("/communication-items", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def communication_items_page() -> None:
     async def handle_view_env_change() -> None:  # pragma: no cover
         await refresh_if_needed(render_table)

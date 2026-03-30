@@ -26,6 +26,7 @@ from app.ui.helpers import (
 from app.ui.pages.api_keys import _extract_api_key_secret
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
+    PAGE_RESPONSE_TIMEOUT,
     build_api_client,
     ensure_admin_auth,
     handle_unauthorized,
@@ -43,7 +44,7 @@ def _build_key_name_for_env(env: str, prefix: str, uuid_key: bool, test_key: boo
     return f"{env_token}-{prefix}-{uuid_part}{test_part}key"
 
 
-@ui.page("/api-key-service")
+@ui.page("/api-key-service", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def api_key_emails_page() -> None:
     status_badge, sync_label, refresh_button, dark_mode, theme_button = build_shell()
     await ensure_theme_preference(dark_mode, theme_button)

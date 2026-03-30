@@ -1311,6 +1311,53 @@ class TestSafeNotify:
             _st.safe_notify("hello")
 
 
+class TestPageResponseTimeout:
+    def test_constant_is_positive_float(self):
+        assert isinstance(_st.PAGE_RESPONSE_TIMEOUT, float)
+        assert _st.PAGE_RESPONSE_TIMEOUT > 0
+
+    def test_constant_exceeds_default(self):
+        # NiceGUI default is 3.0s; ours must be higher
+        assert _st.PAGE_RESPONSE_TIMEOUT > 3.0
+
+
+class TestHandleTimeoutError:
+    async def test_returns_504_with_retry_link(self):
+        from starlette.testclient import TestClient
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+
+        async def boom(request):
+            raise TimeoutError("Response not ready after 10.0 seconds")
+
+        app = Starlette(
+            routes=[Route("/", boom)],
+            exception_handlers={TimeoutError: _st.handle_timeout_error},
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/")
+        assert resp.status_code == 504
+        assert "Page Load Timeout" in resp.text
+        assert "Retry" in resp.text
+
+    async def test_retry_link_contains_request_url(self):
+        from starlette.testclient import TestClient
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+
+        async def boom(request):
+            raise TimeoutError("timeout")
+
+        app = Starlette(
+            routes=[Route("/my-page", boom)],
+            exception_handlers={TimeoutError: _st.handle_timeout_error},
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/my-page")
+        assert resp.status_code == 504
+        assert "/my-page" in resp.text
+
+
 class TestFindMissingPersonalisation:
     def test_none_value(self):
         assert helpers.find_missing_personalisation({"a": None, "b": "ok"}) == "a"

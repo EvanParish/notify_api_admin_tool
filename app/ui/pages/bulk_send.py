@@ -22,12 +22,12 @@ from app.ui.helpers import (
     format_service_label,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
-from app.ui.state import build_api_client, refresh_status_badge
+from app.ui.state import PAGE_RESPONSE_TIMEOUT, build_api_client, refresh_status_badge
 from app.ui.sync_handlers import handle_full_sync
 from app.utils import extract_placeholders
 
 
-@ui.page("/bulk-send")
+@ui.page("/bulk-send", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def bulk_send_page() -> None:
     placeholder_pattern = re.compile(r"\(\((.*?)\)\)")
 
