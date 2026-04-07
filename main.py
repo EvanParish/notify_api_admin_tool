@@ -75,7 +75,7 @@ import app.ui.pages  # noqa: F401, E402 — triggers @ui.page registration
 if __name__ in {"__main__", "__mp_main__"}:  # pragma: no cover
     ui.run(
         title="VA Notify Admin",
-        port=8080,
+        port=8081,
         reload=True,
         storage_secret=_st.config.master_key,
         show=False,
