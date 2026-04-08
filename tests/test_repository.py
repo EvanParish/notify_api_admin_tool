@@ -19,6 +19,7 @@ from app.repository import (
     update_api_key_expiry,
     mark_api_key_revoked,
     update_provider_detail,
+    update_service,
     update_sms_sender,
     update_inbound_number,
     update_communication_item,
@@ -940,6 +941,115 @@ async def test_update_inbound_number_partial_update(initialized_db):
         assert record.active is False
         assert record.number == "+15551234567"  # Unchanged
         assert record.provider == "pinpoint"  # Unchanged
+
+
+@pytest.mark.asyncio
+async def test_update_service(initialized_db):
+    async with get_session() as session:
+        session.add(
+            Service(
+                id="svc-1",
+                environment="dev",
+                name="Test Service",
+                active=True,
+                restricted=False,
+                message_limit=1000,
+                rate_limit=50,
+                research_mode=False,
+                count_as_live=True,
+                prefix_sms=False,
+            )
+        )
+        await session.commit()
+
+    updated = await update_service(
+        service_id="svc-1",
+        message_limit=5000,
+        rate_limit=100,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (await session.execute(select(Service).where(Service.id == "svc-1"))).scalar_one()
+        assert record.message_limit == 5000
+        assert record.rate_limit == 100
+        assert record.name == "Test Service"  # Unchanged
+        assert record.active is True  # Unchanged
+
+
+@pytest.mark.asyncio
+async def test_update_service_not_found(initialized_db):
+    result = await update_service(
+        service_id="nonexistent",
+        message_limit=5000,
+        environment="dev",
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_update_service_partial_message_limit(initialized_db):
+    async with get_session() as session:
+        session.add(
+            Service(
+                id="svc-2",
+                environment="dev",
+                name="Partial Test",
+                active=True,
+                restricted=False,
+                message_limit=1000,
+                rate_limit=50,
+                research_mode=False,
+                count_as_live=True,
+                prefix_sms=False,
+            )
+        )
+        await session.commit()
+
+    updated = await update_service(
+        service_id="svc-2",
+        message_limit=3000,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (await session.execute(select(Service).where(Service.id == "svc-2"))).scalar_one()
+        assert record.message_limit == 3000
+        assert record.rate_limit == 50  # Unchanged
+
+
+@pytest.mark.asyncio
+async def test_update_service_partial_rate_limit(initialized_db):
+    async with get_session() as session:
+        session.add(
+            Service(
+                id="svc-3",
+                environment="dev",
+                name="Rate Test",
+                active=True,
+                restricted=False,
+                message_limit=1000,
+                rate_limit=50,
+                research_mode=False,
+                count_as_live=True,
+                prefix_sms=False,
+            )
+        )
+        await session.commit()
+
+    updated = await update_service(
+        service_id="svc-3",
+        rate_limit=200,
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        record = (await session.execute(select(Service).where(Service.id == "svc-3"))).scalar_one()
+        assert record.message_limit == 1000  # Unchanged
+        assert record.rate_limit == 200
 
 
 @pytest.mark.asyncio

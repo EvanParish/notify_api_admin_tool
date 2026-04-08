@@ -77,6 +77,20 @@ async def test_mock_api_update_provider_detail():
 
 
 @pytest.mark.asyncio
+async def test_mock_api_update_service():
+    api = MockNotificationAPI()
+    result = await api.update_service(
+        service_id="svc-1",
+        message_limit=5000,
+        rate_limit=100,
+    )
+
+    assert result["data"]["id"] == "svc-1"
+    assert result["data"]["message_limit"] == 5000
+    assert result["data"]["rate_limit"] == 100
+
+
+@pytest.mark.asyncio
 async def test_mock_api_update_communication_item():
     api = MockNotificationAPI()
     result = await api.update_communication_item(
@@ -339,6 +353,48 @@ async def test_http_api_update_provider_detail_partial():
             auth=None,
         )
         assert result["id"] == "prov-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "svc-1"}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.update_service(
+            "svc-1",
+            message_limit=5000,
+            rate_limit=100,
+        )
+
+        mock_post.assert_called_once_with(
+            "https://api.example.com/service/svc-1",
+            json={"message_limit": 5000, "rate_limit": 100},
+            auth=None,
+        )
+        assert result["data"]["id"] == "svc-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_partial():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "svc-1"}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.update_service("svc-1", message_limit=3000)
+
+        mock_post.assert_called_once_with(
+            "https://api.example.com/service/svc-1",
+            json={"message_limit": 3000},
+            auth=None,
+        )
+        assert result["data"]["id"] == "svc-1"
 
 
 @pytest.mark.asyncio

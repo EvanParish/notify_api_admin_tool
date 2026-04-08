@@ -103,6 +103,28 @@ async def list_services(
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
 
+async def update_service(
+    service_id: str,
+    message_limit: int | None = None,
+    rate_limit: int | None = None,
+    environment: str | None = None,
+) -> bool:
+    async with get_session() as session:
+        query = select(Service).where(Service.id == service_id)
+        if environment:
+            query = query.where(Service.environment == environment)
+        result = await session.execute(query)
+        service = result.scalars().first()
+        if not service:
+            return False
+        if message_limit is not None:
+            service.message_limit = message_limit
+        if rate_limit is not None:
+            service.rate_limit = rate_limit
+        await session.commit()
+        return True
+
+
 async def list_templates(
     service_id: str | list[str] | None = None,
     template_type: str | None = None,

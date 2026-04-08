@@ -2400,6 +2400,52 @@ async def test_services_table_func(initialized_db, mock_config):
 
 
 @pytest.mark.asyncio
+async def test_services_table_func_with_selection(initialized_db, mock_config):
+    """services_table renders edit button and selection mode when given selected_service."""
+    original = _st.config
+    original_state = _st.state
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    _st.service_search_query = ""
+
+    mock_obj = MagicMock()
+    mock_obj.__enter__ = Mock(return_value=mock_obj)
+    mock_obj.__exit__ = Mock(return_value=False)
+    mock_obj.classes = MagicMock(return_value=mock_obj)
+    mock_obj.props = MagicMock(return_value=mock_obj)
+    mock_obj.add_slot = MagicMock(return_value=mock_obj)
+    mock_obj.on = MagicMock(return_value=mock_obj)
+
+    selected_service: dict = {"id": "old-value"}
+
+    try:
+        with (
+            patch(
+                "app.ui.pages.services.list_services",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "app.ui.pages.services.count_active_api_keys_by_service",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch("app.ui.pages.services.ui.table", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.row", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.button", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.space"),
+            patch("app.ui.pages.services.add_copyable_slots"),
+            patch("app.ui.pages.services.add_export_button"),
+        ):
+            await page_services.services_table.func(lambda: None, selected_service, lambda: None)
+            # selected_service should be cleared on refresh
+            assert selected_service == {}
+    finally:
+        _st.config = original
+        _st.state = original_state
+
+
+@pytest.mark.asyncio
 async def test_templates_page(initialized_db, mock_config):
     original = _st.config
     original_state = _st.state

@@ -38,6 +38,14 @@ class NotificationAPI:
     async def get_services(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+    async def update_service(
+        self,
+        service_id: str,
+        message_limit: int | None = None,
+        rate_limit: int | None = None,
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
+
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -182,6 +190,26 @@ class HttpNotificationAPI(NotificationAPI):
         resp = await self.client.get(f"{self.base_url}/service", auth=self._basic_auth)
         resp.raise_for_status()
         return resp.json().get("data", [])
+
+    @http_retry
+    async def update_service(
+        self,
+        service_id: str,
+        message_limit: int | None = None,
+        rate_limit: int | None = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        if message_limit is not None:
+            payload["message_limit"] = message_limit
+        if rate_limit is not None:
+            payload["rate_limit"] = rate_limit
+        resp = await self.client.post(
+            f"{self.base_url}/service/{service_id}",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     @http_retry
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
@@ -529,6 +557,21 @@ class MockNotificationAPI(NotificationAPI):
                 "updated_at": "2024-01-02T00:00:00Z",
             }
         ]
+
+    async def update_service(
+        self,
+        service_id: str,
+        message_limit: int | None = None,
+        rate_limit: int | None = None,
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {
+            "data": {
+                "id": service_id,
+                "message_limit": message_limit,
+                "rate_limit": rate_limit,
+            }
+        }
 
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)
