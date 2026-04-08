@@ -23,6 +23,7 @@ from app.repository import (
     update_inbound_number,
     update_communication_item,
     clear_table_data,
+    count_active_api_keys_by_service,
 )
 from app.crypto import EncryptionManager
 from app.repository import DbSaltProvider
@@ -1380,3 +1381,117 @@ async def test_list_api_keys_single_service_as_list(initialized_db):
     keys = await list_api_keys(service_id=["svc-1"])
     assert len(keys) == 1
     assert keys[0].id == "key-1"
+
+
+@pytest.mark.asyncio
+async def test_count_active_api_keys_empty(initialized_db):
+    """No API keys should return empty dict."""
+    counts = await count_active_api_keys_by_service()
+    assert counts == {}
+
+
+@pytest.mark.asyncio
+async def test_count_active_api_keys_mixed(initialized_db):
+    """Test correct counts with active, revoked, and expired keys."""
+    async with get_session() as session:
+        session.add(Service(id="svc-1", environment="dev", name="Service 1"))
+        session.add(Service(id="svc-2", environment="dev", name="Service 2"))
+        # svc-1: 2 active keys (1 no expiry, 1 future expiry)
+        session.add(
+            ApiKey(
+                id="k1", service_id="svc-1", environment="dev", name="Active no expiry", revoked=False, expiry_date=None
+            )
+        )
+        session.add(
+            ApiKey(
+                id="k2",
+                service_id="svc-1",
+                environment="dev",
+                name="Active future",
+                revoked=False,
+                expiry_date="2099-12-31T00:00:00+00:00",
+            )
+        )
+        # svc-1: 1 revoked key (should not count)
+        session.add(
+            ApiKey(id="k3", service_id="svc-1", environment="dev", name="Revoked", revoked=True, expiry_date=None)
+        )
+        # svc-1: 1 expired key (should not count)
+        session.add(
+            ApiKey(
+                id="k4",
+                service_id="svc-1",
+                environment="dev",
+                name="Expired",
+                revoked=False,
+                expiry_date="2020-01-01T00:00:00+00:00",
+            )
+        )
+        # svc-2: 1 active key
+        session.add(
+            ApiKey(id="k5", service_id="svc-2", environment="dev", name="Active", revoked=False, expiry_date=None)
+        )
+        await session.commit()
+
+    counts = await count_active_api_keys_by_service()
+    assert counts[("svc-1", "dev")] == 2
+    assert counts[("svc-2", "dev")] == 1
+
+
+@pytest.mark.asyncio
+async def test_count_active_api_keys_environment_filter(initialized_db):
+    """Test filtering by environment."""
+    async with get_session() as session:
+        session.add(
+            ApiKey(id="k1", service_id="svc-1", environment="dev", name="Dev key", revoked=False, expiry_date=None)
+        )
+        session.add(
+            ApiKey(
+                id="k2", service_id="svc-1", environment="staging", name="Staging key", revoked=False, expiry_date=None
+            )
+        )
+        await session.commit()
+
+    counts = await count_active_api_keys_by_service(environment="dev")
+    assert counts == {("svc-1", "dev"): 1}
+
+
+@pytest.mark.asyncio
+async def test_count_active_api_keys_null_expiry_is_active(initialized_db):
+    """Keys with NULL expiry_date should count as active."""
+    async with get_session() as session:
+        session.add(
+            ApiKey(id="k1", service_id="svc-1", environment="dev", name="No expiry", revoked=False, expiry_date=None)
+        )
+        await session.commit()
+
+    counts = await count_active_api_keys_by_service()
+    assert counts[("svc-1", "dev")] == 1
+
+
+@pytest.mark.asyncio
+async def test_count_active_api_keys_all_revoked(initialized_db):
+    """Service with only revoked keys should not appear in counts."""
+    async with get_session() as session:
+        session.add(
+            ApiKey(id="k1", service_id="svc-1", environment="dev", name="Revoked", revoked=True, expiry_date=None)
+        )
+        await session.commit()
+
+    counts = await count_active_api_keys_by_service()
+    assert ("svc-1", "dev") not in counts
+
+
+@pytest.mark.asyncio
+async def test_count_active_api_keys_multiple_environments(initialized_db):
+    """Test filtering by multiple environments."""
+    async with get_session() as session:
+        session.add(ApiKey(id="k1", service_id="svc-1", environment="dev", name="Dev", revoked=False))
+        session.add(ApiKey(id="k2", service_id="svc-1", environment="staging", name="Staging", revoked=False))
+        session.add(ApiKey(id="k3", service_id="svc-1", environment="prod", name="Prod", revoked=False))
+        await session.commit()
+
+    counts = await count_active_api_keys_by_service(environment=["dev", "staging"])
+    assert ("svc-1", "dev") in counts
+    assert ("svc-1", "staging") in counts
+    assert ("svc-1", "prod") not in counts

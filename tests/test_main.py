@@ -2381,6 +2381,11 @@ async def test_services_table_func(initialized_db, mock_config):
                 new_callable=AsyncMock,
                 return_value=[],
             ),
+            patch(
+                "app.ui.pages.services.count_active_api_keys_by_service",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
             patch("app.ui.pages.services.ui.table", return_value=mock_obj),
             patch("app.ui.pages.services.ui.row", return_value=mock_obj),
             patch("app.ui.pages.services.ui.button", return_value=mock_obj),
@@ -2653,6 +2658,11 @@ async def test_services_table_with_search_query(initialized_db, mock_config):
                 "app.ui.pages.services.list_services",
                 new_callable=AsyncMock,
                 return_value=[],
+            ),
+            patch(
+                "app.ui.pages.services.count_active_api_keys_by_service",
+                new_callable=AsyncMock,
+                return_value={},
             ),
             patch("app.ui.pages.services.ui.table", return_value=mock_obj),
             patch("app.ui.pages.services.ui.row", return_value=mock_obj),

@@ -4,7 +4,9 @@ import base64
 import json
 from typing import Type
 
-from sqlalchemy import delete, or_, select
+from datetime import datetime, timezone
+
+from sqlalchemy import delete, func, or_, select
 
 from .crypto import EncryptionManager
 from .db import Base, get_session
@@ -180,6 +182,26 @@ async def list_api_keys(
             query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(row.id, row.name)]
+
+
+async def count_active_api_keys_by_service(
+    environment: str | list[str] | None = None,
+) -> dict[tuple[str, str], int]:
+    """Count active (non-revoked, non-expired) API keys grouped by (service_id, environment)."""
+    now = datetime.now(timezone.utc).isoformat()
+    async with get_session() as session:
+        query = (
+            select(ApiKey.service_id, ApiKey.environment, func.count(ApiKey.id))
+            .where(ApiKey.revoked == False)  # noqa: E712
+            .where(or_(ApiKey.expiry_date.is_(None), ApiKey.expiry_date > now))
+            .group_by(ApiKey.service_id, ApiKey.environment)
+        )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(ApiKey.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
+        rows = (await session.execute(query)).all()
+        return {(sid, env): cnt for sid, env, cnt in rows if sid is not None and env is not None}
 
 
 async def update_api_key_expiry(

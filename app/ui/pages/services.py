@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from nicegui import ui
 
-from app.repository import list_services
+from app.repository import count_active_api_keys_by_service, list_services
 from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
@@ -55,7 +55,9 @@ async def services_page() -> None:
 
 @ui.refreshable
 async def services_table(sync_callback) -> None:
-    rows = await list_services(get_view_environment())
+    view_env = get_view_environment()
+    rows = await list_services(view_env)
+    active_key_counts = await count_active_api_keys_by_service(view_env)
     if _st.service_search_query:
         rows = [
             row
@@ -67,6 +69,7 @@ async def services_table(sync_callback) -> None:
         {"name": "id", "label": "ID", "field": "id"},
         {"name": "environment", "label": "Environment", "field": "environment"},
         {"name": "name", "label": "Name", "field": "name"},
+        {"name": "active_keys", "label": "Active Keys", "field": "active_keys"},
         {"name": "active", "label": "Active", "field": "active"},
         {"name": "restricted", "label": "Restricted", "field": "restricted"},
         {"name": "message_limit", "label": "Msg Limit", "field": "message_limit"},
@@ -81,6 +84,7 @@ async def services_table(sync_callback) -> None:
             "id": row.id,
             "environment": format_environment(row.environment),
             "name": row.name,
+            "active_keys": active_key_counts.get((row.id, row.environment), 0),
             "active": row.active,
             "restricted": row.restricted,
             "message_limit": row.message_limit,
