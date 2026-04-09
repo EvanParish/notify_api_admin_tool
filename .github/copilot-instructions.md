@@ -96,6 +96,10 @@ Two auth layers exist:
 1. **Basic Auth** — For admin API calls (listing services, templates, etc.). Credentials stored encrypted in the `settings` table.
 2. **JWT Bearer** — For sending notifications. Signed with a service's API secret from `local_api_keys`. Secrets are Fernet-encrypted at rest.
 
+## Git & Version Control
+
+**Do not commit changes.** Only the user can commit. After making changes, present a summary of what was modified so the user can review and commit themselves.
+
 ## Key Conventions
 
 - **Async everywhere**: All database and API operations are async. Tests use `asyncio_mode = auto`.
