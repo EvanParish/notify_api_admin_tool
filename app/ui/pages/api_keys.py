@@ -60,6 +60,25 @@ def _matches_expiry_range(expiry_value: Optional[str], start_date: Optional[date
     return True
 
 
+def _matches_search(
+    search_term: str,
+    key_id: str | None,
+    service_id: str | None,
+    service_name: str,
+    name: str | None,
+    created_by: str | None,
+) -> bool:
+    if not search_term:
+        return True
+    return (
+        search_term in (key_id or "").lower()
+        or search_term in (service_id or "").lower()
+        or search_term in service_name.lower()
+        or search_term in (name or "").lower()
+        or search_term in (created_by or "").lower()
+    )
+
+
 def _extract_api_key_secret(payload: Dict[str, Any]) -> str:
     if not isinstance(payload, dict):
         raise ValueError("Unexpected API response when creating API key")
@@ -351,7 +370,7 @@ async def api_keys_page() -> None:
         confirm_revoke_button.on_click(handle_confirm_revoke)
 
         search_input = (
-            ui.input(label="Search by ID, Service ID, Service Name, or Name")
+            ui.input(label="Search by ID, Service ID, Service Name, Name, or Created By")
             .props("clearable")
             .classes("w-full md:w-1/2")
         )
@@ -416,12 +435,13 @@ async def api_keys_page() -> None:
                 }
                 for key in keys
                 if _matches_expiry_range(key.expiry_date, start_date, end_date)
-                and (
-                    not search_term
-                    or search_term in (key.id or "").lower()
-                    or search_term in (key.service_id or "").lower()
-                    or search_term in (service_name_map.get(key.service_id, "")).lower()
-                    or search_term in (key.name or "").lower()
+                and _matches_search(
+                    search_term,
+                    key.id,
+                    key.service_id,
+                    service_name_map.get(key.service_id, ""),
+                    key.name,
+                    key.created_by,
                 )
             ]
             with ui.row().classes("w-full items-center"):
