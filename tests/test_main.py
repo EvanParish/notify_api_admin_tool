@@ -1438,7 +1438,33 @@ class TestMatchesExpiryRange:
         assert page_api_keys._matches_expiry_range("2025-06-15", date(2025, 1, 1), date(2025, 12, 31)) is True
 
 
-class TestExtractApiKeySecret:
+class TestMatchesSearch:
+    def test_empty_search_returns_true(self):
+        assert page_api_keys._matches_search("", "id1", "svc1", "My Service", "key-name", "user@example.com") is True
+
+    def test_matches_key_id(self):
+        assert page_api_keys._matches_search("id1", "id1", "svc1", "Svc", "key", "user") is True
+
+    def test_matches_service_id(self):
+        assert page_api_keys._matches_search("svc1", "id1", "svc1", "Svc", "key", "user") is True
+
+    def test_matches_service_name(self):
+        assert page_api_keys._matches_search("my svc", "id1", "svc1", "My Svc", "key", "user") is True
+
+    def test_matches_name(self):
+        assert page_api_keys._matches_search("key-name", "id1", "svc1", "Svc", "key-name", "user") is True
+
+    def test_matches_created_by(self):
+        assert page_api_keys._matches_search("alice", "id1", "svc1", "Svc", "key", "Alice") is True
+
+    def test_no_match_returns_false(self):
+        assert page_api_keys._matches_search("zzz", "id1", "svc1", "Svc", "key", "user") is False
+
+    def test_none_fields_handled(self):
+        assert page_api_keys._matches_search("test", None, None, "", None, None) is False
+
+    def test_case_insensitive(self):
+        assert page_api_keys._matches_search("alice", "id1", "svc1", "Svc", "key", "ALICE") is True
     def test_non_dict_raises(self):
         with pytest.raises(ValueError, match="Unexpected API response"):
             page_api_keys._extract_api_key_secret("not a dict")
