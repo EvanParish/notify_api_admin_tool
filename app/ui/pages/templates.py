@@ -4,8 +4,9 @@ from typing import Any, Dict, List
 
 from nicegui import ui
 
-from app.repository import list_services, list_templates
+from app.repository import list_communication_items, list_services, list_templates
 from app.ui.helpers import (
+    add_comm_item_context_menu,
     add_copyable_slots,
     add_export_button,
     add_service_context_menu,
@@ -100,6 +101,8 @@ async def templates_page() -> None:
                     or template_search_query in (row.service_id or "").lower()
                     or template_search_query in (service_name_map.get(row.service_id, "")).lower()
                 ]
+            comm_items = await list_communication_items(get_view_environment())
+            comm_item_map = {(ci.id, ci.environment): ci for ci in comm_items}
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},
                 {"name": "environment", "label": "Environment", "field": "environment"},
@@ -107,32 +110,46 @@ async def templates_page() -> None:
                 {"name": "name", "label": "Name", "field": "name"},
                 {"name": "template_type", "label": "Type", "field": "template_type"},
                 {"name": "version", "label": "Version", "field": "version"},
+                {"name": "com_item", "label": "Com Item", "field": "com_item"},
                 {"name": "archived", "label": "Archived", "field": "archived"},
                 {"name": "hidden", "label": "Hidden", "field": "hidden"},
                 {"name": "updated_at", "label": "Updated", "field": "updated_at"},
                 {"name": "subject", "label": "Subject", "field": "subject"},
                 {"name": "content", "label": "Content", "field": "content"},
             ]
-            table_rows: List[Dict[str, Any]] = [
-                {
-                    "_row_key": make_row_key(row.id, row.environment),
-                    "id": row.id,
-                    "environment": format_environment(row.environment),
-                    "service_id": row.service_id,
-                    "service_name": resolve_service_name(row.service_id, service_name_map),
-                    "_full_service_name": service_name_map.get(row.service_id, row.service_id),
-                    "name": truncate_text(row.name),
-                    "_full_name": row.name,
-                    "template_type": row.template_type,
-                    "version": row.version,
-                    "archived": row.archived,
-                    "hidden": row.hidden,
-                    "updated_at": row.updated_at[:10] if row.updated_at else None,  # Show date only
-                    "subject": truncate_text(row.subject),
-                    "content": truncate_text(row.content),
-                }
-                for row in rows
-            ]
+
+            def _resolve_comm_item(row):
+                ci = comm_item_map.get((row.communication_item_id, row.environment))
+                if ci:
+                    return ci.va_profile_item_id, ci.id, ci.name, ci.va_profile_item_id
+                return None, row.communication_item_id, None, None
+
+            table_rows: List[Dict[str, Any]] = []
+            for row in rows:
+                com_display, ci_id, ci_name, ci_num = _resolve_comm_item(row)
+                table_rows.append(
+                    {
+                        "_row_key": make_row_key(row.id, row.environment),
+                        "id": row.id,
+                        "environment": format_environment(row.environment),
+                        "service_id": row.service_id,
+                        "service_name": resolve_service_name(row.service_id, service_name_map),
+                        "_full_service_name": service_name_map.get(row.service_id, row.service_id),
+                        "name": truncate_text(row.name),
+                        "_full_name": row.name,
+                        "template_type": row.template_type,
+                        "com_item": com_display,
+                        "_comm_item_id": ci_id,
+                        "_comm_item_name": ci_name,
+                        "_comm_item_va_profile_item_id": ci_num,
+                        "version": row.version,
+                        "archived": row.archived,
+                        "hidden": row.hidden,
+                        "updated_at": row.updated_at[:10] if row.updated_at else None,  # Show date only
+                        "subject": truncate_text(row.subject),
+                        "content": truncate_text(row.content),
+                    }
+                )
             with ui.row().classes("w-full items-center"):
                 ui.button("Sync Templates", on_click=handle_sync_templates)
                 ui.space()
@@ -145,6 +162,7 @@ async def templates_page() -> None:
             table.props("row-key=_row_key").classes("w-full")
             add_copyable_slots(table, table_rows)
             add_service_context_menu(table, column_name="service_id")
+            add_comm_item_context_menu(table, column_name="com_item")
 
         async def handle_template_search_event(e) -> None:  # pragma: no cover
             nonlocal template_search_query

@@ -568,6 +568,7 @@ async def upsert_templates(raw: list[dict], environment: str, fallback_service_i
                 updated_at=tmpl.get("updated_at"),
                 created_by=tmpl.get("created_by"),
                 reply_to_email=tmpl.get("reply_to_email"),
+                communication_item_id=tmpl.get("communication_item_id"),
             )
             await session.merge(record)
         await session.commit()

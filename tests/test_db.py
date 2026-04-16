@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy import text
 from app.db import init_engine, create_all, get_session
 from app.models import Service, Template, ApiKey, LocalApiKey, Setting
 
@@ -232,3 +233,43 @@ async def test_dispose_engine_when_none():
         await dispose_engine()  # Should not raise
     finally:
         db.engine = original_engine
+
+
+@pytest.mark.asyncio
+async def test_migration_adds_missing_column(tmp_path):
+    """create_all() should add communication_item_id to an existing templates table."""
+    from app import db as db_mod
+
+    db_file = tmp_path / "migrate.db"
+    original_engine = db_mod.engine
+    original_session = db_mod.SessionLocal
+    try:
+        init_engine(str(db_file))
+        # Create initial schema, then drop the column by recreating the table without it
+        await create_all()
+        async with db_mod.engine.begin() as conn:
+            await conn.execute(text("DROP TABLE templates"))
+            await conn.execute(
+                text(
+                    "CREATE TABLE templates ("
+                    "id VARCHAR PRIMARY KEY, environment VARCHAR, service_id VARCHAR, "
+                    "name VARCHAR, template_type VARCHAR, content TEXT, subject VARCHAR, "
+                    "version INTEGER, archived BOOLEAN, hidden BOOLEAN, process_type VARCHAR, "
+                    "created_at VARCHAR, updated_at VARCHAR, created_by VARCHAR, reply_to_email VARCHAR)"
+                )
+            )
+        # Verify column is missing
+        async with db_mod.engine.begin() as conn:
+            cols = await conn.execute(text("PRAGMA table_info(templates)"))
+            col_names = {row[1] for row in cols}
+            assert "communication_item_id" not in col_names
+
+        # Run create_all again — migration should add the column
+        await create_all()
+        async with db_mod.engine.begin() as conn:
+            cols = await conn.execute(text("PRAGMA table_info(templates)"))
+            col_names = {row[1] for row in cols}
+            assert "communication_item_id" in col_names
+    finally:
+        db_mod.engine = original_engine
+        db_mod.SessionLocal = original_session

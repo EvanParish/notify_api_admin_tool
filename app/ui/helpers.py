@@ -179,6 +179,50 @@ def add_service_context_menu(table, *, column_name: str, id_field: str = "servic
 
 
 # ---------------------------------------------------------------------------
+# Communication-item context menu (right-click → Copy ID / Name / Number)
+# ---------------------------------------------------------------------------
+_COMM_ITEM_CONTEXT_MENU_SLOT = """
+<q-td :props="props">
+  <span
+    class="cursor-pointer text-primary"
+    title="Click to copy · Right-click for options"
+    @click="$parent.$emit('cell-copy', props.value)"
+  >{{ props.value }}</span>
+  <q-menu context-menu>
+    <q-list dense style="min-width: 200px">
+      <q-item clickable v-close-popup
+        @click="$parent.$emit('comm-ctx-copy', props.row['_comm_item_id'])">
+        <q-item-section side><q-icon name="fingerprint" size="xs" /></q-item-section>
+        <q-item-section>Copy Com Item ID</q-item-section>
+      </q-item>
+      <q-item clickable v-close-popup
+        @click="$parent.$emit('comm-ctx-copy', props.row['_comm_item_name'])">
+        <q-item-section side><q-icon name="badge" size="xs" /></q-item-section>
+        <q-item-section>Copy Com Item Name</q-item-section>
+      </q-item>
+      <q-item clickable v-close-popup
+        @click="$parent.$emit('comm-ctx-copy', props.row['_comm_item_va_profile_item_id'])">
+        <q-item-section side><q-icon name="tag" size="xs" /></q-item-section>
+        <q-item-section>Copy Com Item Number</q-item-section>
+      </q-item>
+    </q-list>
+  </q-menu>
+</q-td>
+"""
+
+
+def add_comm_item_context_menu(table, *, column_name: str) -> None:
+    """Add a right-click context menu to a communication-item column.
+
+    The menu offers *Copy Com Item ID*, *Copy Com Item Name*, and
+    *Copy Com Item Number* (va_profile_item_id).
+    Left-click-to-copy behaviour is preserved.
+    """
+    table.add_slot(f"body-cell-{column_name}", _COMM_ITEM_CONTEXT_MENU_SLOT)
+    table.on("comm-ctx-copy", lambda e: copy_to_clipboard(e.args))
+
+
+# ---------------------------------------------------------------------------
 # Formatting helpers
 # ---------------------------------------------------------------------------
 def format_environment(value: Optional[str]) -> str:
