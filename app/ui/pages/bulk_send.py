@@ -68,7 +68,6 @@ async def bulk_send_page() -> None:
             ui.select(service_options, label="Service", with_input=True).props("clearable").classes("w-full md:w-1/2")
         )
         key_select = ui.select({}, label="API Key").props("clearable").classes("w-full md:w-1/2")
-        type_toggle = ui.toggle({"email": "Email", "sms": "SMS"}, value="email")
         template_select = ui.select({}, label="Template", with_input=True).props("clearable").classes("w-full md:w-1/2")
         personalisation_area = ui.column().classes("w-full md:w-1/2")
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
@@ -97,8 +96,7 @@ async def bulk_send_page() -> None:
 
         async def load_templates() -> None:
             selected_service = service_select.value
-            t_type = type_toggle.value
-            templates = await list_templates(selected_service, t_type, environment=_st.state.environment)
+            templates = await list_templates(selected_service, "email", environment=_st.state.environment)
             options = {t.id: t.name for t in templates}
             template_select.set_options(options)
             if template_select.value not in options:
@@ -110,7 +108,7 @@ async def bulk_send_page() -> None:
             selected_id = template_select.value
             templates = await list_templates(
                 service_select.value,
-                type_toggle.value,
+                "email",
                 environment=_st.state.environment,
             )
             tmpl = next((t for t in templates if t.id == selected_id), None)
@@ -133,7 +131,7 @@ async def bulk_send_page() -> None:
                 return
             templates = await list_templates(
                 service_select.value,
-                type_toggle.value,
+                "email",
                 environment=_st.state.environment,
             )
             tmpl = next((t for t in templates if t.id == selected_id), None)
@@ -152,7 +150,6 @@ async def bulk_send_page() -> None:
             selected_service = service_select.value
             selected_key = key_select.value
             selected_template = template_select.value
-            t_type = type_toggle.value
             if not (selected_env and selected_service and selected_key and selected_template):
                 ui.notify("Environment, service, key, and template are required", color="red")
                 return
@@ -189,7 +186,7 @@ async def bulk_send_page() -> None:
                 semaphore = asyncio.Semaphore(_st.config.max_concurrency)
 
                 async def send_for_user(user, index: int):
-                    recipient = user.email_address if t_type == "email" else user.mobile_number
+                    recipient = user.email_address
                     if not recipient:
                         return index, {
                             "user_id": user.id,
@@ -205,7 +202,7 @@ async def bulk_send_page() -> None:
                                 personalisation=personalisation,
                                 api_key=api_key_secret,
                                 service_id=selected_service,
-                                template_type=t_type,
+                                template_type="email",
                             )
                             return index, {
                                 "user_id": user.id,
@@ -246,7 +243,7 @@ async def bulk_send_page() -> None:
                     "environment": selected_env,
                     "service_id": selected_service,
                     "template_id": selected_template,
-                    "template_type": t_type,
+                    "template_type": "email",
                     "total_users": len(active_users),
                     "sent": sent_count,
                     "skipped": skipped_count,
@@ -301,10 +298,6 @@ async def bulk_send_page() -> None:
             await load_templates()
             await update_preview()
 
-        async def handle_type_change(_=None) -> None:  # pragma: no cover
-            await load_templates()
-            await update_preview()
-
         async def handle_template_select(_=None) -> None:  # pragma: no cover
             await handle_template_change()
 
@@ -314,7 +307,6 @@ async def bulk_send_page() -> None:
             await refresh_service_options()
 
         service_select.on_value_change(handle_service_change)
-        type_toggle.on_value_change(handle_type_change)
         template_select.on_value_change(handle_template_select)
         env_select.on_value_change(handle_env_change)
         ui.button("Bulk Send Notification", on_click=handle_bulk_send, color="primary")
