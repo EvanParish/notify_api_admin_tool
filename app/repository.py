@@ -255,8 +255,36 @@ async def mark_api_key_revoked(service_id: str, key_id: str, environment: str | 
         if not record:
             return False
         record.revoked = True
+        record.expiry_date = datetime.now(timezone.utc).isoformat()
         await session.commit()
         return True
+
+
+async def mark_stale_api_keys_revoked(
+    remote_key_ids: list[str],
+    environment: str,
+    service_id: str,
+) -> int:
+    """Mark local API keys as revoked if they were not returned by the remote API.
+
+    Keys that are already revoked are left unchanged.
+    Returns the number of keys newly marked as revoked.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    async with get_session() as session:
+        query = select(ApiKey).where(
+            ApiKey.service_id == service_id,
+            ApiKey.environment == environment,
+            ApiKey.revoked == False,  # noqa: E712
+        )
+        if remote_key_ids:
+            query = query.where(ApiKey.id.not_in(remote_key_ids))
+        rows = (await session.execute(query)).scalars().all()
+        for row in rows:
+            row.revoked = True
+            row.expiry_date = now
+        await session.commit()
+        return len(rows)
 
 
 async def list_sms_senders(

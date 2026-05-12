@@ -9,6 +9,7 @@ import httpx
 from .api_client import NotificationAPI
 from .repository import (
     list_service_ids,
+    mark_stale_api_keys_revoked,
     upsert_api_keys,
     upsert_communication_items,
     upsert_inbound_numbers,
@@ -187,6 +188,8 @@ class SyncManager:
                 await progress(f"API keys for {service_id}")
             try:
                 api_keys = await self.api.get_api_keys(service_id)
+                remote_key_ids = [k["id"] for k in api_keys]
+                await mark_stale_api_keys_revoked(remote_key_ids, self.environment, service_id)
                 await upsert_api_keys(api_keys, self.environment, service_id)
                 result.add_success()
             except Exception as exc:
