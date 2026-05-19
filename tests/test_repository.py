@@ -28,6 +28,7 @@ from app.repository import (
     update_communication_item,
     clear_table_data,
     count_active_api_keys_by_service,
+    _is_expired,
 )
 from app.crypto import EncryptionManager
 from app.repository import DbSaltProvider
@@ -700,6 +701,116 @@ async def test_update_api_key_expiry_not_found(initialized_db):
 async def test_mark_api_key_revoked_not_found(initialized_db):
     result = await mark_api_key_revoked(service_id="nonexistent", key_id="nonexistent")
     assert result is False
+
+
+def test_is_expired_none():
+    assert _is_expired(None) is False
+
+
+def test_is_expired_empty_string():
+    assert _is_expired("") is False
+
+
+def test_is_expired_past_date():
+    assert _is_expired("2020-01-01T00:00:00+00:00") is True
+
+
+def test_is_expired_future_date():
+    assert _is_expired("2099-12-31T23:59:59+00:00") is False
+
+
+def test_is_expired_invalid_string():
+    assert _is_expired("not-a-date") is False
+
+
+def test_is_expired_naive_past_date():
+    """Offset-naive timestamps are treated as UTC."""
+    assert _is_expired("2020-01-01T00:00:00") is True
+
+
+def test_is_expired_naive_future_date():
+    assert _is_expired("2099-12-31T23:59:59") is False
+
+
+@pytest.mark.asyncio
+async def test_mark_api_key_revoked_preserves_past_expiry(initialized_db):
+    """A key that is already expired keeps its original expiry_date."""
+    past_expiry = "2020-06-01T00:00:00+00:00"
+    async with get_session() as session:
+        session.add(
+            ApiKey(
+                id="key-exp",
+                service_id="svc-1",
+                environment="dev",
+                name="Expired Key",
+                revoked=False,
+                expiry_date=past_expiry,
+            )
+        )
+        await session.commit()
+
+    updated = await mark_api_key_revoked(service_id="svc-1", key_id="key-exp", environment="dev")
+    assert updated is True
+
+    async with get_session() as session:
+        record = (await session.execute(select(ApiKey).where(ApiKey.id == "key-exp"))).scalar_one()
+        assert record.revoked is True
+        assert record.expiry_date == past_expiry
+
+
+@pytest.mark.asyncio
+async def test_mark_api_key_revoked_updates_future_expiry(initialized_db):
+    """A key with a future expiry gets its expiry_date overwritten to now."""
+    future_expiry = "2099-12-31T23:59:59+00:00"
+    async with get_session() as session:
+        session.add(
+            ApiKey(
+                id="key-fut",
+                service_id="svc-1",
+                environment="dev",
+                name="Future Key",
+                revoked=False,
+                expiry_date=future_expiry,
+            )
+        )
+        await session.commit()
+
+    updated = await mark_api_key_revoked(service_id="svc-1", key_id="key-fut", environment="dev")
+    assert updated is True
+
+    async with get_session() as session:
+        record = (await session.execute(select(ApiKey).where(ApiKey.id == "key-fut"))).scalar_one()
+        assert record.revoked is True
+        assert record.expiry_date != future_expiry
+        expiry = datetime.fromisoformat(record.expiry_date)
+        assert expiry.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_mark_api_key_revoked_sets_expiry_when_none(initialized_db):
+    """A key with no expiry_date gets one set on revocation."""
+    async with get_session() as session:
+        session.add(
+            ApiKey(
+                id="key-none",
+                service_id="svc-1",
+                environment="dev",
+                name="No Expiry Key",
+                revoked=False,
+                expiry_date=None,
+            )
+        )
+        await session.commit()
+
+    updated = await mark_api_key_revoked(service_id="svc-1", key_id="key-none", environment="dev")
+    assert updated is True
+
+    async with get_session() as session:
+        record = (await session.execute(select(ApiKey).where(ApiKey.id == "key-none"))).scalar_one()
+        assert record.revoked is True
+        assert record.expiry_date is not None
+        expiry = datetime.fromisoformat(record.expiry_date)
+        assert expiry.tzinfo is not None
 
 
 @pytest.mark.asyncio
@@ -1719,3 +1830,57 @@ async def test_mark_stale_api_keys_revoked_service_filter(initialized_db):
 
         svc2_key = (await session.execute(select(ApiKey).where(ApiKey.id == "k2"))).scalar_one()
         assert svc2_key.revoked is False
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_api_keys_revoked_preserves_past_expiry(initialized_db):
+    """Stale key with a past expiry_date keeps its original value."""
+    past_expiry = "2020-01-01T00:00:00+00:00"
+    async with get_session() as session:
+        session.add(
+            ApiKey(
+                id="k1",
+                service_id="svc-1",
+                environment="dev",
+                name="Expired Key",
+                revoked=False,
+                expiry_date=past_expiry,
+            )
+        )
+        await session.commit()
+
+    count = await mark_stale_api_keys_revoked([], "dev", "svc-1")
+    assert count == 1
+
+    async with get_session() as session:
+        row = (await session.execute(select(ApiKey).where(ApiKey.id == "k1"))).scalar_one()
+        assert row.revoked is True
+        assert row.expiry_date == past_expiry
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_api_keys_revoked_updates_future_expiry(initialized_db):
+    """Stale key with a future expiry_date gets it overwritten to now."""
+    future_expiry = "2099-12-31T23:59:59+00:00"
+    async with get_session() as session:
+        session.add(
+            ApiKey(
+                id="k1",
+                service_id="svc-1",
+                environment="dev",
+                name="Future Key",
+                revoked=False,
+                expiry_date=future_expiry,
+            )
+        )
+        await session.commit()
+
+    count = await mark_stale_api_keys_revoked([], "dev", "svc-1")
+    assert count == 1
+
+    async with get_session() as session:
+        row = (await session.execute(select(ApiKey).where(ApiKey.id == "k1"))).scalar_one()
+        assert row.revoked is True
+        assert row.expiry_date != future_expiry
+        expiry = datetime.fromisoformat(row.expiry_date)
+        assert expiry.tzinfo is not None

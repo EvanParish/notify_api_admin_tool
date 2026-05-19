@@ -24,6 +24,19 @@ from .models import (
 )
 
 
+def _is_expired(expiry_date: str | None) -> bool:
+    """Return True if *expiry_date* is a past ISO-8601 timestamp."""
+    if not expiry_date:
+        return False
+    try:
+        parsed = datetime.fromisoformat(expiry_date)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed < datetime.now(timezone.utc)
+    except ValueError:
+        return False
+
+
 class DbSaltProvider:
     """SaltProvider implementation backed by the settings table."""
 
@@ -255,7 +268,8 @@ async def mark_api_key_revoked(service_id: str, key_id: str, environment: str | 
         if not record:
             return False
         record.revoked = True
-        record.expiry_date = datetime.now(timezone.utc).isoformat()
+        if not _is_expired(record.expiry_date):
+            record.expiry_date = datetime.now(timezone.utc).isoformat()
         await session.commit()
         return True
 
@@ -282,7 +296,8 @@ async def mark_stale_api_keys_revoked(
         rows = (await session.execute(query)).scalars().all()
         for row in rows:
             row.revoked = True
-            row.expiry_date = now
+            if not _is_expired(row.expiry_date):
+                row.expiry_date = now
         await session.commit()
         return len(rows)
 
