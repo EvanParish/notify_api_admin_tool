@@ -68,7 +68,6 @@ async def templates_page() -> None:
         filter_row = ui.row().classes("gap-2")  # noqa: F841
         _services = await list_services(get_view_environment())
         service_options = {svc.id: format_service_label(svc) for svc in _services}
-        service_name_map = build_service_name_map(_services)
         type_options = {"email": "Email", "sms": "SMS"}
         service_select = (
             ui.select(service_options, label="Service", with_input=True, multiple=True)
@@ -85,6 +84,7 @@ async def templates_page() -> None:
 
         @ui.refreshable
         async def render_table() -> None:  # pragma: no cover
+            service_name_map = build_service_name_map(await list_services(get_view_environment()))
             selected_services = service_select.value or []
             selected_type = type_select.value
             rows = await list_templates(

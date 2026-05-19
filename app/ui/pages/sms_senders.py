@@ -361,7 +361,6 @@ async def sms_senders_page() -> None:
             )
         _services = await list_services(get_view_environment())
         service_options = {svc.id: format_service_label(svc) for svc in _services}
-        service_name_map = build_service_name_map(_services)
         service_select = (
             ui.select(
                 service_options,
@@ -386,6 +385,7 @@ async def sms_senders_page() -> None:
         async def render_table() -> None:  # pragma: no cover
             selected_sender.clear()
             update_edit_fields(None)
+            service_name_map = build_service_name_map(await list_services(get_view_environment()))
             selected_services = service_select.value or []
             senders = await list_sms_senders(selected_services or None, environment=get_view_environment())
             if sms_sender_search_query:

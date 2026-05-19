@@ -376,7 +376,6 @@ async def api_keys_page() -> None:
         )
         _services = await list_services(get_view_environment())
         service_options = {svc.id: format_service_label(svc) for svc in _services}
-        service_name_map = build_service_name_map(_services)
         service_select = (
             ui.select(
                 service_options,
@@ -403,6 +402,7 @@ async def api_keys_page() -> None:
             start_date = _parse_filter_date(expires_from.value)
             end_date = _parse_filter_date(expires_to.value)
             search_term = (search_input.value or "").strip().lower()
+            service_name_map = build_service_name_map(await list_services(get_view_environment()))
             keys = await list_api_keys(selected_services or None, environment=get_view_environment())
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},
