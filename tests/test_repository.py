@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 from sqlalchemy import select
 from app.repository import (
@@ -18,6 +20,7 @@ from app.repository import (
     list_users,
     update_api_key_expiry,
     mark_api_key_revoked,
+    mark_stale_api_keys_revoked,
     update_provider_detail,
     update_service,
     update_sms_sender,
@@ -563,6 +566,9 @@ async def test_mark_api_key_revoked(initialized_db):
     async with get_session() as session:
         record = (await session.execute(select(ApiKey).where(ApiKey.id == "key-1"))).scalar_one()
         assert record.revoked is True
+        assert record.expiry_date is not None
+        expiry = datetime.fromisoformat(record.expiry_date)
+        assert expiry.tzinfo is not None
 
 
 @pytest.mark.asyncio
@@ -1605,3 +1611,111 @@ async def test_count_active_api_keys_multiple_environments(initialized_db):
     assert ("svc-1", "dev") in counts
     assert ("svc-1", "staging") in counts
     assert ("svc-1", "prod") not in counts
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_api_keys_revoked_marks_missing(initialized_db):
+    """Keys not in the remote set are marked revoked with expiry_date set."""
+    async with get_session() as session:
+        session.add(ApiKey(id="k1", service_id="svc-1", environment="dev", name="Key1", revoked=False))
+        session.add(ApiKey(id="k2", service_id="svc-1", environment="dev", name="Key2", revoked=False))
+        session.add(ApiKey(id="k3", service_id="svc-1", environment="dev", name="Key3", revoked=False))
+        await session.commit()
+
+    count = await mark_stale_api_keys_revoked(["k1"], "dev", "svc-1")
+    assert count == 2
+
+    async with get_session() as session:
+        k1 = (await session.execute(select(ApiKey).where(ApiKey.id == "k1"))).scalar_one()
+        assert k1.revoked is False
+        assert k1.expiry_date is None
+
+        for kid in ("k2", "k3"):
+            row = (await session.execute(select(ApiKey).where(ApiKey.id == kid))).scalar_one()
+            assert row.revoked is True
+            assert row.expiry_date is not None
+            expiry = datetime.fromisoformat(row.expiry_date)
+            assert expiry.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_api_keys_revoked_skips_already_revoked(initialized_db):
+    """Already-revoked keys are left unchanged."""
+    original_expiry = "2024-06-01T00:00:00+00:00"
+    async with get_session() as session:
+        session.add(
+            ApiKey(
+                id="k1",
+                service_id="svc-1",
+                environment="dev",
+                name="Key1",
+                revoked=True,
+                expiry_date=original_expiry,
+            )
+        )
+        await session.commit()
+
+    count = await mark_stale_api_keys_revoked([], "dev", "svc-1")
+    assert count == 0
+
+    async with get_session() as session:
+        row = (await session.execute(select(ApiKey).where(ApiKey.id == "k1"))).scalar_one()
+        assert row.revoked is True
+        assert row.expiry_date == original_expiry
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_api_keys_revoked_empty_remote_list(initialized_db):
+    """An empty remote list marks all non-revoked keys as revoked."""
+    async with get_session() as session:
+        session.add(ApiKey(id="k1", service_id="svc-1", environment="dev", name="Key1", revoked=False))
+        session.add(ApiKey(id="k2", service_id="svc-1", environment="dev", name="Key2", revoked=False))
+        await session.commit()
+
+    count = await mark_stale_api_keys_revoked([], "dev", "svc-1")
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_api_keys_revoked_no_local_keys(initialized_db):
+    """Returns 0 when there are no local keys for the service."""
+    count = await mark_stale_api_keys_revoked(["k1"], "dev", "svc-1")
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_api_keys_revoked_environment_filter(initialized_db):
+    """Only keys in the target environment are affected."""
+    async with get_session() as session:
+        session.add(ApiKey(id="k1", service_id="svc-1", environment="dev", name="Dev Key", revoked=False))
+        session.add(ApiKey(id="k2", service_id="svc-1", environment="staging", name="Staging Key", revoked=False))
+        await session.commit()
+
+    count = await mark_stale_api_keys_revoked([], "dev", "svc-1")
+    assert count == 1
+
+    async with get_session() as session:
+        dev_key = (await session.execute(select(ApiKey).where(ApiKey.id == "k1"))).scalar_one()
+        assert dev_key.revoked is True
+
+        staging_key = (await session.execute(select(ApiKey).where(ApiKey.id == "k2"))).scalar_one()
+        assert staging_key.revoked is False
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_api_keys_revoked_service_filter(initialized_db):
+    """Only keys for the target service are affected."""
+    async with get_session() as session:
+        session.add(ApiKey(id="k1", service_id="svc-1", environment="dev", name="Svc1 Key", revoked=False))
+        session.add(ApiKey(id="k2", service_id="svc-2", environment="dev", name="Svc2 Key", revoked=False))
+        await session.commit()
+
+    count = await mark_stale_api_keys_revoked([], "dev", "svc-1")
+    assert count == 1
+
+    async with get_session() as session:
+        svc1_key = (await session.execute(select(ApiKey).where(ApiKey.id == "k1"))).scalar_one()
+        assert svc1_key.revoked is True
+
+        svc2_key = (await session.execute(select(ApiKey).where(ApiKey.id == "k2"))).scalar_one()
+        assert svc2_key.revoked is False

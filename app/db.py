@@ -1,8 +1,12 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -35,6 +39,23 @@ async def create_all() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(models.Base.metadata.create_all)
+    await _apply_migrations()
+
+
+_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("templates", "communication_item_id", "VARCHAR"),
+]
+
+
+async def _apply_migrations() -> None:
+    """Add missing columns to existing tables."""
+    async with engine.begin() as conn:
+        for table, column, col_type in _MIGRATIONS:
+            cols = await conn.execute(text(f"PRAGMA table_info({table})"))
+            existing = {row[1] for row in cols}
+            if column not in existing:
+                await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                logger.info("Migrated: added %s.%s", table, column)
 
 
 @asynccontextmanager

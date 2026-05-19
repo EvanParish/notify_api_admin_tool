@@ -597,3 +597,99 @@ async def test_sync_extracts_error_message_from_json_response(initialized_db):
 
     assert result.error_count == 1
     assert "Invalid service configuration" in str(result.errors[0])
+
+
+@pytest.mark.asyncio
+async def test_sync_api_keys_marks_stale_keys_revoked(initialized_db):
+    """Keys in local storage but not returned by the API are marked revoked."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service, ApiKey
+    from app.db import get_session
+
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service 1", active=True))
+        session.add(ApiKey(id="k1", service_id="svc-1", environment="dev", name="Active", revoked=False))
+        session.add(ApiKey(id="k2", service_id="svc-1", environment="dev", name="Stale", revoked=False))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+
+    async def return_only_k1(service_id):
+        return [{"id": "k1", "name": "Active", "key_type": "normal", "revoked": False}]
+
+    mock_api.get_api_keys = return_only_k1
+
+    manager = SyncManager(mock_api, max_concurrency=5, environment="dev")
+    result = await manager.sync_api_keys(service_ids=["svc-1"])
+    assert result.error_count == 0
+
+    async with get_session() as session:
+        k1 = (await session.execute(select(ApiKey).where(ApiKey.id == "k1"))).scalar_one()
+        assert k1.revoked is False
+
+        k2 = (await session.execute(select(ApiKey).where(ApiKey.id == "k2"))).scalar_one()
+        assert k2.revoked is True
+        assert k2.expiry_date is not None
+
+
+@pytest.mark.asyncio
+async def test_sync_api_keys_404_does_not_revoke(initialized_db):
+    """404 errors should not trigger revocation of local keys."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service, ApiKey
+    from app.db import get_session
+
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service 1", active=True))
+        session.add(ApiKey(id="k1", service_id="svc-1", environment="dev", name="Key1", revoked=False))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+
+    async def raise_404(service_id):
+        raise Exception("Client error '404 NOT FOUND'")
+
+    mock_api.get_api_keys = raise_404
+
+    manager = SyncManager(mock_api, max_concurrency=5, environment="dev")
+    await manager.sync_api_keys(service_ids=["svc-1"])
+
+    async with get_session() as session:
+        k1 = (await session.execute(select(ApiKey).where(ApiKey.id == "k1"))).scalar_one()
+        assert k1.revoked is False
+        assert k1.expiry_date is None
+
+
+@pytest.mark.asyncio
+async def test_sync_api_keys_upserts_returned_keys_normally(initialized_db):
+    """Keys returned by the API are upserted normally and not marked revoked."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service, ApiKey
+    from app.db import get_session
+
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service 1", active=True))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+
+    async def return_keys(service_id):
+        return [
+            {"id": "k1", "name": "Key1", "key_type": "normal", "revoked": False},
+            {"id": "k2", "name": "Key2", "key_type": "team", "revoked": False},
+        ]
+
+    mock_api.get_api_keys = return_keys
+
+    manager = SyncManager(mock_api, max_concurrency=5, environment="dev")
+    result = await manager.sync_api_keys(service_ids=["svc-1"])
+    assert result.error_count == 0
+
+    async with get_session() as session:
+        keys = (await session.execute(select(ApiKey))).scalars().all()
+        assert len(keys) == 2
+        for key in keys:
+            assert key.revoked is False

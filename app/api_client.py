@@ -584,6 +584,7 @@ class MockNotificationAPI(NotificationAPI):
                 "content": "Hello ((first_name)), welcome to our service.",
                 "subject": "Welcome, ((first_name))!",
                 "version": 1,
+                "communication_item_id": "00dfc28c-e229-4cc3-b691-8ffadaba1c72",
             },
             {
                 "id": "tmpl-sms-1",
@@ -593,6 +594,7 @@ class MockNotificationAPI(NotificationAPI):
                 "content": "Hi ((name)), your code is ((code)).",
                 "subject": None,
                 "version": 1,
+                "communication_item_id": None,
             },
         ]
 

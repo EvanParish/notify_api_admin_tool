@@ -1465,6 +1465,7 @@ class TestMatchesSearch:
 
     def test_case_insensitive(self):
         assert page_api_keys._matches_search("alice", "id1", "svc1", "Svc", "key", "ALICE") is True
+
     def test_non_dict_raises(self):
         with pytest.raises(ValueError, match="Unexpected API response"):
             page_api_keys._extract_api_key_secret("not a dict")
@@ -1551,6 +1552,40 @@ class TestAddServiceContextMenu:
             patch("app.ui.state.safe_notify"),
         ):
             handler(MagicMock(args="test-id-123"))
+
+
+class TestAddCommItemContextMenu:
+    def test_adds_slot(self):
+        mock_table = MagicMock()
+        helpers.add_comm_item_context_menu(mock_table, column_name="com_item")
+        mock_table.add_slot.assert_called_once()
+        slot_name = mock_table.add_slot.call_args[0][0]
+        assert slot_name == "body-cell-com_item"
+        slot_html = mock_table.add_slot.call_args[0][1]
+        assert "Copy Com Item ID" in slot_html
+        assert "Copy Com Item Name" in slot_html
+        assert "Copy Com Item Number" in slot_html
+        mock_table.on.assert_called_once_with("comm-ctx-copy", ANY)
+
+    def test_slot_contains_context_menu(self):
+        mock_table = MagicMock()
+        helpers.add_comm_item_context_menu(mock_table, column_name="com_item")
+        slot_html = mock_table.add_slot.call_args[0][1]
+        assert "context-menu" in slot_html
+        assert "q-menu" in slot_html
+        assert "_comm_item_id" in slot_html
+        assert "_comm_item_name" in slot_html
+        assert "_comm_item_va_profile_item_id" in slot_html
+
+    def test_event_handler_copies(self):
+        mock_table = MagicMock()
+        helpers.add_comm_item_context_menu(mock_table, column_name="com_item")
+        handler = mock_table.on.call_args[0][1]
+        with (
+            patch("app.ui.helpers.ui.run_javascript"),
+            patch("app.ui.state.safe_notify"),
+        ):
+            handler(MagicMock(args="comm-item-123"))
 
 
 class TestMakeSortable:

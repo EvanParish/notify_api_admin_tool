@@ -68,6 +68,7 @@ class Template(Base):
     updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reply_to_email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    communication_item_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     service: Mapped[Service] = relationship(
         back_populates="templates",
