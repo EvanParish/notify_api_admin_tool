@@ -29,6 +29,7 @@ from app.repository import (
     update_communication_item,
     clear_table_data,
     count_active_api_keys_by_service,
+    count_templates_by_service,
     _is_expired,
     upsert_service_callbacks,
 )
@@ -1741,6 +1742,72 @@ async def test_count_active_api_keys_multiple_environments(initialized_db):
         await session.commit()
 
     counts = await count_active_api_keys_by_service(environment=["dev", "staging"])
+    assert ("svc-1", "dev") in counts
+    assert ("svc-1", "staging") in counts
+    assert ("svc-1", "prod") not in counts
+
+
+@pytest.mark.asyncio
+async def test_count_templates_by_service_empty(initialized_db):
+    """No templates should return empty dict."""
+    counts = await count_templates_by_service()
+    assert counts == {}
+
+
+@pytest.mark.asyncio
+async def test_count_templates_by_service_counts(initialized_db):
+    """Test correct template counts per service."""
+    async with get_session() as session:
+        session.add(Service(id="svc-1", environment="dev", name="Service 1"))
+        session.add(Service(id="svc-2", environment="dev", name="Service 2"))
+        session.add(
+            Template(id="t1", service_id="svc-1", environment="dev", name="T1", template_type="email", content="c")
+        )
+        session.add(
+            Template(id="t2", service_id="svc-1", environment="dev", name="T2", template_type="sms", content="c")
+        )
+        session.add(
+            Template(id="t3", service_id="svc-2", environment="dev", name="T3", template_type="email", content="c")
+        )
+        await session.commit()
+
+    counts = await count_templates_by_service()
+    assert counts[("svc-1", "dev")] == 2
+    assert counts[("svc-2", "dev")] == 1
+
+
+@pytest.mark.asyncio
+async def test_count_templates_by_service_environment_filter(initialized_db):
+    """Test filtering by environment."""
+    async with get_session() as session:
+        session.add(
+            Template(id="t1", service_id="svc-1", environment="dev", name="T1", template_type="email", content="c")
+        )
+        session.add(
+            Template(id="t2", service_id="svc-1", environment="staging", name="T2", template_type="sms", content="c")
+        )
+        await session.commit()
+
+    counts = await count_templates_by_service(environment="dev")
+    assert counts == {("svc-1", "dev"): 1}
+
+
+@pytest.mark.asyncio
+async def test_count_templates_by_service_multiple_environments(initialized_db):
+    """Test filtering by multiple environments."""
+    async with get_session() as session:
+        session.add(
+            Template(id="t1", service_id="svc-1", environment="dev", name="T1", template_type="email", content="c")
+        )
+        session.add(
+            Template(id="t2", service_id="svc-1", environment="staging", name="T2", template_type="sms", content="c")
+        )
+        session.add(
+            Template(id="t3", service_id="svc-1", environment="prod", name="T3", template_type="email", content="c")
+        )
+        await session.commit()
+
+    counts = await count_templates_by_service(environment=["dev", "staging"])
     assert ("svc-1", "dev") in counts
     assert ("svc-1", "staging") in counts
     assert ("svc-1", "prod") not in counts

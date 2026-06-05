@@ -231,6 +231,22 @@ async def list_api_keys(
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
 
+async def count_templates_by_service(
+    environment: str | list[str] | None = None,
+) -> dict[tuple[str, str], int]:
+    """Count templates grouped by (service_id, environment)."""
+    async with get_session() as session:
+        query = select(Template.service_id, Template.environment, func.count(Template.id)).group_by(
+            Template.service_id, Template.environment
+        )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(Template.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
+        rows = (await session.execute(query)).all()
+        return {(sid, env): cnt for sid, env, cnt in rows}
+
+
 async def count_active_api_keys_by_service(
     environment: str | list[str] | None = None,
 ) -> dict[tuple[str, str], int]:
