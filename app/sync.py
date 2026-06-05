@@ -14,6 +14,7 @@ from .repository import (
     upsert_communication_items,
     upsert_inbound_numbers,
     upsert_provider_details,
+    upsert_service_callbacks,
     upsert_services,
     upsert_sms_senders,
     upsert_templates,
@@ -107,6 +108,7 @@ class SyncManager:
             self.sync_communication_items,
             self.sync_provider_details,
             self.sync_inbound_numbers,
+            self.sync_service_callbacks,
         ]:
             sub_result = await method(progress)
             result.merge(sub_result)
@@ -331,4 +333,42 @@ class SyncManager:
             if progress:
                 await progress(f"Error syncing inbound numbers: {result.errors[-1]}")
         self.last_result = result
+        return result
+
+    async def sync_service_callbacks(self, progress: ProgressCallback = None) -> SyncResult:
+        result = SyncResult()
+        service_ids = await list_service_ids(self.environment)
+        tasks = [self._sync_service_callbacks_for_service(sid, progress) for sid in service_ids]
+        sub_results = await asyncio.gather(*tasks)
+        for sub_result in sub_results:
+            result.merge(sub_result)
+        self.last_result = result
+        return result
+
+    async def _sync_service_callbacks_for_service(self, service_id: str, progress: ProgressCallback) -> SyncResult:
+        result = SyncResult()
+        async with self._semaphore:
+            if progress:
+                await progress(f"Callbacks for {service_id}")
+            try:
+                callbacks = await self.api.get_service_callbacks(service_id)
+                await upsert_service_callbacks(callbacks, self.environment, service_id)
+                result.add_success()
+            except Exception as exc:
+                status_code = self._extract_status_code(exc)
+                if status_code == 404 or "404" in str(exc) or "NOT FOUND" in str(exc):
+                    if progress:
+                        await progress(f"No callbacks for {service_id}")
+                    result.add_success()
+                else:
+                    result.add_error(
+                        SyncError(
+                            entity="service_callbacks",
+                            message=self._extract_error_message(exc),
+                            status_code=status_code,
+                            service_id=service_id,
+                        )
+                    )
+                    if progress:
+                        await progress(f"Error syncing callbacks: {result.errors[-1]}")
         return result

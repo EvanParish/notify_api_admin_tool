@@ -30,6 +30,7 @@ from app.ui.pages import (
     inbound_numbers as page_inbound_numbers,
     provider_details as page_provider_details,
     send as page_send,
+    service_callbacks as page_service_callbacks,
     services as page_services,
     settings_page as page_settings,
     sms_senders as page_sms_senders,
@@ -2316,6 +2317,11 @@ def _ui_patches(mod_path, _make_mock):
             new_callable=AsyncMock,
             return_value=[],
         ),
+        "list_service_callbacks": patch(
+            f"{mod_path}.list_service_callbacks",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
         "list_local_keys": patch(
             f"{mod_path}.list_local_keys",
             new_callable=AsyncMock,
@@ -2616,6 +2622,32 @@ async def test_inbound_numbers_page(initialized_db, mock_config):
     finally:
         _st.config = original
         _st.state = original_state
+
+
+@pytest.mark.asyncio
+async def test_service_callbacks_page(initialized_db, mock_config):
+    original = _st.config
+    original_state = _st.state
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    try:
+        with mock_page_ui("app.ui.pages.service_callbacks"):
+            await page_service_callbacks.service_callbacks_page()
+    finally:
+        _st.config = original
+        _st.state = original_state
+
+
+def test_format_statuses_none():
+    assert page_service_callbacks._format_statuses(None) == ""
+
+
+def test_format_statuses_empty():
+    assert page_service_callbacks._format_statuses([]) == ""
+
+
+def test_format_statuses_with_values():
+    assert page_service_callbacks._format_statuses(["delivered", "failed"]) == "delivered, failed"
 
 
 @pytest.mark.asyncio

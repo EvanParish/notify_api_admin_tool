@@ -14,6 +14,7 @@ from app.repository import (
     resolve_local_key,
     list_api_keys,
     list_inbound_numbers,
+    list_service_callbacks,
     list_sms_senders,
     list_provider_details,
     list_communication_items,
@@ -29,6 +30,7 @@ from app.repository import (
     clear_table_data,
     count_active_api_keys_by_service,
     _is_expired,
+    upsert_service_callbacks,
 )
 from app.crypto import EncryptionManager
 from app.repository import DbSaltProvider
@@ -38,6 +40,7 @@ from app.models import (
     LocalApiKey,
     ApiKey,
     InboundNumber,
+    ServiceCallback,
     Setting,
     SmsSender,
     ProviderDetail,
@@ -1884,3 +1887,131 @@ async def test_mark_stale_api_keys_revoked_updates_future_expiry(initialized_db)
         assert row.expiry_date != future_expiry
         expiry = datetime.fromisoformat(row.expiry_date)
         assert expiry.tzinfo is not None
+
+
+# ===================================================================
+# Service Callbacks
+# ===================================================================
+
+
+@pytest.mark.asyncio
+async def test_upsert_service_callbacks(initialized_db):
+    raw = [
+        {
+            "id": "cb-1",
+            "service_id": "svc-1",
+            "url": "https://example.com/callback",
+            "callback_type": "delivery_status",
+            "callback_channel": "webhook",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": None,
+            "updated_by_id": "user-1",
+            "notification_statuses": ["delivered", "failed"],
+            "include_provider_payload": False,
+        }
+    ]
+    await upsert_service_callbacks(raw, "dev", "svc-1")
+
+    async with get_session() as session:
+        record = (await session.execute(select(ServiceCallback).where(ServiceCallback.id == "cb-1"))).scalar_one()
+        assert record.service_id == "svc-1"
+        assert record.url == "https://example.com/callback"
+        assert record.callback_type == "delivery_status"
+        assert record.callback_channel == "webhook"
+        assert record.notification_statuses == ["delivered", "failed"]
+        assert record.include_provider_payload is False
+        assert record.environment == "dev"
+
+
+@pytest.mark.asyncio
+async def test_upsert_service_callbacks_uses_fallback_service_id(initialized_db):
+    raw = [{"id": "cb-2", "url": "https://example.com/cb"}]
+    await upsert_service_callbacks(raw, "dev", "svc-fallback")
+
+    async with get_session() as session:
+        record = (await session.execute(select(ServiceCallback).where(ServiceCallback.id == "cb-2"))).scalar_one()
+        assert record.service_id == "svc-fallback"
+
+
+@pytest.mark.asyncio
+async def test_upsert_service_callbacks_updates_existing(initialized_db):
+    raw = [
+        {
+            "id": "cb-1",
+            "service_id": "svc-1",
+            "url": "https://example.com/old",
+            "callback_type": "delivery_status",
+            "callback_channel": "webhook",
+        }
+    ]
+    await upsert_service_callbacks(raw, "dev", "svc-1")
+
+    raw[0]["url"] = "https://example.com/new"
+    await upsert_service_callbacks(raw, "dev", "svc-1")
+
+    async with get_session() as session:
+        record = (await session.execute(select(ServiceCallback).where(ServiceCallback.id == "cb-1"))).scalar_one()
+        assert record.url == "https://example.com/new"
+
+
+@pytest.mark.asyncio
+async def test_list_service_callbacks_all(initialized_db):
+    async with get_session() as session:
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="staging", service_id="svc-2", url="https://b.com"))
+        await session.commit()
+
+    callbacks = await list_service_callbacks()
+    assert len(callbacks) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_service_callbacks_by_service_id(initialized_db):
+    async with get_session() as session:
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="dev", service_id="svc-2", url="https://b.com"))
+        await session.commit()
+
+    callbacks = await list_service_callbacks(service_id="svc-1")
+    assert len(callbacks) == 1
+    assert callbacks[0].id == "cb-1"
+
+
+@pytest.mark.asyncio
+async def test_list_service_callbacks_by_environment(initialized_db):
+    async with get_session() as session:
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="staging", service_id="svc-1", url="https://b.com"))
+        await session.commit()
+
+    callbacks = await list_service_callbacks(environment="dev")
+    assert len(callbacks) == 1
+    assert callbacks[0].id == "cb-1"
+
+
+@pytest.mark.asyncio
+async def test_list_service_callbacks_by_multiple_services(initialized_db):
+    async with get_session() as session:
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="dev", service_id="svc-2", url="https://b.com"))
+        session.add(ServiceCallback(id="cb-3", environment="dev", service_id="svc-3", url="https://c.com"))
+        await session.commit()
+
+    callbacks = await list_service_callbacks(service_id=["svc-1", "svc-2"])
+    assert len(callbacks) == 2
+    assert {cb.id for cb in callbacks} == {"cb-1", "cb-2"}
+
+
+@pytest.mark.asyncio
+async def test_clear_table_data_service_callbacks(initialized_db):
+    async with get_session() as session:
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="staging", service_id="svc-1", url="https://b.com"))
+        await session.commit()
+
+    count = await clear_table_data("service_callbacks", environment="dev")
+    assert count == 1
+
+    callbacks = await list_service_callbacks()
+    assert len(callbacks) == 1
+    assert callbacks[0].environment == "staging"

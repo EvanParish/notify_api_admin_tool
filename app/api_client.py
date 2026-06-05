@@ -126,6 +126,9 @@ class NotificationAPI:
     ) -> Dict[str, Any]:
         raise NotImplementedError
 
+    async def get_service_callbacks(self, service_id: str) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -417,6 +420,12 @@ class HttpNotificationAPI(NotificationAPI):
         )
         resp.raise_for_status()
         return resp.json()
+
+    @http_retry
+    async def get_service_callbacks(self, service_id: str) -> List[Dict[str, Any]]:
+        resp = await self.client.get(f"{self.base_url}/service/{service_id}/callback", auth=self._basic_auth)
+        resp.raise_for_status()
+        return resp.json().get("data", [])
 
     @http_retry
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
@@ -798,6 +807,35 @@ class MockNotificationAPI(NotificationAPI):
             "default_send_indicator": default_send_indicator,
             "va_profile_item_id": va_profile_item_id,
         }
+
+    async def get_service_callbacks(self, service_id: str) -> List[Dict[str, Any]]:
+        await asyncio.sleep(self._sleep)
+        return [
+            {
+                "id": "cb-1",
+                "service_id": service_id,
+                "url": "https://example.com/delivery-status",
+                "callback_type": "delivery_status",
+                "callback_channel": "webhook",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": None,
+                "updated_by_id": "user-1",
+                "notification_statuses": ["delivered", "failed"],
+                "include_provider_payload": False,
+            },
+            {
+                "id": "cb-2",
+                "service_id": service_id,
+                "url": "https://sqs.us-gov-west-1.amazonaws.com/queue/inbound",
+                "callback_type": "inbound_sms",
+                "callback_channel": "queue",
+                "created_at": "2024-02-15T12:00:00Z",
+                "updated_at": None,
+                "updated_by_id": "user-1",
+                "notification_statuses": None,
+                "include_provider_payload": False,
+            },
+        ]
 
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)

@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db import create_all, get_session, init_engine
-from app.models import Service, Template, User
+from app.models import Service, ServiceCallback, Template, User
 from app.sync import SyncManager
 from app.api_client import NotificationAPI
 
@@ -41,6 +41,9 @@ class FakeAPI(NotificationAPI):
         return []
 
     async def get_inbound_numbers(self):
+        return []
+
+    async def get_service_callbacks(self, service_id: str):
         return []
 
     async def send_notification(self, *args, **kwargs):
@@ -693,3 +696,105 @@ async def test_sync_api_keys_upserts_returned_keys_normally(initialized_db):
         assert len(keys) == 2
         for key in keys:
             assert key.revoked is False
+
+
+# ===================================================================
+# Service Callbacks sync
+# ===================================================================
+
+
+class FakeAPIWithCallbacks(NotificationAPI):
+    def __init__(self, services=None, callbacks=None):
+        self.services_data = services or testing_data.service_data["data"]
+        self.callbacks_data = callbacks or []
+
+    async def get_services(self):
+        return self.services_data
+
+    async def get_templates(self, service_id):
+        return []
+
+    async def get_api_keys(self, service_id):
+        return []
+
+    async def get_sms_senders(self, service_id):
+        return []
+
+    async def get_users(self):
+        return []
+
+    async def get_provider_details(self):
+        return []
+
+    async def get_communication_items(self):
+        return []
+
+    async def get_inbound_numbers(self):
+        return []
+
+    async def get_service_callbacks(self, service_id):
+        return self.callbacks_data
+
+    async def healthcheck(self):
+        return True
+
+
+@pytest.mark.asyncio
+async def test_sync_service_callbacks(setup_db):
+    await create_all()
+    callbacks = [
+        {
+            "id": "cb-1",
+            "service_id": "svc-1",
+            "url": "https://example.com/callback",
+            "callback_type": "delivery_status",
+            "callback_channel": "webhook",
+            "notification_statuses": ["delivered"],
+            "include_provider_payload": False,
+        }
+    ]
+    api = FakeAPIWithCallbacks(callbacks=callbacks)
+    manager = SyncManager(api, max_concurrency=5, environment="dev")
+    # First sync services so service IDs are available
+    await manager.sync_services()
+    result = await manager.sync_service_callbacks()
+    assert result.success_count > 0
+    assert result.error_count == 0
+
+    async with get_session() as session:
+        rows = (await session.execute(select(ServiceCallback))).scalars().all()
+        assert len(rows) > 0
+        assert rows[0].callback_type == "delivery_status"
+
+
+@pytest.mark.asyncio
+async def test_sync_service_callbacks_handles_404(setup_db):
+    await create_all()
+
+    class FakeAPI404(FakeAPIWithCallbacks):
+        async def get_service_callbacks(self, service_id):
+            raise Exception("404 NOT FOUND")
+
+    api = FakeAPI404()
+    manager = SyncManager(api, max_concurrency=5, environment="dev")
+    await manager.sync_services()
+    result = await manager.sync_service_callbacks()
+    # 404s are treated as successes
+    assert result.error_count == 0
+    assert result.success_count > 0
+
+
+@pytest.mark.asyncio
+async def test_sync_service_callbacks_records_non_404_error(setup_db):
+    await create_all()
+
+    class FakeAPIError(FakeAPIWithCallbacks):
+        async def get_service_callbacks(self, service_id):
+            raise Exception("Connection refused")
+
+    api = FakeAPIError()
+    manager = SyncManager(api, max_concurrency=5, environment="dev")
+    await manager.sync_services()
+    result = await manager.sync_service_callbacks()
+    assert result.error_count > 0
+    assert result.errors[0].entity == "service_callbacks"

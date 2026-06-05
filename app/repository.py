@@ -17,6 +17,7 @@ from .models import (
     LocalApiKey,
     ProviderDetail,
     Service,
+    ServiceCallback,
     Setting,
     SmsSender,
     Template,
@@ -463,6 +464,23 @@ async def list_inbound_numbers(
         return rows
 
 
+async def list_service_callbacks(
+    service_id: str | list[str] | None = None,
+    environment: str | list[str] | None = None,
+) -> list[ServiceCallback]:
+    async with get_session() as session:
+        query = select(ServiceCallback)
+        svc_clause = _service_filter(ServiceCallback.service_id, service_id)
+        if svc_clause is not None:
+            query = query.where(svc_clause)
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(ServiceCallback.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
+        rows = list((await session.execute(query)).scalars().all())
+        return rows
+
+
 async def update_inbound_number(
     inbound_number_id: str,
     number: str | None = None,
@@ -512,6 +530,7 @@ CLEARABLE_TABLES: dict[str, Type[Base]] = {
     "provider_details": ProviderDetail,
     "communication_items": CommunicationItem,
     "inbound_numbers": InboundNumber,
+    "service_callbacks": ServiceCallback,
     "local_api_keys": LocalApiKey,
 }
 
@@ -740,6 +759,26 @@ async def upsert_inbound_numbers(raw: list[dict], environment: str) -> None:
                 service_name=service.get("name") if service else None,
                 auth_parameter=item.get("auth_parameter"),
                 url_endpoint=item.get("url_endpoint"),
+            )
+            await session.merge(record)
+        await session.commit()
+
+
+async def upsert_service_callbacks(raw: list[dict], environment: str, service_id: str) -> None:
+    async with get_session() as session:
+        for item in raw:
+            record = ServiceCallback(
+                id=item.get("id"),
+                environment=environment,
+                service_id=item.get("service_id", service_id),
+                url=item.get("url"),
+                callback_type=item.get("callback_type"),
+                callback_channel=item.get("callback_channel"),
+                created_at=item.get("created_at"),
+                updated_at=item.get("updated_at"),
+                updated_by_id=item.get("updated_by_id"),
+                notification_statuses=item.get("notification_statuses"),
+                include_provider_payload=item.get("include_provider_payload", False),
             )
             await session.merge(record)
         await session.commit()

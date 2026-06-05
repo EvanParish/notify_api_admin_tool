@@ -8,6 +8,7 @@ from app.ui.pages import (  # noqa: F401
     inbound_numbers,
     provider_details,
     send,
+    service_callbacks,
     services,
     settings_page,
     sms_senders,

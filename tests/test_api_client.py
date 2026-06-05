@@ -1063,6 +1063,62 @@ async def test_http_api_get_inbound_numbers_data_key():
         assert result == [{"id": "n2"}]
 
 
+# --- get_service_callbacks ---
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_service_callbacks_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_service_callbacks("svc-1")
+
+
+@pytest.mark.asyncio
+async def test_mock_api_get_service_callbacks():
+    api = MockNotificationAPI()
+    callbacks = await api.get_service_callbacks("svc-1")
+    assert len(callbacks) == 2
+    assert callbacks[0]["id"] == "cb-1"
+    assert callbacks[0]["callback_type"] == "delivery_status"
+    assert callbacks[0]["callback_channel"] == "webhook"
+    assert callbacks[1]["callback_type"] == "inbound_sms"
+    assert callbacks[1]["callback_channel"] == "queue"
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_service_callbacks():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [
+            {
+                "id": "cb-1",
+                "service_id": "svc-1",
+                "url": "https://example.com/callback",
+                "callback_type": "delivery_status",
+                "callback_channel": "webhook",
+            }
+        ]
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response) as mock_get:
+        result = await api.get_service_callbacks("svc-1")
+        assert result == [
+            {
+                "id": "cb-1",
+                "service_id": "svc-1",
+                "url": "https://example.com/callback",
+                "callback_type": "delivery_status",
+                "callback_channel": "webhook",
+            }
+        ]
+        mock_get.assert_called_once_with(
+            "https://api.example.com/service/svc-1/callback",
+            auth=api._basic_auth,
+        )
+
+
 @pytest.mark.asyncio
 async def test_http_api_create_inbound_number():
     api = HttpNotificationAPI("https://api.example.com")

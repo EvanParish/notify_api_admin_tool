@@ -179,6 +179,22 @@ class InboundNumber(Base):
     url_endpoint: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
+class ServiceCallback(Base):
+    __tablename__ = "service_callbacks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
+    service_id: Mapped[str] = mapped_column(String, index=True)
+    url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    callback_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    callback_channel: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    updated_by_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    notification_statuses: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    include_provider_payload: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class LocalApiKey(Base):
     __tablename__ = "local_api_keys"
 
