@@ -67,6 +67,7 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
   - `provider_details.py` — Provider Details page (`/provider-details`)
   - `comm_items.py` — Communication Items page (`/communication-items`)
   - `inbound_numbers.py` — Inbound Numbers page (`/inbound-numbers`)
+  - `service_callbacks.py` — Service Callbacks page (`/service-callbacks`)
   - `api_keys.py` — API Keys page with create/revoke dialogs (`/api-keys`)
   - `api_key_service.py` — API Key Email Generator (`/api-key-service`)
   - `send.py` — Send Notification page (`/send`)
@@ -81,7 +82,7 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 - **`app/api_client.py`** — `NotificationAPI` base class with `HttpNotificationAPI` (real) and `MockNotificationAPI` (dev/test) implementations. HTTP client uses `httpx`. Notification sending uses JWT auth (HS256, signed with service API secret).
 - **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment. Delegates all DB writes to `repository.py` upsert functions.
 - **`app/models.py`** — SQLAlchemy ORM models. Most entities use composite keys of `(id, environment)` to store data from multiple environments in one database.
-- **`app/repository.py`** — Async CRUD functions using `get_session()` context manager. Includes bulk `upsert_*` functions for sync and `list_service_ids()`. Archived records (names starting with `_archive`) are filtered out automatically.
+- **`app/repository.py`** — Async CRUD functions using `get_session()` context manager. Includes bulk `upsert_*` functions for sync and `list_service_ids()`. Archived records (names starting with `_archive`) are filtered out automatically. Entity list functions (templates, API keys, SMS senders, inbound numbers, service callbacks) also exclude rows belonging to archived services via the `_active_service_ids()` subquery.
 - **`app/db.py`** — Async SQLAlchemy engine setup with `aiosqlite`. Module-level globals `engine` and `SessionLocal` are initialized via `init_engine()`.
 - **`app/crypto.py`** — `EncryptionManager` uses Fernet encryption with PBKDF2-derived key from `MASTER_KEY` env var. Accepts a `SaltProvider` protocol for salt storage (decoupled from DB). `DbSaltProvider` in `repository.py` provides the DB-backed implementation.
 - **`app/config.py`** — Pydantic `AppConfig` loaded from environment variables via `python-dotenv`.
@@ -106,3 +107,4 @@ Two auth layers exist:
 - **Database isolation in tests**: The `conftest.py` `isolate_database` fixture automatically gives each test its own temporary SQLite database by swapping the module-level `db.engine` and `db.SessionLocal`. Use the `initialized_db` fixture when tests need tables created.
 - **Environment variables**: Configured via `.env` file (see `.env.example`). `MASTER_KEY` is required. `USE_MOCK_API=true` enables the mock client for development without a live API.
 - **`API_PUBLIC_HOSTS`**: JSON dict mapping environment names to base URLs (e.g., `{"dev": "http://localhost:6011", "staging": "https://staging-api.va.gov/vanotify"}`).
+- **Keep docs in sync**: When adding, removing, or renaming pages, repository functions, or models, update this file's Architecture section to reflect the change.

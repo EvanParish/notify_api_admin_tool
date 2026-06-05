@@ -104,6 +104,15 @@ def _service_filter(column, service_ids: str | list[str] | None):
     return column.in_(ids)
 
 
+def _active_service_ids(environments: list[str] | None = None):
+    """Subquery returning service IDs that are not archived."""
+    subq = select(Service.id).where(func.lower(Service.name).not_like("_archive%"))
+    env_clause = _env_filter(Service.environment, environments)
+    if env_clause is not None:
+        subq = subq.where(env_clause)
+    return subq
+
+
 async def list_services(
     environment: str | list[str] | None = None,
 ) -> list[Service]:
@@ -155,6 +164,7 @@ async def list_templates(
         env_clause = _env_filter(Template.environment, envs)
         if env_clause is not None:
             query = query.where(env_clause)
+        query = query.where(Template.service_id.in_(_active_service_ids(envs)))
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
@@ -216,6 +226,7 @@ async def list_api_keys(
         env_clause = _env_filter(ApiKey.environment, envs)
         if env_clause is not None:
             query = query.where(env_clause)
+        query = query.where(or_(ApiKey.service_id.in_(_active_service_ids(envs)), ApiKey.service_id.is_(None)))
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(row.id, row.name)]
 
@@ -316,6 +327,7 @@ async def list_sms_senders(
         env_clause = _env_filter(SmsSender.environment, envs)
         if env_clause is not None:
             query = query.where(env_clause)
+        query = query.where(SmsSender.service_id.in_(_active_service_ids(envs)))
         rows = list((await session.execute(query)).scalars().all())
         return [row for row in rows if not _is_archived(row.id, row.sms_sender, row.description)]
 
@@ -460,6 +472,9 @@ async def list_inbound_numbers(
         env_clause = _env_filter(InboundNumber.environment, envs)
         if env_clause is not None:
             query = query.where(env_clause)
+        query = query.where(
+            or_(InboundNumber.service_id.in_(_active_service_ids(envs)), InboundNumber.service_id.is_(None))
+        )
         rows = list((await session.execute(query)).scalars().all())
         return rows
 
@@ -477,6 +492,7 @@ async def list_service_callbacks(
         env_clause = _env_filter(ServiceCallback.environment, envs)
         if env_clause is not None:
             query = query.where(env_clause)
+        query = query.where(ServiceCallback.service_id.in_(_active_service_ids(envs)))
         rows = list((await session.execute(query)).scalars().all())
         return rows
 

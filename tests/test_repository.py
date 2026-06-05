@@ -685,6 +685,8 @@ async def test_list_templates_with_environment(initialized_db):
 @pytest.mark.asyncio
 async def test_list_api_keys_with_environment(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="prod"))
         session.add(ApiKey(id="k1", name="K1", environment="dev", service_id="svc-1"))
         session.add(ApiKey(id="k2", name="K2", environment="prod", service_id="svc-1"))
         await session.commit()
@@ -959,6 +961,8 @@ async def test_list_users_with_environment(initialized_db):
 @pytest.mark.asyncio
 async def test_list_api_keys_by_service_id(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True))
+        session.add(Service(id="svc-2", name="Svc2", active=True))
         session.add(ApiKey(id="key-1", service_id="svc-1", name="Key 1"))
         session.add(ApiKey(id="key-2", service_id="svc-2", name="Key 2"))
         await session.commit()
@@ -971,6 +975,8 @@ async def test_list_api_keys_by_service_id(initialized_db):
 @pytest.mark.asyncio
 async def test_list_inbound_numbers_by_service_id(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="dev"))
         session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
         session.add(InboundNumber(id="n2", environment="dev", number="+2222", service_id="svc-2"))
         await session.commit()
@@ -1533,6 +1539,9 @@ async def test_list_templates_by_multiple_services(initialized_db):
 @pytest.mark.asyncio
 async def test_list_api_keys_by_multiple_services(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True))
+        session.add(Service(id="svc-2", name="Svc2", active=True))
+        session.add(Service(id="svc-3", name="Svc3", active=True))
         session.add(ApiKey(id="key-1", service_id="svc-1", name="Key 1"))
         session.add(ApiKey(id="key-2", service_id="svc-2", name="Key 2"))
         session.add(ApiKey(id="key-3", service_id="svc-3", name="Key 3"))
@@ -1546,6 +1555,9 @@ async def test_list_api_keys_by_multiple_services(initialized_db):
 @pytest.mark.asyncio
 async def test_list_sms_senders_by_multiple_services(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="dev"))
+        session.add(Service(id="svc-3", name="Svc3", active=True, environment="dev"))
         session.add(SmsSender(id="s1", environment="dev", service_id="svc-1", sms_sender="+111"))
         session.add(SmsSender(id="s2", environment="dev", service_id="svc-2", sms_sender="+222"))
         session.add(SmsSender(id="s3", environment="dev", service_id="svc-3", sms_sender="+333"))
@@ -1559,6 +1571,9 @@ async def test_list_sms_senders_by_multiple_services(initialized_db):
 @pytest.mark.asyncio
 async def test_list_inbound_numbers_by_multiple_services(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="dev"))
+        session.add(Service(id="svc-3", name="Svc3", active=True, environment="dev"))
         session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
         session.add(InboundNumber(id="n2", environment="dev", number="+2222", service_id="svc-2"))
         session.add(InboundNumber(id="n3", environment="dev", number="+3333", service_id="svc-3"))
@@ -1573,6 +1588,8 @@ async def test_list_inbound_numbers_by_multiple_services(initialized_db):
 async def test_list_templates_empty_list_returns_all(initialized_db):
     """Empty list should return all templates (no filter)."""
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="dev"))
         session.add(
             Template(
                 id="t1",
@@ -1604,6 +1621,8 @@ async def test_list_templates_empty_list_returns_all(initialized_db):
 async def test_list_api_keys_single_service_as_list(initialized_db):
     """Single service ID as list should work the same as string."""
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True))
+        session.add(Service(id="svc-2", name="Svc2", active=True))
         session.add(ApiKey(id="key-1", service_id="svc-1", name="Key 1"))
         session.add(ApiKey(id="key-2", service_id="svc-2", name="Key 2"))
         await session.commit()
@@ -1957,6 +1976,8 @@ async def test_upsert_service_callbacks_updates_existing(initialized_db):
 @pytest.mark.asyncio
 async def test_list_service_callbacks_all(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="staging"))
         session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
         session.add(ServiceCallback(id="cb-2", environment="staging", service_id="svc-2", url="https://b.com"))
         await session.commit()
@@ -1968,6 +1989,8 @@ async def test_list_service_callbacks_all(initialized_db):
 @pytest.mark.asyncio
 async def test_list_service_callbacks_by_service_id(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="dev"))
         session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
         session.add(ServiceCallback(id="cb-2", environment="dev", service_id="svc-2", url="https://b.com"))
         await session.commit()
@@ -1980,6 +2003,8 @@ async def test_list_service_callbacks_by_service_id(initialized_db):
 @pytest.mark.asyncio
 async def test_list_service_callbacks_by_environment(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="staging"))
         session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
         session.add(ServiceCallback(id="cb-2", environment="staging", service_id="svc-1", url="https://b.com"))
         await session.commit()
@@ -1992,6 +2017,9 @@ async def test_list_service_callbacks_by_environment(initialized_db):
 @pytest.mark.asyncio
 async def test_list_service_callbacks_by_multiple_services(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="dev"))
+        session.add(Service(id="svc-3", name="Svc3", active=True, environment="dev"))
         session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
         session.add(ServiceCallback(id="cb-2", environment="dev", service_id="svc-2", url="https://b.com"))
         session.add(ServiceCallback(id="cb-3", environment="dev", service_id="svc-3", url="https://c.com"))
@@ -2005,6 +2033,8 @@ async def test_list_service_callbacks_by_multiple_services(initialized_db):
 @pytest.mark.asyncio
 async def test_clear_table_data_service_callbacks(initialized_db):
     async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="staging"))
         session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
         session.add(ServiceCallback(id="cb-2", environment="staging", service_id="svc-1", url="https://b.com"))
         await session.commit()
@@ -2015,3 +2045,55 @@ async def test_clear_table_data_service_callbacks(initialized_db):
     callbacks = await list_service_callbacks()
     assert len(callbacks) == 1
     assert callbacks[0].environment == "staging"
+
+
+@pytest.mark.asyncio
+async def test_archived_services_excluded_from_entity_queries(initialized_db):
+    """Entities belonging to archived services should not be returned by list functions."""
+    async with get_session() as session:
+        session.add(Service(id="svc-active", name="Active Service", active=True, environment="dev"))
+        session.add(Service(id="svc-archived", name="_archive_Old Service", active=False, environment="dev"))
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-active", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="dev", service_id="svc-archived", url="https://b.com"))
+        session.add(
+            Template(
+                id="t1",
+                environment="dev",
+                service_id="svc-active",
+                name="T1",
+                template_type="email",
+                content="Hello",
+            )
+        )
+        session.add(
+            Template(
+                id="t2",
+                environment="dev",
+                service_id="svc-archived",
+                name="T2",
+                template_type="sms",
+                content="Hi",
+            )
+        )
+        session.add(ApiKey(id="k1", environment="dev", service_id="svc-active", name="Key 1"))
+        session.add(ApiKey(id="k2", environment="dev", service_id="svc-archived", name="Key 2"))
+        session.add(SmsSender(id="s1", environment="dev", service_id="svc-active", sms_sender="+111"))
+        session.add(SmsSender(id="s2", environment="dev", service_id="svc-archived", sms_sender="+222"))
+        session.add(InboundNumber(id="n1", environment="dev", service_id="svc-active", number="+1111"))
+        session.add(InboundNumber(id="n2", environment="dev", service_id="svc-archived", number="+2222"))
+        await session.commit()
+
+    callbacks = await list_service_callbacks(environment="dev")
+    assert [cb.id for cb in callbacks] == ["cb-1"]
+
+    templates = await list_templates(environment="dev")
+    assert [t.id for t in templates] == ["t1"]
+
+    keys = await list_api_keys(environment="dev")
+    assert [k.id for k in keys] == ["k1"]
+
+    senders = await list_sms_senders(environment="dev")
+    assert [s.id for s in senders] == ["s1"]
+
+    numbers = await list_inbound_numbers(environment="dev")
+    assert [n.id for n in numbers] == ["n1"]

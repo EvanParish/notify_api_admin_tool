@@ -8,6 +8,7 @@ from app.repository import (
     list_api_keys,
     list_inbound_numbers,
     list_provider_details,
+    list_service_callbacks,
     list_services,
     list_sms_senders,
     list_templates,
@@ -32,6 +33,7 @@ async def dashboard_page() -> None:
             sms_senders,
             provider_details,
             inbound_numbers,
+            service_callbacks,
         ) = await asyncio.gather(
             list_services(view_env),
             list_templates(environment=view_env),
@@ -40,6 +42,7 @@ async def dashboard_page() -> None:
             list_sms_senders(environment=view_env),
             list_provider_details(view_env),
             list_inbound_numbers(environment=view_env),
+            list_service_callbacks(environment=view_env),
         )
         with ui.column().classes("p-8 gap-6 w-full max-w-none"):
             ui.label("Dashboard").classes("text-lg font-semibold")
@@ -51,6 +54,7 @@ async def dashboard_page() -> None:
                 metric_card("SMS Senders", len(sms_senders))
                 metric_card("Provider Details", len(provider_details))
                 metric_card("Inbound Numbers", len(inbound_numbers))
+                metric_card("Service Callbacks", len(service_callbacks))
             ui.markdown(
                 "This dashboard caches services, templates, API keys, users, SMS senders, provider details, and local API keys. Use the left navigation to manage data and send notifications."
             )
