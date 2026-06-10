@@ -18,6 +18,7 @@ class AppConfig(BaseModel):
     use_mock_api: bool = True
     database_path: str = "data/app.db"
     max_concurrency: int = 25
+    port: int = 8080
     container_host: str | None = None
 
     @field_validator("api_hosts", mode="before")
@@ -48,6 +49,15 @@ class AppConfig(BaseModel):
             return 25
         return max(1, min(number, 100))
 
+    @field_validator("port", mode="before")
+    @classmethod
+    def validate_port(cls, value):
+        try:
+            number = int(value)
+        except Exception:
+            return 8080
+        return max(1, min(number, 65535))
+
 
 def load_config() -> AppConfig:
     load_dotenv()
@@ -72,6 +82,7 @@ def load_config() -> AppConfig:
         use_mock_api=_parse_bool(os.getenv("USE_MOCK_API"), True),
         database_path=os.getenv("DATABASE_PATH", "data/app.db"),
         max_concurrency=os.getenv("MAX_CONCURRENCY", "25"),
+        port=os.getenv("PORT", "8080"),
         container_host=os.getenv("CONTAINER_HOST"),
     )
 
