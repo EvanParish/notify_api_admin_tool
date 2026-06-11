@@ -2,7 +2,8 @@ FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DATABASE_PATH=data/app.db
+    DATABASE_PATH=data/app.db \
+    PORT=8080
 
 WORKDIR /app
 

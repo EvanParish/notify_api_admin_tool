@@ -32,6 +32,7 @@ def test_app_config_default_values():
     assert config.use_mock_api is True
     assert config.database_path == "data/app.db"
     assert config.max_concurrency == 25
+    assert config.port == 8080
     assert config.api_hosts == {}
 
 
@@ -200,3 +201,42 @@ def test_remap_host_127():
 
 def test_remap_host_no_match():
     assert _remap_host("https://api.va.gov/vanotify", "host.docker.internal") == "https://api.va.gov/vanotify"
+
+
+def test_app_config_port_custom():
+    config = AppConfig(master_key="test-key", port=3000)
+    assert config.port == 3000
+
+
+def test_app_config_port_from_string():
+    config = AppConfig(master_key="test-key", port="9090")
+    assert config.port == 9090
+
+
+def test_app_config_port_clamped_low():
+    config = AppConfig(master_key="test-key", port=0)
+    assert config.port == 1
+
+
+def test_app_config_port_clamped_high():
+    config = AppConfig(master_key="test-key", port=70000)
+    assert config.port == 65535
+
+
+def test_app_config_port_invalid():
+    config = AppConfig(master_key="test-key", port="notanumber")
+    assert config.port == 8080
+
+
+def test_load_config_with_port():
+    env = {"MASTER_KEY": "test-key", "PORT": "9090"}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+        assert config.port == 9090
+
+
+def test_load_config_default_port():
+    env = {"MASTER_KEY": "test-key"}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+        assert config.port == 8080

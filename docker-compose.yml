@@ -9,7 +9,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     restart: unless-stopped
     volumes:
       - ./data:/app/data

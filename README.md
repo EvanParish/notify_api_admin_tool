@@ -56,6 +56,7 @@ The SQLite database persists in `data/app.db` (mounted as a volume in Docker).
 | `USE_MOCK_API` | No | `true` | Set to `false` to connect to the real VA Notify API |
 | `API_PUBLIC_HOSTS` | No | See below | JSON dict mapping environment names to API base URLs |
 | `DATABASE_PATH` | No | `data/app.db` | Path to the SQLite database file |
+| `PORT` | No | `8080` | Port the web UI listens on |
 | `CONTAINER_HOST` | No | — | Automatically set by `docker-compose.yml` for Docker networking |
 
 Default `API_PUBLIC_HOSTS`:
