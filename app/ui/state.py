@@ -55,7 +55,17 @@ class AppState:
 # ---------------------------------------------------------------------------
 config: AppConfig = load_config()
 encryption: EncryptionManager = EncryptionManager(config.master_key, salt_provider=DbSaltProvider())
-state: AppState = AppState(environment=next(iter(config.api_hosts.keys()), "dev"))
+
+
+def _default_sync_environments() -> set:
+    """All configured environments except 'local' are enabled for sync by default."""
+    return {env for env in config.api_hosts if env != "local"}
+
+
+state: AppState = AppState(
+    environment=next(iter(config.api_hosts.keys()), "dev"),
+    enabled_sync_environments=_default_sync_environments(),
+)
 service_search_query: str = ""
 _active_api_clients: list[NotificationAPI] = []
 

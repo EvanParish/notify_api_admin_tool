@@ -32,6 +32,7 @@ from app.repository import (
     count_templates_by_service,
     _is_expired,
     upsert_service_callbacks,
+    upsert_api_keys,
 )
 from app.crypto import EncryptionManager
 from app.repository import DbSaltProvider
@@ -522,6 +523,38 @@ async def test_list_api_keys(initialized_db):
     keys = await list_api_keys()
     assert len(keys) == 2
     assert {k.id for k in keys} == {"key-1", "key-2"}
+
+
+@pytest.mark.asyncio
+async def test_upsert_api_keys_persists_last_used_at(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service 1", active=True))
+        await session.commit()
+
+    await upsert_api_keys(
+        [
+            {
+                "id": "key-1",
+                "name": "Key 1",
+                "key_type": "normal",
+                "revoked": False,
+                "last_used_at": "2026-07-20T19:12:12.858044",
+            },
+            {
+                "id": "key-2",
+                "name": "Key 2",
+                "key_type": "normal",
+                "revoked": False,
+                "last_used_at": None,
+            },
+        ],
+        environment="dev",
+        service_id="svc-1",
+    )
+
+    keys = {k.id: k for k in await list_api_keys()}
+    assert keys["key-1"].last_used_at == "2026-07-20T19:12:12.858044"
+    assert keys["key-2"].last_used_at is None
 
 
 @pytest.mark.asyncio

@@ -90,6 +90,7 @@ class ApiKey(Base):
     expiry_date: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    last_used_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 

@@ -44,6 +44,7 @@ async def create_all() -> None:
 
 _MIGRATIONS: list[tuple[str, str, str]] = [
     ("templates", "communication_item_id", "VARCHAR"),
+    ("api_keys", "last_used_at", "VARCHAR"),
 ]
 
 

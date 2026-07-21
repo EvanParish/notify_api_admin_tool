@@ -615,6 +615,7 @@ class MockNotificationAPI(NotificationAPI):
                 "name": "Demo Key",
                 "expiry_date": None,
                 "created_by": "user-1",
+                "last_used_at": None,
             }
         ]
 

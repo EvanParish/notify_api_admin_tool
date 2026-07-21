@@ -12,3 +12,4 @@ If you have an old database with schema errors, delete it and let the app recrea
 |------|--------|--------|
 | 2025-01-24 | Added `service_id` to `api_keys` table | ✓ Incorporated into ORM models |
 | 2026-02-17 | Added `environment` to `local_api_keys` table | ✓ Incorporated into ORM models |
+| 2026-07-21 | Added `last_used_at` to `api_keys` table | ✓ Incorporated into ORM models |

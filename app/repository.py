@@ -680,6 +680,7 @@ async def upsert_api_keys(raw: list[dict], environment: str, service_id: str) ->
                 expiry_date=key.get("expiry_date"),
                 created_by=key.get("created_by"),
                 created_at=key.get("created_at"),
+                last_used_at=key.get("last_used_at"),
                 revoked=key.get("revoked", False),
                 version=key.get("version"),
             )
