@@ -1323,40 +1323,35 @@ class TestPageResponseTimeout:
 
 
 class TestHandleTimeoutError:
+    @staticmethod
+    def _make_request(path: str):
+        from starlette.requests import Request
+
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "headers": [(b"host", b"testserver")],
+            "scheme": "http",
+            "server": ("testserver", 80),
+        }
+        return Request(scope)
+
     async def test_returns_504_with_retry_link(self):
-        from starlette.testclient import TestClient
-        from starlette.applications import Starlette
-        from starlette.routing import Route
-
-        async def boom(request):
-            raise TimeoutError("Response not ready after 10.0 seconds")
-
-        app = Starlette(
-            routes=[Route("/", boom)],
-            exception_handlers={TimeoutError: _st.handle_timeout_error},
-        )
-        client = TestClient(app, raise_server_exceptions=False)
-        resp = client.get("/")
+        request = self._make_request("/")
+        resp = await _st.handle_timeout_error(request, TimeoutError("Response not ready after 10.0 seconds"))
+        body = resp.body.decode()
         assert resp.status_code == 504
-        assert "Page Load Timeout" in resp.text
-        assert "Retry" in resp.text
+        assert "Page Load Timeout" in body
+        assert "Retry" in body
 
     async def test_retry_link_contains_request_url(self):
-        from starlette.testclient import TestClient
-        from starlette.applications import Starlette
-        from starlette.routing import Route
-
-        async def boom(request):
-            raise TimeoutError("timeout")
-
-        app = Starlette(
-            routes=[Route("/my-page", boom)],
-            exception_handlers={TimeoutError: _st.handle_timeout_error},
-        )
-        client = TestClient(app, raise_server_exceptions=False)
-        resp = client.get("/my-page")
+        request = self._make_request("/my-page")
+        resp = await _st.handle_timeout_error(request, TimeoutError("timeout"))
         assert resp.status_code == 504
-        assert "/my-page" in resp.text
+        assert "/my-page" in resp.body.decode()
 
 
 class TestFindMissingPersonalisation:
