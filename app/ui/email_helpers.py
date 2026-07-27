@@ -133,14 +133,12 @@ def _build_env_section(
     env_label = _format_email_env_label(env)
     expiry_date = _format_expiry_date(created_key.get("expiry_date"))
     key_name = created_key.get("name") or ""
-    key_id = created_key.get("id") or ""
 
     section = (
         f"{env_label} Details\n"
         f"Key Secret: {key_secret}\n"
         f"Expiration Date: {expiry_date}\n"
         f"Key Name: {key_name}\n"
-        f"Key ID: {key_id}\n\n"
         f"{env_label} Service\n"
         f"Service Name: {service_name}\n"
         f"Service ID: {service_id}\n"

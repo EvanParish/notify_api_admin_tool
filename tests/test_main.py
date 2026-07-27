@@ -980,7 +980,6 @@ class TestBuildEnvSection:
         result = email_helpers._build_env_section("dev", "secret-abc", created_key, "My Service", "svc-1")
         assert "secret-abc" in result
         assert "my-key" in result
-        assert "key-id-123" in result
         assert "2025-12-31" in result
         assert "My Service" in result
         assert "svc-1" in result
