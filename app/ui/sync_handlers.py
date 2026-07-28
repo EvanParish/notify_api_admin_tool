@@ -22,7 +22,12 @@ async def _sync_for_environment(
         return result
 
     api = await _st.build_api_client(environment)
-    manager = SyncManager(api, _st.config.max_concurrency, environment=environment)
+    manager = SyncManager(
+        api,
+        _st.config.max_concurrency,
+        environment=environment,
+        encryption=_st.encryption,
+    )
 
     async def progress(msg: str):
         _st.state.sync_message = f"[{environment}] {msg}"

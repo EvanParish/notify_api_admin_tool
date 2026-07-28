@@ -85,6 +85,8 @@ For each environment you want to use, enter:
 
 Click **Save Admin Auth**. Credentials are Fernet-encrypted and stored in the local database.
 
+Synced user identity fields (`users.name`, `users.email_address`) are also encrypted at rest in SQLite and decrypted at runtime for UI display, search, and CSV export.
+
 > Each environment (dev, staging, prod, etc.) has its own set of credentials. You only need to configure the environments you plan to use.
 
 These credentials are used for HTTP Basic Auth on all admin API calls (listing services, syncing templates, managing API keys, etc.).

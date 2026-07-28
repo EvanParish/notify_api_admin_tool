@@ -7,9 +7,11 @@ from typing import Awaitable, Callable, Optional
 import httpx
 
 from .api_client import NotificationAPI
+from .crypto import EncryptionManager
 from .repository import (
     list_service_ids,
     mark_stale_api_keys_revoked,
+    migrate_plaintext_users_to_encrypted,
     upsert_api_keys,
     upsert_communication_items,
     upsert_inbound_numbers,
@@ -71,10 +73,12 @@ class SyncManager:
         api: NotificationAPI,
         max_concurrency: int = 25,
         environment: Optional[str] = None,
+        encryption: EncryptionManager | None = None,
     ) -> None:
         self.api = api
         self.max_concurrency = max_concurrency
         self.environment = environment or "unknown"
+        self.encryption = encryption
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self.last_result: SyncResult | None = None
 
@@ -255,9 +259,21 @@ class SyncManager:
         result = SyncResult()
         if progress:
             await progress("Syncing users")
+        if self.encryption is None:
+            result.add_error(
+                SyncError(
+                    entity="users",
+                    message="EncryptionManager is required for sync_users",
+                )
+            )
+            if progress:
+                await progress(f"Error syncing users: {result.errors[-1]}")
+            self.last_result = result
+            return result
         try:
+            await migrate_plaintext_users_to_encrypted(encryption=self.encryption, environment=self.environment)
             users = await self.api.get_users()
-            await upsert_users(users, self.environment)
+            await upsert_users(users, self.environment, encryption=self.encryption)
             result.add_success()
         except Exception as exc:
             result.add_error(

@@ -33,6 +33,8 @@ from app.repository import (
     _is_expired,
     upsert_service_callbacks,
     upsert_api_keys,
+    upsert_users,
+    migrate_plaintext_users_to_encrypted,
 )
 from app.crypto import EncryptionManager
 from app.repository import DbSaltProvider
@@ -990,6 +992,143 @@ async def test_list_users_with_environment(initialized_db):
     users = await list_users(environment="dev")
     assert len(users) == 1
     assert users[0].id == "u1"
+
+
+@pytest.mark.asyncio
+async def test_upsert_users_requires_encryption(initialized_db):
+    with pytest.raises(ValueError, match="EncryptionManager is required for upsert_users"):
+        await upsert_users(
+            [
+                {
+                    "id": "u1",
+                    "name": "User One",
+                    "email_address": "user1@test.com",
+                }
+            ],
+            "dev",
+        )
+
+    async with get_session() as session:
+        stored = await session.get(User, ("u1", "dev"))
+        assert stored is None
+
+
+@pytest.mark.asyncio
+async def test_upsert_users_encrypts_name_and_email(initialized_db):
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+
+    await upsert_users(
+        [
+            {
+                "id": "u1",
+                "name": "User One",
+                "email_address": "user1@test.com",
+                "state": "active",
+            }
+        ],
+        "dev",
+        encryption=encryption,
+    )
+
+    async with get_session() as session:
+        stored = await session.get(User, ("u1", "dev"))
+        assert stored is not None
+        assert stored.name != "User One"
+        assert stored.email_address != "user1@test.com"
+        assert await encryption.decrypt(stored.name) == "User One"
+        assert await encryption.decrypt(stored.email_address) == "user1@test.com"
+
+
+@pytest.mark.asyncio
+async def test_list_users_decrypts_name_and_email(initialized_db):
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+    encrypted_name = await encryption.encrypt("User One")
+    encrypted_email = await encryption.encrypt("user1@test.com")
+
+    async with get_session() as session:
+        session.add(User(id="u1", environment="dev", email_address=encrypted_email, name=encrypted_name))
+        await session.commit()
+
+    users = await list_users(environment="dev", encryption=encryption)
+    assert len(users) == 1
+    assert users[0].name == "User One"
+    assert users[0].email_address == "user1@test.com"
+
+
+@pytest.mark.asyncio
+async def test_list_users_raises_without_encryption_when_encrypted_data_exists(initialized_db):
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+    encrypted_name = await encryption.encrypt("User One")
+    encrypted_email = await encryption.encrypt("user1@test.com")
+
+    async with get_session() as session:
+        session.add(User(id="u1", environment="dev", email_address=encrypted_email, name=encrypted_name))
+        await session.commit()
+
+    with pytest.raises(ValueError, match="EncryptionManager is required to list users"):
+        await list_users(environment="dev")
+
+
+@pytest.mark.asyncio
+async def test_list_users_raises_for_plaintext_with_encryption(initialized_db):
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+
+    async with get_session() as session:
+        session.add(User(id="u1", environment="dev", email_address="legacy@test.com", name="Legacy User"))
+        await session.commit()
+
+    with pytest.raises(ValueError, match="Plaintext user identity data detected"):
+        await list_users(environment="dev", encryption=encryption)
+
+
+@pytest.mark.asyncio
+async def test_list_users_filters_archived_when_email_is_encrypted(initialized_db):
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+    encrypted_archived_email = await encryption.encrypt("_archived@test.com")
+    encrypted_active_email = await encryption.encrypt("active@test.com")
+    encrypted_archived_name = await encryption.encrypt("Archived")
+    encrypted_active_name = await encryption.encrypt("Active")
+
+    async with get_session() as session:
+        session.add(
+            User(
+                id="u1",
+                environment="dev",
+                email_address=encrypted_archived_email,
+                name=encrypted_archived_name,
+            )
+        )
+        session.add(User(id="u2", environment="dev", email_address=encrypted_active_email, name=encrypted_active_name))
+        await session.commit()
+
+    users = await list_users(environment="dev", encryption=encryption)
+    assert [user.id for user in users] == ["u2"]
+    assert users[0].email_address == "active@test.com"
+
+
+@pytest.mark.asyncio
+async def test_migrate_plaintext_users_to_encrypted_is_idempotent(initialized_db):
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+
+    async with get_session() as session:
+        session.add(User(id="u1", environment="dev", email_address="user1@test.com", name="User One"))
+        await session.commit()
+
+    first_count = await migrate_plaintext_users_to_encrypted(encryption=encryption, environment="dev")
+    second_count = await migrate_plaintext_users_to_encrypted(encryption=encryption, environment="dev")
+
+    assert first_count == 1
+    assert second_count == 0
+
+    async with get_session() as session:
+        stored = await session.get(User, ("u1", "dev"))
+        assert stored is not None
+        assert stored.name != "User One"
+        assert stored.email_address != "user1@test.com"
+
+    users = await list_users(environment="dev", encryption=encryption)
+    assert users[0].name == "User One"
+    assert users[0].email_address == "user1@test.com"
 
 
 @pytest.mark.asyncio

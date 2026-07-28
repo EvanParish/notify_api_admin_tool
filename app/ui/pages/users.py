@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from nicegui import ui
 
 from app.repository import list_users
+from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
@@ -51,7 +52,7 @@ async def users_page() -> None:
 
         @ui.refreshable
         async def render_table() -> None:  # pragma: no cover
-            users = await list_users(get_view_environment())
+            users = await list_users(get_view_environment(), encryption=_st.encryption)
 
             def normalize_state(value: Optional[str]) -> str:
                 return (value or "").strip().lower()

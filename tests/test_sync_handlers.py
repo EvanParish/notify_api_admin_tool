@@ -294,7 +294,7 @@ async def test_handle_entity_sync_multiple_envs(initialized_db, mock_config):
 
     synced_envs = []
 
-    def make_manager(api, concurrency, environment):
+    def make_manager(api, concurrency, environment, encryption):
         manager = MagicMock()
 
         async def track_sync(**kw):
@@ -330,7 +330,7 @@ async def test_handle_entity_sync_explicit_environments(initialized_db, mock_con
 
     synced_envs = []
 
-    def make_manager(api, concurrency, environment):
+    def make_manager(api, concurrency, environment, encryption):
         manager = MagicMock()
 
         async def track_sync(**kw):

@@ -160,7 +160,7 @@ async def bulk_send_page() -> None:
                 ui.notify(f"Personalisation field '{missing_key}' is empty", color="red")
                 return
 
-            users = await list_users(selected_env)
+            users = await list_users(selected_env, encryption=_st.encryption)
             active_users = [user for user in users if user.state == "active" and not user.blocked]
             if not active_users:
                 ui.notify("No active users found", color="warning")

@@ -1,8 +1,11 @@
 import pytest
 from sqlalchemy import select
+from unittest.mock import AsyncMock, patch
 
 from app.db import create_all, get_session, init_engine
+from app.crypto import EncryptionManager
 from app.models import Service, ServiceCallback, Template, User
+from app.repository import DbSaltProvider
 from app.sync import SyncManager
 from app.api_client import NotificationAPI
 
@@ -231,6 +234,7 @@ async def test_sync_all_with_progress(setup_db):
 @pytest.mark.asyncio
 async def test_sync_users_filters_archived(setup_db):
     await create_all()
+    encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
     api = FakeAPI(
         users=[
             {
@@ -241,7 +245,7 @@ async def test_sync_users_filters_archived(setup_db):
             {"id": "u-2", "email_address": "active.user@example.com", "name": "Active"},
         ]
     )
-    sync = SyncManager(api)
+    sync = SyncManager(api, environment="dev", encryption=encryption)
 
     await sync.sync_users()
 
@@ -249,6 +253,62 @@ async def test_sync_users_filters_archived(setup_db):
         users = (await session.execute(select(User))).scalars().all()
         assert len(users) == 1
         assert users[0].id == "u-2"
+
+
+@pytest.mark.asyncio
+async def test_sync_users_runs_migration_and_passes_encryption(initialized_db):
+    api = FakeAPI(
+        users=[
+            {
+                "id": "u-1",
+                "email_address": "active.user@example.com",
+                "name": "Active",
+            }
+        ]
+    )
+    encryption = AsyncMock()
+    manager = SyncManager(api, max_concurrency=5, environment="dev", encryption=encryption)
+
+    with (
+        patch("app.sync.migrate_plaintext_users_to_encrypted", new_callable=AsyncMock) as mock_migrate,
+        patch("app.sync.upsert_users", new_callable=AsyncMock) as mock_upsert,
+    ):
+        result = await manager.sync_users()
+
+    assert result.error_count == 0
+    assert result.success_count == 1
+    assert mock_migrate.await_count == 1
+    mock_migrate.assert_any_await(encryption=encryption, environment="dev")
+    mock_upsert.assert_awaited_once_with(api.users_data, "dev", encryption=encryption)
+
+
+@pytest.mark.asyncio
+async def test_sync_users_requires_encryption(initialized_db):
+    api = FakeAPI(
+        users=[
+            {
+                "id": "u-1",
+                "email_address": "active.user@example.com",
+                "name": "Active",
+            }
+        ]
+    )
+    manager = SyncManager(api, max_concurrency=5, environment="dev", encryption=None)
+    manager.api.get_users = AsyncMock(return_value=api.users_data)
+
+    with (
+        patch("app.sync.migrate_plaintext_users_to_encrypted", new_callable=AsyncMock) as mock_migrate,
+        patch("app.sync.upsert_users", new_callable=AsyncMock) as mock_upsert,
+    ):
+        result = await manager.sync_users()
+
+    assert result.success_count == 0
+    assert result.error_count == 1
+    assert result.errors[0].entity == "users"
+    assert "EncryptionManager is required for sync_users" in result.errors[0].message
+    manager.api.get_users.assert_not_awaited()
+    mock_migrate.assert_not_awaited()
+    mock_upsert.assert_not_awaited()
 
 
 @pytest.mark.asyncio

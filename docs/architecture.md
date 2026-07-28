@@ -12,7 +12,7 @@ Target API: [VA Notification API](https://github.com/department-of-veterans-affa
    * Purpose: Local cache of remote API resources and persistence of user configuration (auth credentials, API keys).
 * **Security & Encryption:**
    * Library: `cryptography` (Fernet symmetric encryption).
-   * Scope: API key secrets and Basic Auth credentials are encrypted at rest in SQLite.
+   * Scope: API key secrets, Basic Auth credentials, and synced user identity fields (`users.name`, `users.email_address`) are encrypted at rest in SQLite.
    * Key derivation: PBKDF2-HMAC from `MASTER_KEY` env var. Salt stored in the `settings` table via `DbSaltProvider`.
 * **Concurrency:**
    * All network and database I/O is async (`asyncio`).
@@ -28,7 +28,7 @@ app/
 ├── crypto.py                EncryptionManager (Fernet + PBKDF2), SaltProvider protocol
 ├── db.py                    Async SQLAlchemy engine, session factory, create_all()
 ├── models.py                ORM models (10 tables, most with composite environment key)
-├── repository.py            Async CRUD, upsert functions, DbSaltProvider
+├── repository.py            Async CRUD, upsert functions, DbSaltProvider, user identity encryption helpers
 ├── sync.py                  SyncManager — pulls remote API data into local cache
 └── ui/
     ├── state.py             AppState, module globals (config, encryption), startup/shutdown
@@ -75,7 +75,7 @@ All tables are defined in `app/models.py`. Most entities use composite primary k
 
 * **api_keys** — `(id)` PK, `environment` indexed
    * `service_id`, `name`, `key_type`, `expiry_date`, `created_by`
-   * `created_at`, `revoked`, `version`
+   * `created_at`, `last_used_at`, `revoked`, `version`
 
 * **sms_senders** — `(id)` PK, `environment` indexed
    * `service_id`, `sms_sender`, `is_default`, `archived`, `description`
@@ -88,6 +88,7 @@ All tables are defined in `app/models.py`. Most entities use composite primary k
    * `mobile_number`, `failed_login_count`, `logged_in_at`, `password_changed_at`
    * `current_session_id`, `identity_provider_user_id`
    * `additional_information` (JSON), `permissions` (JSON), `services` (JSON), `organisations` (JSON)
+   * Note: `email_address` and `name` are encrypted at rest and decrypted at runtime for display/search/export.
 
 * **provider_details** — `(id, environment)` PK
    * `active`, `created_by_name`, `current_month_billable_sms`, `display_name`
@@ -100,6 +101,11 @@ All tables are defined in `app/models.py`. Most entities use composite primary k
 * **inbound_numbers** — `(id, environment)` PK
    * `number`, `provider`, `active`, `self_managed`
    * `service_id`, `service_name`, `auth_parameter`, `url_endpoint`
+
+* **service_callbacks** — `(id, environment)` PK
+   * `service_id`, `url`, `callback_type`, `callback_channel`
+   * `created_at`, `updated_at`, `updated_by_id`
+   * `notification_statuses` (JSON), `include_provider_payload`
 
 ### Local-Only Tables
 
@@ -160,12 +166,14 @@ All resource pages follow a consistent datagrid pattern:
 ## 5. Functional Logic
 
 ### 1. Sync Engine (`app/sync.py`)
-* `SyncManager` is instantiated per environment with a `NotificationAPI` client.
-* `sync_all()` runs all entity syncs in sequence: services → templates → api_keys → sms_senders → users → communication_items → provider_details → inbound_numbers.
+* `SyncManager` is instantiated per environment with a `NotificationAPI` client and an `EncryptionManager`.
+* `sync_all()` runs all entity syncs in sequence: services → templates → api_keys → sms_senders → users → communication_items → provider_details → inbound_numbers → service_callbacks.
 * Per-service syncs (templates, api_keys, sms_senders) run in parallel, gated by `asyncio.Semaphore(max_concurrency)` (default 25).
 * Single-entity syncs (users, providers, etc.) are single API calls without concurrency gating.
+* `sync_users` requires encryption context; it runs `migrate_plaintext_users_to_encrypted` before syncing to convert any legacy plaintext rows, then writes new rows encrypted.
 * `SyncResult` tracks success/error counts with structured `SyncError` objects.
 * `handle_entity_sync()` in `sync_handlers.py` orchestrates multi-environment syncs in parallel via `asyncio.gather()`.
+* On startup, `state.py` calls `migrate_plaintext_users_to_encrypted` so existing plaintext rows in local storage are encrypted before any sync or UI read occurs.
 
 ### 2. Notification Sender Logic
 * **Token generation:** PyJWT with HS256 — `{"iss": service_id, "iat": now}`.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 from typing import Type
 
@@ -55,6 +56,16 @@ def _is_archived_value(value: str | None) -> bool:
 
 def _is_archived(*values: str | None) -> bool:
     return any(_is_archived_value(value) for value in values)
+
+
+def _is_encrypted_value(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        decoded = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    except (binascii.Error, ValueError):
+        return False
+    return len(decoded) >= 57 and decoded[0] == 0x80
 
 
 async def get_setting(key: str) -> str | None:
@@ -464,6 +475,7 @@ async def update_communication_item(
 
 async def list_users(
     environment: str | list[str] | None = None,
+    encryption: EncryptionManager | None = None,
 ) -> list[User]:
     async with get_session() as session:
         query = select(User)
@@ -472,7 +484,31 @@ async def list_users(
         if env_clause is not None:
             query = query.where(env_clause)
         rows = list((await session.execute(query)).scalars().all())
-        return [row for row in rows if not (row.email_address or "").lower().startswith("_archived")]
+        visible_rows: list[User] = []
+        for row in rows:
+            has_encrypted_identity = _is_encrypted_value(row.name) or _is_encrypted_value(row.email_address)
+            if encryption is None and has_encrypted_identity:
+                raise ValueError("EncryptionManager is required to list users when encrypted identity data is present")
+            if encryption is not None:
+                plaintext_fields: list[str] = []
+                if row.name and not _is_encrypted_value(row.name):
+                    plaintext_fields.append("name")
+                if row.email_address and not _is_encrypted_value(row.email_address):
+                    plaintext_fields.append("email_address")
+                if plaintext_fields:
+                    fields = ", ".join(plaintext_fields)
+                    raise ValueError(
+                        "Plaintext user identity data detected "
+                        f"(user_id={row.id}, environment={row.environment}, fields={fields}); "
+                        "migration is required."
+                    )
+                if _is_encrypted_value(row.name):
+                    row.name = await encryption.decrypt(row.name)
+                if _is_encrypted_value(row.email_address):
+                    row.email_address = await encryption.decrypt(row.email_address)
+            if not (row.email_address or "").lower().startswith("_archived"):
+                visible_rows.append(row)
+        return visible_rows
 
 
 async def list_inbound_numbers(
@@ -712,17 +748,30 @@ async def upsert_sms_senders(raw: list[dict], environment: str, fallback_service
         await session.commit()
 
 
-async def upsert_users(raw: list[dict], environment: str) -> None:
+async def upsert_users(
+    raw: list[dict],
+    environment: str,
+    encryption: EncryptionManager | None = None,
+) -> None:
+    if encryption is None:
+        raise ValueError("EncryptionManager is required for upsert_users to protect user identity fields")
+
     async with get_session() as session:
         for user in raw:
             email = (user.get("email_address") or "").lower()
             if email.startswith("_archived"):
                 continue
+            email_address = user.get("email_address")
+            name = user.get("name")
+            if email_address is not None:
+                email_address = await encryption.encrypt(email_address)
+            if name is not None:
+                name = await encryption.encrypt(name)
             record = User(
                 id=user.get("id"),
                 environment=environment,
-                email_address=user.get("email_address"),
-                name=user.get("name"),
+                email_address=email_address,
+                name=name,
                 state=user.get("state"),
                 platform_admin=user.get("platform_admin", False),
                 blocked=user.get("blocked", False),
@@ -740,6 +789,34 @@ async def upsert_users(raw: list[dict], environment: str) -> None:
             )
             await session.merge(record)
         await session.commit()
+
+
+async def migrate_plaintext_users_to_encrypted(
+    encryption: EncryptionManager,
+    environment: str | list[str] | None = None,
+) -> int:
+    async with get_session() as session:
+        query = select(User)
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(User.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
+
+        rows = list((await session.execute(query)).scalars().all())
+        migrated = 0
+        for row in rows:
+            updated = False
+            if row.name and not _is_encrypted_value(row.name):
+                row.name = await encryption.encrypt(row.name)
+                updated = True
+            if row.email_address and not _is_encrypted_value(row.email_address):
+                row.email_address = await encryption.encrypt(row.email_address)
+                updated = True
+            if updated:
+                migrated += 1
+        if migrated:
+            await session.commit()
+        return migrated
 
 
 async def upsert_provider_details(raw: list[dict], environment: str) -> None:

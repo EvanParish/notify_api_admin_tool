@@ -9,6 +9,7 @@ import os
 import pytest
 import httpx
 from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, patch, Mock
 from dataclasses import dataclass
 
@@ -1949,6 +1950,32 @@ async def test_startup(initialized_db, mock_config):
 
 
 @pytest.mark.asyncio
+async def test_startup_runs_user_migration(initialized_db, mock_config):
+    from nicegui import app as nicegui_app
+
+    startup_fn = [h for h in nicegui_app._startup_handlers if getattr(h, "__name__", "") == "startup"][-1]
+
+    original_config = _st.config
+    original_encryption = _st.encryption
+    _st.config = mock_config
+    _st.encryption = MagicMock()
+    try:
+        with (
+            patch("app.ui.state.create_all", new_callable=AsyncMock) as mock_create_all,
+            patch("app.ui.state.ensure_default_hosts", new_callable=AsyncMock) as mock_hosts,
+            patch("app.ui.state.migrate_plaintext_users_to_encrypted", new_callable=AsyncMock) as mock_migrate,
+        ):
+            await startup_fn()
+
+        mock_create_all.assert_awaited_once()
+        mock_hosts.assert_awaited_once()
+        mock_migrate.assert_awaited_once_with(encryption=_st.encryption)
+    finally:
+        _st.config = original_config
+        _st.encryption = original_encryption
+
+
+@pytest.mark.asyncio
 async def test_shutdown_via_handler(initialized_db):
     from nicegui import app as nicegui_app
 
@@ -2404,6 +2431,28 @@ async def test_dashboard_page(initialized_db, mock_config):
 
 
 @pytest.mark.asyncio
+async def test_dashboard_page_passes_encryption_to_list_users(initialized_db, mock_config):
+    original = _st.config
+    original_state = _st.state
+    original_encryption = _st.encryption
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    _st.encryption = MagicMock()
+    try:
+        with (
+            mock_page_ui("app.ui.pages.dashboard"),
+            patch("app.ui.pages.dashboard.get_view_environment", return_value="development"),
+            patch("app.ui.pages.dashboard.list_users", new_callable=AsyncMock, return_value=[]) as mock_list_users,
+        ):
+            await page_dashboard.dashboard_page()
+        mock_list_users.assert_awaited_once_with("development", encryption=_st.encryption)
+    finally:
+        _st.config = original
+        _st.state = original_state
+        _st.encryption = original_encryption
+
+
+@pytest.mark.asyncio
 async def test_services_page(initialized_db, mock_config):
     original = _st.config
     original_state = _st.state
@@ -2563,6 +2612,28 @@ async def test_users_page(initialized_db, mock_config):
 
 
 @pytest.mark.asyncio
+async def test_users_page_passes_encryption_to_list_users(initialized_db, mock_config):
+    original = _st.config
+    original_state = _st.state
+    original_encryption = _st.encryption
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    _st.encryption = MagicMock()
+    try:
+        with (
+            mock_page_ui("app.ui.pages.users"),
+            patch("app.ui.pages.users.get_view_environment", return_value="development"),
+            patch("app.ui.pages.users.list_users", new_callable=AsyncMock, return_value=[]) as mock_list_users,
+        ):
+            await page_users.users_page()
+        mock_list_users.assert_awaited_once_with("development", encryption=_st.encryption)
+    finally:
+        _st.config = original
+        _st.state = original_state
+        _st.encryption = original_encryption
+
+
+@pytest.mark.asyncio
 async def test_sms_senders_page(initialized_db, mock_config):
     original = _st.config
     original_state = _st.state
@@ -2673,6 +2744,88 @@ async def test_bulk_send_page(initialized_db, mock_config):
 
 
 @pytest.mark.asyncio
+async def test_bulk_send_page_passes_encryption_to_list_users(initialized_db, mock_config):
+    original = _st.config
+    original_state = _st.state
+    original_encryption = _st.encryption
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    _st.encryption = MagicMock()
+
+    send_all_callback = None
+
+    def make_component() -> MagicMock:
+        component = MagicMock()
+        component.__enter__ = Mock(return_value=component)
+        component.__exit__ = Mock(return_value=False)
+        component.classes = MagicMock(return_value=component)
+        component.props = MagicMock(return_value=component)
+        component.on_click = MagicMock(return_value=component)
+        component.on_value_change = MagicMock(return_value=component)
+        component.set_options = MagicMock(return_value=component)
+        component.on = MagicMock(return_value=component)
+        component.add_slot = MagicMock(return_value=component)
+        component.refresh = MagicMock()
+        component.text = ""
+        component.value = None
+        return component
+
+    def capture_select(options=None, value=None, label=None, **_kwargs):
+        component = make_component()
+        component.value = value
+        if label == "Service":
+            component.value = "svc-1"
+        elif label == "API Key":
+            component.value = "key-1"
+        elif label == "Template":
+            component.value = "tmpl-1"
+        return component
+
+    def capture_button(label, **kwargs):
+        nonlocal send_all_callback
+        if label == "Send to ALL":
+            send_all_callback = kwargs.get("on_click")
+        return make_component()
+
+    mock_user = SimpleNamespace(
+        id="user-1",
+        email_address="user@example.com",
+        state="active",
+        blocked=False,
+    )
+    mock_api = MagicMock()
+    mock_api.send_notification = AsyncMock(return_value={"id": "ok"})
+    mock_service = SimpleNamespace(id="svc-1", name="Service 1", environment="development")
+    mock_key = SimpleNamespace(id="key-1", key_name="key-1")
+    mock_template = SimpleNamespace(id="tmpl-1", name="Template 1", subject=None, content=None)
+
+    try:
+        with (
+            mock_page_ui("app.ui.pages.bulk_send"),
+            patch("app.ui.pages.bulk_send.ui.select", side_effect=capture_select),
+            patch("app.ui.pages.bulk_send.ui.button", side_effect=capture_button),
+            patch("app.ui.pages.bulk_send.list_services", new_callable=AsyncMock, return_value=[mock_service]),
+            patch("app.ui.pages.bulk_send.list_local_keys", new_callable=AsyncMock, return_value=[mock_key]),
+            patch("app.ui.pages.bulk_send.list_templates", new_callable=AsyncMock, return_value=[mock_template]),
+            patch(
+                "app.ui.pages.bulk_send.list_users", new_callable=AsyncMock, return_value=[mock_user]
+            ) as mock_list_users,
+            patch("app.ui.pages.bulk_send.resolve_local_key", new_callable=AsyncMock, return_value="secret"),
+            patch("app.ui.pages.bulk_send.build_api_client", new_callable=AsyncMock, return_value=mock_api),
+            patch("app.ui.pages.bulk_send.open", create=True),
+            patch("app.ui.pages.bulk_send.json.dump"),
+        ):
+            await page_bulk_send.bulk_send_page()
+            assert send_all_callback is not None
+            await send_all_callback()
+        mock_list_users.assert_awaited_once_with("development", encryption=_st.encryption)
+    finally:
+        _st.config = original
+        _st.state = original_state
+        _st.encryption = original_encryption
+
+
+@pytest.mark.asyncio
 async def test_settings_page(initialized_db, mock_config):
     original = _st.config
     original_state = _st.state
@@ -2760,6 +2913,52 @@ async def test_handle_full_sync_reraises_non_401(initialized_db, mock_config):
     finally:
         _st.config = original_config
         _st.state = original_state
+
+
+@pytest.mark.asyncio
+async def test_sync_for_environment_passes_encryption_to_sync_manager(initialized_db, mock_config):
+    original_config = _st.config
+    original_state = _st.state
+    original_encryption = _st.encryption
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _make_sync_test_state()
+    _st.encryption = MagicMock()
+    mock_sync_label = MagicMock()
+    mock_sync_label.text = ""
+
+    try:
+        with (
+            patch.object(_st, "ensure_admin_auth", new_callable=AsyncMock, return_value=True),
+            patch.object(_st, "build_api_client", new_callable=AsyncMock, return_value=AsyncMock()) as mock_build,
+            patch("app.ui.sync_handlers.SyncManager") as mock_sync_manager_cls,
+        ):
+            from app.sync import SyncResult
+
+            mock_manager = MagicMock()
+            ok_result = SyncResult()
+            ok_result.add_success()
+            mock_manager.sync_users = AsyncMock(return_value=ok_result)
+            mock_sync_manager_cls.return_value = mock_manager
+
+            result = await sync_handlers._sync_for_environment(
+                "development",
+                ["sync_users"],
+                mock_sync_label,
+            )
+
+        assert result.success_count == 1
+        mock_build.assert_awaited_once_with("development")
+        mock_sync_manager_cls.assert_called_once_with(
+            mock_build.return_value,
+            _st.config.max_concurrency,
+            environment="development",
+            encryption=_st.encryption,
+        )
+    finally:
+        _st.config = original_config
+        _st.state = original_state
+        _st.encryption = original_encryption
 
 
 # ===================================================================

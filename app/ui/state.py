@@ -21,7 +21,13 @@ from app.api_client import HttpNotificationAPI, MockNotificationAPI, Notificatio
 from app.config import AppConfig, _remap_host, load_config
 from app.crypto import EncryptionManager
 from app.db import create_all, dispose_engine, init_engine
-from app.repository import DbSaltProvider, get_secure_setting, get_setting, set_setting
+from app.repository import (
+    DbSaltProvider,
+    get_secure_setting,
+    get_setting,
+    migrate_plaintext_users_to_encrypted,
+    set_setting,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +90,7 @@ if not os.getenv("PYTEST_CURRENT_TEST"):
 async def startup() -> None:
     await create_all()
     await ensure_default_hosts()
+    await migrate_plaintext_users_to_encrypted(encryption=encryption)
 
 
 @app.on_shutdown

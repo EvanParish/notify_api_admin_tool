@@ -14,6 +14,7 @@ from app.repository import (
     list_templates,
     list_users,
 )
+from app.ui import state as _st
 from app.ui.helpers import metric_card, refresh_if_needed
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import PAGE_RESPONSE_TIMEOUT, get_view_environment, refresh_status_badge
@@ -38,7 +39,7 @@ async def dashboard_page() -> None:
             list_services(view_env),
             list_templates(environment=view_env),
             list_api_keys(environment=view_env),
-            list_users(view_env),
+            list_users(view_env, encryption=_st.encryption),
             list_sms_senders(environment=view_env),
             list_provider_details(view_env),
             list_inbound_numbers(environment=view_env),

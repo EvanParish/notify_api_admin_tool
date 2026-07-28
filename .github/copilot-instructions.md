@@ -74,15 +74,15 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
   - `bulk_send.py` — Bulk Send Notification page (`/bulk-send`)
   - `settings_page.py` — Settings page with URL/auth/key forms (`/settings`)
   - `__init__.py` — Imports all page modules to trigger `@ui.page` registration
-- **`app/ui/state.py`** — Application state globals (`config`, `encryption`, `state`), `AppState` dataclass, `build_api_client()`, auth helpers, startup/shutdown handlers.
+- **`app/ui/state.py`** — Application state globals (`config`, `encryption`, `state`), `AppState` dataclass, `build_api_client()`, auth helpers, startup/shutdown handlers. On startup, runs `migrate_plaintext_users_to_encrypted` to ensure any legacy plaintext user identity rows are encrypted before use.
 - **`app/ui/helpers.py`** — Reusable UI utilities: `metric_card`, `make_sortable`, copyable slots, formatting functions, `parse_recipients`.
 - **`app/ui/email_helpers.py`** — Email rotation constants and `_build_key_email()` for API key email generation.
 - **`app/ui/shell.py`** — Monkey-patches for NiceGUI edge cases, theme helpers, and `build_shell()` sidebar/header builder.
 - **`app/ui/sync_handlers.py`** — Generic `handle_entity_sync()` and `handle_full_sync()` that consolidate all sync dispatch.
 - **`app/api_client.py`** — `NotificationAPI` base class with `HttpNotificationAPI` (real) and `MockNotificationAPI` (dev/test) implementations. HTTP client uses `httpx`. Notification sending uses JWT auth (HS256, signed with service API secret).
-- **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment. Delegates all DB writes to `repository.py` upsert functions.
+- **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Accepts an `EncryptionManager` and passes it through to user sync. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment. Delegates all DB writes to `repository.py` upsert functions.
 - **`app/models.py`** — SQLAlchemy ORM models. Most entities use composite keys of `(id, environment)` to store data from multiple environments in one database.
-- **`app/repository.py`** — Async CRUD functions using `get_session()` context manager. Includes bulk `upsert_*` functions for sync and `list_service_ids()`. Archived records (names starting with `_archive`) are filtered out automatically. Entity list functions (templates, API keys, SMS senders, inbound numbers, service callbacks) also exclude rows belonging to archived services via the `_active_service_ids()` subquery.
+- **`app/repository.py`** — Async CRUD functions using `get_session()` context manager. Includes bulk `upsert_*` functions for sync and `list_service_ids()`. Archived records (names starting with `_archive`) are filtered out automatically. Entity list functions (templates, API keys, SMS senders, inbound numbers, service callbacks) also exclude rows belonging to archived services via the `_active_service_ids()` subquery. `upsert_users` requires an `EncryptionManager` and stores `name`/`email_address` encrypted at rest; `list_users` decrypts them on read. `migrate_plaintext_users_to_encrypted` backfills any legacy plaintext rows idempotently.
 - **`app/db.py`** — Async SQLAlchemy engine setup with `aiosqlite`. Module-level globals `engine` and `SessionLocal` are initialized via `init_engine()`.
 - **`app/crypto.py`** — `EncryptionManager` uses Fernet encryption with PBKDF2-derived key from `MASTER_KEY` env var. Accepts a `SaltProvider` protocol for salt storage (decoupled from DB). `DbSaltProvider` in `repository.py` provides the DB-backed implementation.
 - **`app/config.py`** — Pydantic `AppConfig` loaded from environment variables via `python-dotenv`.
@@ -96,6 +96,8 @@ The app manages data across multiple VA API environments simultaneously. Most mo
 Two auth layers exist:
 1. **Basic Auth** — For admin API calls (listing services, templates, etc.). Credentials stored encrypted in the `settings` table.
 2. **JWT Bearer** — For sending notifications. Signed with a service's API secret from `local_api_keys`. Secrets are Fernet-encrypted at rest.
+
+User identity fields (`users.name`, `users.email_address`) are also Fernet-encrypted at rest and decrypted at runtime for display/search/export.
 
 ## Git & Version Control
 
