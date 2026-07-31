@@ -6,14 +6,65 @@ import gzip
 import inspect
 import logging
 import sys
-from typing import Dict
+from typing import Dict, List, NamedTuple, Tuple
 
-from nicegui import app, ui
+from nicegui import app, context, ui
 from nicegui.client import Client
 
 from app.ui import state as _st
 
 logger = logging.getLogger(__name__)
+
+APP_TITLE = "VA Notify Admin"
+
+
+class NavItem(NamedTuple):
+    icon: str
+    label: str
+    href: str
+
+
+# Single source of truth for sidebar navigation. Drives both the rendered
+# nav links and the per-page browser tab titles (see PAGE_TITLES below).
+NAV_SECTIONS: List[Tuple[str, List[NavItem]]] = [
+    ("Overview", [NavItem("dashboard", "Dashboard", "/")]),
+    (
+        "Notifications",
+        [
+            NavItem("send", "Send Notification", "/send"),
+            NavItem("dynamic_feed", "Bulk Send", "/bulk-send"),
+        ],
+    ),
+    (
+        "Resources",
+        [
+            NavItem("business", "Services", "/services"),
+            NavItem("description", "Templates", "/templates"),
+            NavItem("vpn_key", "API Keys", "/api-keys"),
+            NavItem("add_circle", "Create API Key", "/api-key-service"),
+            NavItem("people", "Users", "/users"),
+            NavItem("sms", "SMS Senders", "/sms-senders"),
+            NavItem("call", "Inbound Numbers", "/inbound-numbers"),
+            NavItem("webhook", "Service Callbacks", "/service-callbacks"),
+            NavItem("forum", "Communication Items", "/communication-items"),
+            NavItem("cloud", "Provider Details", "/provider-details"),
+        ],
+    ),
+    ("Configuration", [NavItem("settings", "Settings", "/settings")]),
+]
+
+# Derived from NAV_SECTIONS: maps each page route to its browser tab label.
+PAGE_TITLES: Dict[str, str] = {item.href: item.label for _, items in NAV_SECTIONS for item in items}
+
+
+def _apply_page_title() -> None:
+    """Set the browser tab title based on the current route."""
+    try:
+        path = context.client.page.path
+    except Exception:  # pragma: no cover - defensive; context may be unavailable
+        path = None
+    label = PAGE_TITLES.get(path)
+    ui.page_title(f"{APP_TITLE} - {label}" if label else APP_TITLE)
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +147,7 @@ def _nav_section(title: str) -> None:
 
 def build_shell(on_view_env_change=None) -> tuple:
     """Build sidebar + header chrome.  Returns (status_badge, sync_label, refresh_button, dark_mode, theme_button)."""
+    _apply_page_title()
     drawer = (
         ui.left_drawer(value=True)
         .props("show-if-above bordered width=240")
@@ -103,27 +155,10 @@ def build_shell(on_view_env_change=None) -> tuple:
     )
     with drawer:
         with ui.column().classes("w-full py-4 gap-0.5"):
-            _nav_section("Overview")
-            _nav_link("dashboard", "Dashboard", "/")
-
-            _nav_section("Notifications")
-            _nav_link("send", "Send Notification", "/send")
-            _nav_link("dynamic_feed", "Bulk Send", "/bulk-send")
-
-            _nav_section("Resources")
-            _nav_link("business", "Services", "/services")
-            _nav_link("description", "Templates", "/templates")
-            _nav_link("vpn_key", "API Keys", "/api-keys")
-            _nav_link("add_circle", "Create API Key", "/api-key-service")
-            _nav_link("people", "Users", "/users")
-            _nav_link("sms", "SMS Senders", "/sms-senders")
-            _nav_link("call", "Inbound Numbers", "/inbound-numbers")
-            _nav_link("webhook", "Service Callbacks", "/service-callbacks")
-            _nav_link("forum", "Communication Items", "/communication-items")
-            _nav_link("cloud", "Provider Details", "/provider-details")
-
-            _nav_section("Configuration")
-            _nav_link("settings", "Settings", "/settings")
+            for section_title, items in NAV_SECTIONS:
+                _nav_section(section_title)
+                for item in items:
+                    _nav_link(item.icon, item.label, item.href)
 
     dark_mode = ui.dark_mode()
     with ui.header().classes("items-center justify-between bg-gray-200 dark:bg-slate-800"):
