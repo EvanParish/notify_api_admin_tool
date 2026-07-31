@@ -32,6 +32,7 @@ def test_app_config_default_values():
     assert config.use_mock_api is True
     assert config.database_path == "data/app.db"
     assert config.max_concurrency == 25
+    assert config.request_timeout == 30.0
     assert config.port == 8080
     assert config.api_hosts == {}
 
@@ -78,6 +79,23 @@ def test_app_config_max_concurrency_clamping():
 def test_app_config_max_concurrency_invalid():
     config = AppConfig(master_key="test-key", max_concurrency="invalid")
     assert config.max_concurrency == 25
+
+
+def test_app_config_request_timeout_clamping():
+    assert AppConfig(master_key="test-key", request_timeout=0).request_timeout == 1.0
+    assert AppConfig(master_key="test-key", request_timeout=500).request_timeout == 300.0
+    assert AppConfig(master_key="test-key", request_timeout=45).request_timeout == 45.0
+
+
+def test_app_config_request_timeout_invalid():
+    assert AppConfig(master_key="test-key", request_timeout="nope").request_timeout == 30.0
+
+
+def test_load_config_request_timeout_from_env():
+    env = {"MASTER_KEY": "test-key", "REQUEST_TIMEOUT": "60"}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+        assert config.request_timeout == 60.0
 
 
 def test_load_config_missing_master_key():

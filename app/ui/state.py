@@ -152,7 +152,12 @@ async def build_api_client(env: str) -> NotificationAPI:
         base_url = _remap_host(base_url, config.container_host)
     basic_user = await get_secure_setting(f"basic_username_{env}", encryption)
     basic_pass = await get_secure_setting(f"basic_password_{env}", encryption)
-    client = HttpNotificationAPI(base_url=base_url, basic_username=basic_user, basic_password=basic_pass)
+    client = HttpNotificationAPI(
+        base_url=base_url,
+        basic_username=basic_user,
+        basic_password=basic_pass,
+        timeout=config.request_timeout,
+    )
     _active_api_clients.append(client)
     return client
 

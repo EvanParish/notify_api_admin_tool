@@ -18,6 +18,7 @@ class AppConfig(BaseModel):
     use_mock_api: bool = True
     database_path: str = "data/app.db"
     max_concurrency: int = 25
+    request_timeout: float = 30.0
     port: int = 8080
     container_host: str | None = None
 
@@ -48,6 +49,15 @@ class AppConfig(BaseModel):
         except Exception:
             return 25
         return max(1, min(number, 100))
+
+    @field_validator("request_timeout", mode="before")
+    @classmethod
+    def clamp_timeout(cls, value):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return 30.0
+        return max(1.0, min(number, 300.0))
 
     @field_validator("port", mode="before")
     @classmethod
@@ -82,6 +92,7 @@ def load_config() -> AppConfig:
         use_mock_api=_parse_bool(os.getenv("USE_MOCK_API"), True),
         database_path=os.getenv("DATABASE_PATH", "data/app.db"),
         max_concurrency=os.getenv("MAX_CONCURRENCY", "25"),
+        request_timeout=os.getenv("REQUEST_TIMEOUT", "30"),
         port=os.getenv("PORT", "8080"),
         container_host=os.getenv("CONTAINER_HOST"),
     )

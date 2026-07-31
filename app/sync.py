@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
@@ -22,6 +23,8 @@ from .repository import (
     upsert_templates,
     upsert_users,
 )
+
+logger = logging.getLogger(__name__)
 
 ProgressCallback = Optional[Callable[[str], Awaitable[None]]]
 
@@ -101,6 +104,37 @@ class SyncManager:
                 pass
         return str(exc)
 
+    def _record_error(
+        self,
+        result: SyncResult,
+        entity: str,
+        exc: Exception | None = None,
+        *,
+        message: str | None = None,
+        status_code: int | None = None,
+        service_id: str | None = None,
+    ) -> SyncError:
+        """Build a SyncError, log it with service context, and record it on *result*."""
+        if message is None:
+            message = self._extract_error_message(exc) if exc is not None else "unknown error"
+        if status_code is None and exc is not None:
+            status_code = self._extract_status_code(exc)
+        error = SyncError(
+            entity=entity,
+            message=message,
+            status_code=status_code,
+            service_id=service_id,
+        )
+        logger.warning(
+            "Sync error env=%s entity=%s service=%s: %s",
+            self.environment,
+            entity,
+            service_id or "-",
+            error,
+        )
+        result.add_error(error)
+        return error
+
     async def sync_all(self, progress: ProgressCallback = None) -> SyncResult:
         result = SyncResult()
         for method in [
@@ -128,13 +162,7 @@ class SyncManager:
             await upsert_services(services, self.environment)
             result.add_success()
         except Exception as exc:
-            result.add_error(
-                SyncError(
-                    entity="services",
-                    message=self._extract_error_message(exc),
-                    status_code=self._extract_status_code(exc),
-                )
-            )
+            self._record_error(result, "services", exc)
             if progress:
                 await progress(f"Error syncing services: {result.errors[-1]}")
         self.last_result = result
@@ -160,14 +188,7 @@ class SyncManager:
                 await upsert_templates(templates, self.environment, service_id)
                 result.add_success()
             except Exception as exc:
-                result.add_error(
-                    SyncError(
-                        entity="templates",
-                        message=self._extract_error_message(exc),
-                        status_code=self._extract_status_code(exc),
-                        service_id=service_id,
-                    )
-                )
+                self._record_error(result, "templates", exc, service_id=service_id)
                 if progress:
                     await progress(f"Error syncing templates: {result.errors[-1]}")
         return result
@@ -176,24 +197,27 @@ class SyncManager:
         self,
         progress: ProgressCallback = None,
         service_ids: list[str] | None = None,
+        include_revoked: bool = False,
     ) -> SyncResult:
         result = SyncResult()
         if service_ids is None:
             service_ids = await list_service_ids(self.environment)
-        tasks = [self._sync_api_keys_for_service(sid, progress) for sid in service_ids]
+        tasks = [self._sync_api_keys_for_service(sid, progress, include_revoked) for sid in service_ids]
         sub_results = await asyncio.gather(*tasks)
         for sub_result in sub_results:
             result.merge(sub_result)
         self.last_result = result
         return result
 
-    async def _sync_api_keys_for_service(self, service_id: str, progress: ProgressCallback) -> SyncResult:
+    async def _sync_api_keys_for_service(
+        self, service_id: str, progress: ProgressCallback, include_revoked: bool = False
+    ) -> SyncResult:
         result = SyncResult()
         async with self._semaphore:
             if progress:
                 await progress(f"API keys for {service_id}")
             try:
-                api_keys = await self.api.get_api_keys(service_id)
+                api_keys = await self.api.get_api_keys(service_id, include_revoked)
                 remote_key_ids = [k["id"] for k in api_keys]
                 await mark_stale_api_keys_revoked(remote_key_ids, self.environment, service_id)
                 await upsert_api_keys(api_keys, self.environment, service_id)
@@ -205,13 +229,8 @@ class SyncManager:
                         await progress(f"No API keys for {service_id}")
                     result.add_success()
                 else:
-                    result.add_error(
-                        SyncError(
-                            entity="api_keys",
-                            message=self._extract_error_message(exc),
-                            status_code=status_code,
-                            service_id=service_id,
-                        )
+                    self._record_error(
+                        result, "api_keys", exc, status_code=status_code, service_id=service_id
                     )
                     if progress:
                         await progress(f"Error syncing API keys: {result.errors[-1]}")
@@ -243,13 +262,8 @@ class SyncManager:
                         await progress(f"No SMS senders for {service_id}")
                     result.add_success()
                 else:
-                    result.add_error(
-                        SyncError(
-                            entity="sms_senders",
-                            message=self._extract_error_message(exc),
-                            status_code=status_code,
-                            service_id=service_id,
-                        )
+                    self._record_error(
+                        result, "sms_senders", exc, status_code=status_code, service_id=service_id
                     )
                     if progress:
                         await progress(f"Error syncing SMS senders: {result.errors[-1]}")
@@ -260,12 +274,7 @@ class SyncManager:
         if progress:
             await progress("Syncing users")
         if self.encryption is None:
-            result.add_error(
-                SyncError(
-                    entity="users",
-                    message="EncryptionManager is required for sync_users",
-                )
-            )
+            self._record_error(result, "users", message="EncryptionManager is required for sync_users")
             if progress:
                 await progress(f"Error syncing users: {result.errors[-1]}")
             self.last_result = result
@@ -276,13 +285,7 @@ class SyncManager:
             await upsert_users(users, self.environment, encryption=self.encryption)
             result.add_success()
         except Exception as exc:
-            result.add_error(
-                SyncError(
-                    entity="users",
-                    message=self._extract_error_message(exc),
-                    status_code=self._extract_status_code(exc),
-                )
-            )
+            self._record_error(result, "users", exc)
             if progress:
                 await progress(f"Error syncing users: {result.errors[-1]}")
         self.last_result = result
@@ -297,13 +300,7 @@ class SyncManager:
             await upsert_provider_details(provider_details, self.environment)
             result.add_success()
         except Exception as exc:
-            result.add_error(
-                SyncError(
-                    entity="provider_details",
-                    message=self._extract_error_message(exc),
-                    status_code=self._extract_status_code(exc),
-                )
-            )
+            self._record_error(result, "provider_details", exc)
             if progress:
                 await progress(f"Error syncing provider details: {result.errors[-1]}")
         self.last_result = result
@@ -318,13 +315,7 @@ class SyncManager:
             await upsert_communication_items(communication_items, self.environment)
             result.add_success()
         except Exception as exc:
-            result.add_error(
-                SyncError(
-                    entity="communication_items",
-                    message=self._extract_error_message(exc),
-                    status_code=self._extract_status_code(exc),
-                )
-            )
+            self._record_error(result, "communication_items", exc)
             if progress:
                 await progress(f"Error syncing communication items: {result.errors[-1]}")
         self.last_result = result
@@ -339,13 +330,7 @@ class SyncManager:
             await upsert_inbound_numbers(inbound_numbers, self.environment)
             result.add_success()
         except Exception as exc:
-            result.add_error(
-                SyncError(
-                    entity="inbound_numbers",
-                    message=self._extract_error_message(exc),
-                    status_code=self._extract_status_code(exc),
-                )
-            )
+            self._record_error(result, "inbound_numbers", exc)
             if progress:
                 await progress(f"Error syncing inbound numbers: {result.errors[-1]}")
         self.last_result = result
@@ -377,13 +362,8 @@ class SyncManager:
                         await progress(f"No callbacks for {service_id}")
                     result.add_success()
                 else:
-                    result.add_error(
-                        SyncError(
-                            entity="service_callbacks",
-                            message=self._extract_error_message(exc),
-                            status_code=status_code,
-                            service_id=service_id,
-                        )
+                    self._record_error(
+                        result, "service_callbacks", exc, status_code=status_code, service_id=service_id
                     )
                     if progress:
                         await progress(f"Error syncing callbacks: {result.errors[-1]}")

@@ -44,6 +44,16 @@ async def test_mock_api_get_api_keys():
 
 
 @pytest.mark.asyncio
+async def test_mock_api_get_api_keys_include_revoked():
+    api = MockNotificationAPI()
+    keys = await api.get_api_keys("svc-1", include_revoked=True)
+
+    assert len(keys) == 2
+    revoked = next(k for k in keys if k["id"] == "key-revoked")
+    assert revoked["revoked"] is True
+
+
+@pytest.mark.asyncio
 async def test_mock_api_create_api_key():
     api = MockNotificationAPI()
     result = await api.create_api_key("svc-1", "New Key", "normal")
@@ -270,8 +280,29 @@ async def test_http_api_get_api_keys():
     with patch.object(api.client, "get", return_value=mock_response) as mock_get:
         keys = await api.get_api_keys("svc-1")
 
-        mock_get.assert_called_once_with("https://api.example.com/service/svc-1/api-keys", auth=None)
+        mock_get.assert_called_once_with(
+            "https://api.example.com/service/svc-1/api-keys", auth=None, params={}
+        )
         assert len(keys) == 1
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_api_keys_include_revoked():
+    api = HttpNotificationAPI("https://api.example.com")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"apiKeys": [{"id": "key-1"}, {"id": "key-2", "revoked": True}]}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response) as mock_get:
+        keys = await api.get_api_keys("svc-1", include_revoked=True)
+
+        mock_get.assert_called_once_with(
+            "https://api.example.com/service/svc-1/api-keys",
+            auth=None,
+            params={"include_revoked": "true"},
+        )
+        assert len(keys) == 2
 
 
 @pytest.mark.asyncio
@@ -1353,3 +1384,63 @@ async def test_http_api_no_retry_on_http_error():
             await api.get_services()
 
     assert call_count == 1  # No retries for HTTP errors
+
+
+def test_http_api_default_timeout():
+    """Default request timeout is the increased 30s value."""
+    from app.api_client import DEFAULT_REQUEST_TIMEOUT
+
+    api = HttpNotificationAPI("https://api.example.com")
+    assert DEFAULT_REQUEST_TIMEOUT == 30.0
+    assert api.client.timeout.read == 30.0
+
+
+@pytest.mark.asyncio
+async def test_retry_log_includes_service_id(caplog):
+    """Retry logging includes the service_id for per-service calls like ReadTimeout."""
+    api = HttpNotificationAPI("https://api.example.com")
+
+    call_count = 0
+
+    async def fail_then_succeed(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count < 2:
+            raise httpx.ReadTimeout("Read timed out")
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"apiKeys": [{"id": "key-1"}]}
+        mock_response.raise_for_status = MagicMock()
+        return mock_response
+
+    with caplog.at_level("WARNING", logger="app.api_client"):
+        with patch.object(api.client, "get", side_effect=fail_then_succeed):
+            await api.get_api_keys("svc-42")
+
+    messages = [rec.getMessage() for rec in caplog.records]
+    assert any("ReadTimeout" in m and "svc-42" in m and "get_api_keys" in m for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_retry_log_without_service_id(caplog):
+    """Retry logging still works for calls that have no service_id argument."""
+    api = HttpNotificationAPI("https://api.example.com")
+
+    call_count = 0
+
+    async def fail_then_succeed(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count < 2:
+            raise httpx.ReadTimeout("Read timed out")
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": []}
+        mock_response.raise_for_status = MagicMock()
+        return mock_response
+
+    with caplog.at_level("WARNING", logger="app.api_client"):
+        with patch.object(api.client, "get", side_effect=fail_then_succeed):
+            await api.get_services()
+
+    messages = [rec.getMessage() for rec in caplog.records]
+    assert any("ReadTimeout" in m and "get_services" in m for m in messages)
+    assert not any("for service" in m for m in messages)

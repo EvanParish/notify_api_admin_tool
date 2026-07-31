@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
 from typing import Any, Dict, List, Optional
@@ -12,10 +13,45 @@ from tenacity import (
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    before_sleep_log,
 )
 
 logger = logging.getLogger(__name__)
+
+# Default HTTP request timeout (seconds). Overridable per-client and via config.
+DEFAULT_REQUEST_TIMEOUT = 30.0
+
+
+def _service_id_from_retry(retry_state) -> str | None:
+    """Best-effort extraction of a ``service_id`` argument from the retried call."""
+    fn = getattr(retry_state, "fn", None)
+    if fn is None:
+        return None
+    try:
+        bound = inspect.signature(fn).bind_partial(*retry_state.args, **retry_state.kwargs)
+    except (TypeError, ValueError):
+        return None
+    value = bound.arguments.get("service_id")
+    return str(value) if value is not None else None
+
+
+def _log_before_retry(retry_state) -> None:
+    """Log transient HTTP failures (timeouts, connection errors) with service context."""
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    fn_name = getattr(getattr(retry_state, "fn", None), "__name__", "request")
+    service_id = _service_id_from_retry(retry_state)
+    url = None
+    request = getattr(exc, "_request", None)
+    if request is not None:
+        url = getattr(request, "url", None)
+    logger.warning(
+        "Retrying %s (attempt %d) after %s%s%s",
+        fn_name,
+        retry_state.attempt_number,
+        type(exc).__name__ if exc is not None else "error",
+        f" for service {service_id}" if service_id else "",
+        f" [{url}]" if url is not None else "",
+    )
+
 
 # Retry decorator for transient network errors
 http_retry = retry(
@@ -29,7 +65,7 @@ http_retry = retry(
     ),
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=10),
-    before_sleep=before_sleep_log(logger, logging.WARNING),
+    before_sleep=_log_before_retry,
     reraise=True,
 )
 
@@ -49,7 +85,7 @@ class NotificationAPI:
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
-    async def get_api_keys(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_api_keys(self, service_id: str, include_revoked: bool = False) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
     async def create_api_key(
@@ -180,7 +216,7 @@ class HttpNotificationAPI(NotificationAPI):
         base_url: str,
         basic_username: Optional[str] = None,
         basic_password: Optional[str] = None,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.client = httpx.AsyncClient(timeout=timeout)
@@ -221,8 +257,13 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json().get("data", [])
 
     @http_retry
-    async def get_api_keys(self, service_id: str) -> List[Dict[str, Any]]:
-        resp = await self.client.get(f"{self.base_url}/service/{service_id}/api-keys", auth=self._basic_auth)
+    async def get_api_keys(self, service_id: str, include_revoked: bool = False) -> List[Dict[str, Any]]:
+        params = {"include_revoked": "true"} if include_revoked else {}
+        resp = await self.client.get(
+            f"{self.base_url}/service/{service_id}/api-keys",
+            auth=self._basic_auth,
+            params=params,
+        )
         resp.raise_for_status()
         return resp.json().get("apiKeys", [])
 
@@ -607,9 +648,9 @@ class MockNotificationAPI(NotificationAPI):
             },
         ]
 
-    async def get_api_keys(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_api_keys(self, service_id: str, include_revoked: bool = False) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)
-        return [
+        keys = [
             {
                 "id": "key-1",
                 "name": "Demo Key",
@@ -618,6 +659,18 @@ class MockNotificationAPI(NotificationAPI):
                 "last_used_at": None,
             }
         ]
+        if include_revoked:
+            keys.append(
+                {
+                    "id": "key-revoked",
+                    "name": "Revoked Key",
+                    "expiry_date": "2020-01-01",
+                    "created_by": "user-1",
+                    "last_used_at": None,
+                    "revoked": True,
+                }
+            )
+        return keys
 
     async def create_api_key(
         self,

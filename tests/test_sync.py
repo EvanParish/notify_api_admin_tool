@@ -28,7 +28,7 @@ class FakeAPI(NotificationAPI):
             return self._template_generator(service_id)
         return self.templates_data
 
-    async def get_api_keys(self, service_id: str):
+    async def get_api_keys(self, service_id: str, include_revoked: bool = False):
         return []
 
     async def get_sms_senders(self, service_id: str):
@@ -448,7 +448,7 @@ async def test_sync_api_keys_handles_404(initialized_db):
     # Create mock API that raises 404 for get_api_keys
     mock_api = MockNotificationAPI()
 
-    async def raise_404(service_id: str):
+    async def raise_404(service_id: str, include_revoked: bool = False):
         raise httpx.HTTPStatusError("Client error '404 NOT FOUND'", request=None, response=None)
 
     mock_api.get_api_keys = raise_404
@@ -477,7 +477,7 @@ async def test_sync_api_keys_handles_404_with_progress(initialized_db):
 
     mock_api = MockNotificationAPI()
 
-    async def raise_404(service_id):
+    async def raise_404(service_id, include_revoked=False):
         raise Exception("Client error '404 NOT FOUND'")
 
     mock_api.get_api_keys = raise_404
@@ -506,7 +506,7 @@ async def test_sync_api_keys_records_non_404_error(initialized_db):
 
     mock_api = MockNotificationAPI()
 
-    async def raise_server_error(service_id):
+    async def raise_server_error(service_id, include_revoked=False):
         raise Exception("Internal Server Error 500")
 
     mock_api.get_api_keys = raise_server_error
@@ -534,7 +534,7 @@ async def test_sync_api_keys_with_service_ids_filter(initialized_db):
     mock_api = MockNotificationAPI()
     synced_services = []
 
-    async def track_get_api_keys(service_id):
+    async def track_get_api_keys(service_id, include_revoked=False):
         synced_services.append(service_id)
         return []
 
@@ -545,6 +545,90 @@ async def test_sync_api_keys_with_service_ids_filter(initialized_db):
 
     # Only svc-a should have been synced
     assert synced_services == ["svc-a"]
+
+
+@pytest.mark.asyncio
+async def test_sync_api_keys_passes_include_revoked(initialized_db):
+    """include_revoked is forwarded to the API client and revoked keys are persisted."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service, ApiKey
+    from app.db import get_session
+
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service 1", active=True))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+    captured: list[bool] = []
+
+    async def track_get_api_keys(service_id, include_revoked=False):
+        captured.append(include_revoked)
+        return [{"id": "k-revoked", "name": "Revoked", "key_type": "normal", "revoked": True}]
+
+    mock_api.get_api_keys = track_get_api_keys
+
+    manager = SyncManager(mock_api, max_concurrency=5, environment="dev")
+    result = await manager.sync_api_keys(service_ids=["svc-1"], include_revoked=True)
+
+    assert result.error_count == 0
+    assert captured == [True]
+
+    async with get_session() as session:
+        stored = (await session.execute(select(ApiKey).where(ApiKey.id == "k-revoked"))).scalar_one()
+        assert stored.revoked is True
+
+
+@pytest.mark.asyncio
+async def test_sync_api_keys_defaults_include_revoked_false(initialized_db):
+    """include_revoked defaults to False when not specified."""
+    from app.sync import SyncManager
+    from app.api_client import MockNotificationAPI
+    from app.models import Service
+    from app.db import get_session
+
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Service 1", active=True))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+    captured: list[bool] = []
+
+    async def track_get_api_keys(service_id, include_revoked=False):
+        captured.append(include_revoked)
+        return []
+
+    mock_api.get_api_keys = track_get_api_keys
+
+    manager = SyncManager(mock_api, max_concurrency=5, environment="dev")
+    await manager.sync_api_keys(service_ids=["svc-1"])
+
+    assert captured == [False]
+
+
+@pytest.mark.asyncio
+async def test_sync_api_keys_error_logs_service_id(initialized_db, caplog):
+    """A non-404 error during api key sync is logged with the service id."""
+    from app.api_client import MockNotificationAPI
+
+    async with get_session() as session:
+        session.add(Service(id="svc-err", name="Error Service", active=True))
+        await session.commit()
+
+    mock_api = MockNotificationAPI()
+
+    async def raise_server_error(service_id, include_revoked=False):
+        raise Exception("Internal Server Error 500")
+
+    mock_api.get_api_keys = raise_server_error
+
+    manager = SyncManager(mock_api, max_concurrency=5, environment="dev")
+    with caplog.at_level("WARNING", logger="app.sync"):
+        result = await manager.sync_api_keys(service_ids=["svc-err"])
+
+    assert result.error_count == 1
+    messages = [rec.getMessage() for rec in caplog.records]
+    assert any("service=svc-err" in m and "api_keys" in m and "env=dev" in m for m in messages)
 
 
 @pytest.mark.asyncio
@@ -678,7 +762,7 @@ async def test_sync_api_keys_marks_stale_keys_revoked(initialized_db):
 
     mock_api = MockNotificationAPI()
 
-    async def return_only_k1(service_id):
+    async def return_only_k1(service_id, include_revoked=False):
         return [{"id": "k1", "name": "Active", "key_type": "normal", "revoked": False}]
 
     mock_api.get_api_keys = return_only_k1
@@ -711,7 +795,7 @@ async def test_sync_api_keys_404_does_not_revoke(initialized_db):
 
     mock_api = MockNotificationAPI()
 
-    async def raise_404(service_id):
+    async def raise_404(service_id, include_revoked=False):
         raise Exception("Client error '404 NOT FOUND'")
 
     mock_api.get_api_keys = raise_404
@@ -739,7 +823,7 @@ async def test_sync_api_keys_upserts_returned_keys_normally(initialized_db):
 
     mock_api = MockNotificationAPI()
 
-    async def return_keys(service_id):
+    async def return_keys(service_id, include_revoked=False):
         return [
             {"id": "k1", "name": "Key1", "key_type": "normal", "revoked": False},
             {"id": "k2", "name": "Key2", "key_type": "team", "revoked": False},
@@ -774,7 +858,7 @@ class FakeAPIWithCallbacks(NotificationAPI):
     async def get_templates(self, service_id):
         return []
 
-    async def get_api_keys(self, service_id):
+    async def get_api_keys(self, service_id, include_revoked=False):
         return []
 
     async def get_sms_senders(self, service_id):
