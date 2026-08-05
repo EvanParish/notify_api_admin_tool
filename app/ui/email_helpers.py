@@ -138,7 +138,7 @@ def _build_env_section(
         f"{env_label} Details\n"
         f"Key Secret: {key_secret}\n"
         f"Expiration Date: {expiry_date}\n"
-        f"Key Name: {key_name}\n"
+        f"Key Name: {key_name}\n\n"
         f"{env_label} Service\n"
         f"Service Name: {service_name}\n"
         f"Service ID: {service_id}\n"
