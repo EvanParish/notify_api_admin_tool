@@ -96,11 +96,10 @@ async def api_key_emails_page() -> None:
             ui.label("Email Template").classes("text-sm font-medium mt-4")
             template_select = ui.radio(
                 {
-                    EmailTemplate.NEW_SERVICE.value: "New Service (includes API endpoints)",
                     EmailTemplate.KEY_ROTATION.value: "Key Rotation (key details only)",
-                    EmailTemplate.FORCED_ROTATION.value: "Forced Rotation (initial rotation onboarding)",
+                    EmailTemplate.NEW_SERVICE.value: "New Service (includes API endpoints)",
                 },
-                value=EmailTemplate.NEW_SERVICE.value,
+                value=EmailTemplate.KEY_ROTATION.value,
             ).props("inline")
             key_name_preview = ui.label("Generated key names will appear here.").classes(
                 "text-sm text-gray-600 dark:text-slate-300"
