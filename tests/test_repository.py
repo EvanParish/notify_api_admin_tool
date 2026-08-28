@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 
 import pytest
 from sqlalchemy import select
@@ -32,6 +33,8 @@ from app.repository import (
     count_templates_by_service,
     _is_expired,
     upsert_service_callbacks,
+    delete_service_callback,
+    prune_service_callbacks,
     upsert_api_keys,
     upsert_users,
     migrate_plaintext_users_to_encrypted,
@@ -2192,6 +2195,33 @@ async def test_upsert_service_callbacks_uses_fallback_service_id(initialized_db)
 
 
 @pytest.mark.asyncio
+async def test_upsert_service_callbacks_null_service_id_uses_fallback(initialized_db):
+    # ``dict.get(key, default)`` only applies the default when the key is ABSENT, so a
+    # present-but-null service_id would otherwise write None into a NOT NULL column and
+    # abort the whole batch with an IntegrityError.
+    raw = [{"id": "cb-null-sid", "service_id": None, "url": "https://example.com/cb"}]
+    await upsert_service_callbacks(raw, "dev", "svc-fallback")
+
+    async with get_session() as session:
+        record = (
+            await session.execute(select(ServiceCallback).where(ServiceCallback.id == "cb-null-sid"))
+        ).scalar_one()
+        assert record.service_id == "svc-fallback"
+
+
+@pytest.mark.asyncio
+async def test_upsert_service_callbacks_empty_service_id_uses_fallback(initialized_db):
+    raw = [{"id": "cb-empty-sid", "service_id": "", "url": "https://example.com/cb"}]
+    await upsert_service_callbacks(raw, "dev", "svc-fallback")
+
+    async with get_session() as session:
+        record = (
+            await session.execute(select(ServiceCallback).where(ServiceCallback.id == "cb-empty-sid"))
+        ).scalar_one()
+        assert record.service_id == "svc-fallback"
+
+
+@pytest.mark.asyncio
 async def test_upsert_service_callbacks_updates_existing(initialized_db):
     raw = [
         {
@@ -2210,6 +2240,80 @@ async def test_upsert_service_callbacks_updates_existing(initialized_db):
     async with get_session() as session:
         record = (await session.execute(select(ServiceCallback).where(ServiceCallback.id == "cb-1"))).scalar_one()
         assert record.url == "https://example.com/new"
+
+
+@pytest.mark.asyncio
+async def test_upsert_service_callbacks_skips_row_with_missing_id_key(initialized_db, caplog):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        await session.commit()
+
+    raw = [
+        {"id": "cb-1", "service_id": "svc-1", "url": "https://example.com/a"},
+        {"service_id": "svc-1", "url": "https://example.com/no-id"},
+    ]
+    with caplog.at_level(logging.WARNING, logger="app.repository"):
+        await upsert_service_callbacks(raw, "dev", "svc-1")
+
+    stored = await list_service_callbacks(service_id="svc-1", environment="dev")
+    assert [c.id for c in stored] == ["cb-1"]
+    assert "Skipping service callback without an id for service svc-1 in dev" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_upsert_service_callbacks_skips_row_with_none_id(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        await session.commit()
+
+    raw = [
+        {"id": "cb-1", "service_id": "svc-1", "url": "https://example.com/a"},
+        {"id": None, "service_id": "svc-1", "url": "https://example.com/none"},
+    ]
+    await upsert_service_callbacks(raw, "dev", "svc-1")
+
+    stored = await list_service_callbacks(service_id="svc-1", environment="dev")
+    assert [c.id for c in stored] == ["cb-1"]
+
+
+@pytest.mark.asyncio
+async def test_upsert_service_callbacks_skips_row_with_empty_string_id(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        await session.commit()
+
+    raw = [
+        {"id": "cb-1", "service_id": "svc-1", "url": "https://example.com/a"},
+        {"id": "", "service_id": "svc-1", "url": "https://example.com/empty"},
+    ]
+    await upsert_service_callbacks(raw, "dev", "svc-1")
+
+    stored = await list_service_callbacks(service_id="svc-1", environment="dev")
+    assert [c.id for c in stored] == ["cb-1"]
+
+
+@pytest.mark.asyncio
+async def test_upsert_service_callbacks_bad_row_does_not_abort_batch(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        await session.commit()
+
+    raw = [
+        {"id": "cb-1", "service_id": "svc-1", "url": "https://example.com/a"},
+        {"service_id": "svc-1", "url": "https://example.com/no-id"},
+        {"id": "cb-2", "service_id": "svc-1", "url": "https://example.com/b"},
+        {"id": None, "service_id": "svc-1", "url": "https://example.com/none"},
+        {"id": "cb-3", "service_id": "svc-1", "url": "https://example.com/c"},
+    ]
+    await upsert_service_callbacks(raw, "dev", "svc-1")
+
+    stored = await list_service_callbacks(service_id="svc-1", environment="dev")
+    assert sorted(c.id for c in stored) == ["cb-1", "cb-2", "cb-3"]
+    assert sorted(c.url for c in stored) == [
+        "https://example.com/a",
+        "https://example.com/b",
+        "https://example.com/c",
+    ]
 
 
 @pytest.mark.asyncio
@@ -2336,3 +2440,98 @@ async def test_archived_services_excluded_from_entity_queries(initialized_db):
 
     numbers = await list_inbound_numbers(environment="dev")
     assert [n.id for n in numbers] == ["n1"]
+
+
+@pytest.mark.asyncio
+async def test_delete_service_callback_removes_row(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="dev", service_id="svc-1", url="https://b.com"))
+        await session.commit()
+
+    assert await delete_service_callback("cb-1", "dev") is True
+
+    remaining = await list_service_callbacks(service_id="svc-1", environment="dev")
+    assert [cb.id for cb in remaining] == ["cb-2"]
+
+
+@pytest.mark.asyncio
+async def test_delete_service_callback_returns_false_when_absent(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        await session.commit()
+
+    assert await delete_service_callback("missing", "dev") is False
+
+
+@pytest.mark.asyncio
+async def test_delete_service_callback_is_scoped_to_environment(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="staging"))
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-1", environment="staging", service_id="svc-1", url="https://a.com"))
+        await session.commit()
+
+    assert await delete_service_callback("cb-1", "dev") is True
+
+    assert await list_service_callbacks(service_id="svc-1", environment="dev") == []
+    staging = await list_service_callbacks(service_id="svc-1", environment="staging")
+    assert [cb.id for cb in staging] == ["cb-1"]
+
+
+@pytest.mark.asyncio
+async def test_prune_service_callbacks_removes_absent_ids(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="dev", service_id="svc-1", url="https://b.com"))
+        await session.commit()
+
+    removed = await prune_service_callbacks("svc-1", "dev", ["cb-1"])
+
+    assert removed == 1
+    remaining = await list_service_callbacks(service_id="svc-1", environment="dev")
+    assert [cb.id for cb in remaining] == ["cb-1"]
+
+
+@pytest.mark.asyncio
+async def test_prune_service_callbacks_keeps_everything_when_all_present(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        await session.commit()
+
+    assert await prune_service_callbacks("svc-1", "dev", ["cb-1"]) == 0
+    assert len(await list_service_callbacks(service_id="svc-1", environment="dev")) == 1
+
+
+@pytest.mark.asyncio
+async def test_prune_service_callbacks_empty_keep_ids_removes_all(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="dev", service_id="svc-1", url="https://b.com"))
+        await session.commit()
+
+    assert await prune_service_callbacks("svc-1", "dev", []) == 2
+    assert await list_service_callbacks(service_id="svc-1", environment="dev") == []
+
+
+@pytest.mark.asyncio
+async def test_prune_service_callbacks_is_scoped_to_service_and_environment(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="dev"))
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="staging"))
+        session.add(ServiceCallback(id="cb-1", environment="dev", service_id="svc-1", url="https://a.com"))
+        session.add(ServiceCallback(id="cb-2", environment="dev", service_id="svc-2", url="https://b.com"))
+        session.add(ServiceCallback(id="cb-3", environment="staging", service_id="svc-1", url="https://c.com"))
+        await session.commit()
+
+    assert await prune_service_callbacks("svc-1", "dev", []) == 1
+
+    assert await list_service_callbacks(service_id="svc-1", environment="dev") == []
+    assert len(await list_service_callbacks(service_id="svc-2", environment="dev")) == 1
+    assert len(await list_service_callbacks(service_id="svc-1", environment="staging")) == 1

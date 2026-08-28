@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 from typing import Type
 
 from datetime import datetime, timezone
@@ -24,6 +25,8 @@ from .models import (
     Template,
     User,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _is_expired(expiry_date: str | None) -> bool:
@@ -549,6 +552,41 @@ async def list_service_callbacks(
         return rows
 
 
+async def delete_service_callback(callback_id: str, environment: str) -> bool:
+    """Delete a locally cached service callback.
+
+    Returns True when a row was removed, so the UI can warn that the cache was already
+    out of sync rather than reporting a failure.
+    """
+    async with get_session() as session:
+        stmt = delete(ServiceCallback).where(
+            ServiceCallback.id == callback_id,
+            ServiceCallback.environment == environment,
+        )
+        result = await session.execute(stmt)
+        await session.commit()
+        return bool(result.rowcount)
+
+
+async def prune_service_callbacks(service_id: str, environment: str, keep_ids: list[str]) -> int:
+    """Remove cached callbacks for a service that the remote API no longer returns.
+
+    An empty *keep_ids* prunes every cached row for that service and environment, which is
+    the correct response to a successful but empty list response. Returns the row count
+    removed.
+    """
+    async with get_session() as session:
+        stmt = delete(ServiceCallback).where(
+            ServiceCallback.service_id == service_id,
+            ServiceCallback.environment == environment,
+        )
+        if keep_ids:
+            stmt = stmt.where(ServiceCallback.id.not_in(keep_ids))
+        result = await session.execute(stmt)
+        await session.commit()
+        return result.rowcount
+
+
 async def update_inbound_number(
     inbound_number_id: str,
     number: str | None = None,
@@ -877,10 +915,18 @@ async def upsert_inbound_numbers(raw: list[dict], environment: str) -> None:
 async def upsert_service_callbacks(raw: list[dict], environment: str, service_id: str) -> None:
     async with get_session() as session:
         for item in raw:
+            callback_id = item.get("id")
+            if not callback_id:
+                logger.warning(
+                    "Skipping service callback without an id for service %s in %s",
+                    service_id,
+                    environment,
+                )
+                continue
             record = ServiceCallback(
-                id=item.get("id"),
+                id=callback_id,
                 environment=environment,
-                service_id=item.get("service_id", service_id),
+                service_id=item.get("service_id") or service_id,
                 url=item.get("url"),
                 callback_type=item.get("callback_type"),
                 callback_channel=item.get("callback_channel"),

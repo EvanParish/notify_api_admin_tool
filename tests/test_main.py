@@ -2299,6 +2299,12 @@ def _ui_patches(mod_path, _make_mock):
             new_callable=AsyncMock,
             return_value=[],
         ),
+        "upsert_service_callbacks": patch(f"{mod_path}.upsert_service_callbacks", new_callable=AsyncMock),
+        "delete_service_callback": patch(
+            f"{mod_path}.delete_service_callback",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
         "list_local_keys": patch(
             f"{mod_path}.list_local_keys",
             new_callable=AsyncMock,
@@ -2659,16 +2665,28 @@ async def test_service_callbacks_page(initialized_db, mock_config):
         _st.state = original_state
 
 
-def test_format_statuses_none():
-    assert page_service_callbacks._format_statuses(None) == ""
+def test_service_callbacks_page_uses_shared_format_statuses():
+    from app.ui.callback_helpers import format_statuses
+
+    assert page_service_callbacks.format_statuses is format_statuses
 
 
-def test_format_statuses_empty():
-    assert page_service_callbacks._format_statuses([]) == ""
+def test_service_callbacks_page_uses_shared_pure_helpers():
+    # These are pure and unit-tested in tests/test_callback_helpers.py. Re-inlining any of
+    # them into the page would put the logic back behind a `# pragma: no cover`.
+    from app.ui.callback_helpers import (
+        create_statuses_default,
+        edit_statuses_control_state,
+        resolve_row_environment,
+    )
+
+    assert page_service_callbacks.resolve_row_environment is resolve_row_environment
+    assert page_service_callbacks.edit_statuses_control_state is edit_statuses_control_state
+    assert page_service_callbacks.create_statuses_default is create_statuses_default
 
 
-def test_format_statuses_with_values():
-    assert page_service_callbacks._format_statuses(["delivered", "failed"]) == "delivered, failed"
+def test_service_callbacks_unknown_environment_message_names_the_remedy():
+    assert "Sync Service Callbacks" in page_service_callbacks.UNKNOWN_ENVIRONMENT_MESSAGE
 
 
 @pytest.mark.asyncio

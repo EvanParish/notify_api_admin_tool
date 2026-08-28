@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import logging
 import time
+import uuid
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -61,6 +62,22 @@ http_retry = retry(
             httpx.ConnectError,
             httpx.ConnectTimeout,
             httpx.ReadTimeout,
+        )
+    ),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    before_sleep=_log_before_retry,
+    reraise=True,
+)
+
+# Retries only failures that provably never reached the server, so it is safe to apply to
+# non-idempotent writes. ReadError and ReadTimeout are deliberately excluded: the request
+# may have succeeded server-side, and retrying would hit a unique constraint as a 409.
+http_retry_connect_only = retry(
+    retry=retry_if_exception_type(
+        (
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
         )
     ),
     stop=stop_after_attempt(3),
@@ -163,6 +180,17 @@ class NotificationAPI:
         raise NotImplementedError
 
     async def get_service_callbacks(self, service_id: str) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    async def create_service_callback(self, service_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    async def update_service_callback(
+        self, service_id: str, callback_id: str, payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    async def delete_service_callback(self, service_id: str, callback_id: str) -> None:
         raise NotImplementedError
 
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
@@ -468,6 +496,49 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json().get("data", [])
 
+    @http_retry_connect_only
+    async def create_service_callback(self, service_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a service callback.
+
+        Decorated with ``@http_retry_connect_only`` rather than ``@http_retry``. Creates are
+        not idempotent, so only failures that provably never reached the server are retried.
+        ``httpx.ReadError`` and ``httpx.ReadTimeout`` are excluded: the request was already
+        sent, so it may have succeeded server-side, and a retry would come back as a
+        misleading 409 from the service_id/callback_type unique constraint. Connect-phase
+        failures carry no such risk and are worth retrying.
+        """
+        resp = await self.client.post(
+            f"{self.base_url}/service/{service_id}/callback",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        return result["data"] if isinstance(result, dict) and "data" in result else result
+
+    @http_retry
+    async def update_service_callback(
+        self, service_id: str, callback_id: str, payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Update a service callback. The API uses POST here, not PUT or PATCH."""
+        resp = await self.client.post(
+            f"{self.base_url}/service/{service_id}/callback/{callback_id}",
+            json=payload,
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        return result["data"] if isinstance(result, dict) and "data" in result else result
+
+    @http_retry
+    async def delete_service_callback(self, service_id: str, callback_id: str) -> None:
+        """Delete a service callback. Returns 204 with an empty body, so never parse JSON."""
+        resp = await self.client.delete(
+            f"{self.base_url}/service/{service_id}/callback/{callback_id}",
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+
     @http_retry
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/inbound-number", auth=self._basic_auth)
@@ -591,6 +662,24 @@ class HttpNotificationAPI(NotificationAPI):
 
 
 class MockNotificationAPI(NotificationAPI):
+    # Stand-ins for the values a real service callback row would already hold. Mirrors
+    # NOTIFICATION_STATUS_TYPES_COMPLETED / SERVICE_CALLBACK_TYPES / CALLBACK_CHANNEL_TYPES
+    # in notification-api. Duplicated rather than imported from app.ui.callback_helpers so
+    # the API layer stays free of UI imports; tests assert the two stay in sync.
+    _CALLBACK_STATUSES = (
+        "sent",
+        "delivered",
+        "failed",
+        "temporary-failure",
+        "permanent-failure",
+        "returned-letter",
+        "cancelled",
+    )
+    _CALLBACK_TYPE = "delivery_status"
+    _CALLBACK_CHANNEL = "webhook"
+    _CALLBACK_URL = "https://example.com/callback"
+    _NOT_SUPPLIED = object()
+
     def __init__(self) -> None:
         self._sleep = 0.1
 
@@ -890,6 +979,66 @@ class MockNotificationAPI(NotificationAPI):
                 "include_provider_payload": False,
             },
         ]
+
+    async def create_service_callback(self, service_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return self._mock_callback_row(
+            callback_id=f"cb-{uuid.uuid4().hex[:8]}",
+            service_id=service_id,
+            payload=payload,
+            updated_at=None,
+        )
+
+    async def update_service_callback(
+        self, service_id: str, callback_id: str, payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return self._mock_callback_row(
+            callback_id=callback_id,
+            service_id=service_id,
+            payload=payload,
+            updated_at="2024-03-01T00:00:00Z",
+        )
+
+    @staticmethod
+    def _mock_callback_row(
+        *,
+        callback_id: str,
+        service_id: str,
+        payload: Dict[str, Any],
+        updated_at: str | None,
+    ) -> Dict[str, Any]:
+        """Build a complete service callback row the way the real API returns one.
+
+        The real endpoints serialize the persisted row, so every field comes back
+        populated regardless of which keys the request body carried. Echoing
+        ``payload.get(key)`` instead would return ``None`` for any omitted key --
+        notably ``notification_statuses``, which ``build_update_payload`` correctly omits
+        when the user does not opt into changing statuses. ``upsert_service_callbacks``
+        merges the whole row, so a ``None`` there wipes the cached statuses column.
+        """
+        cls = MockNotificationAPI
+        callback_type = payload.get("callback_type") or cls._CALLBACK_TYPE
+        statuses = payload.get("notification_statuses", cls._NOT_SUPPLIED)
+        if statuses is cls._NOT_SUPPLIED:
+            # Stand in for the stored value. Only delivery_status callbacks persist a
+            # status list; the column is NULL for every other type.
+            statuses = list(cls._CALLBACK_STATUSES) if callback_type == cls._CALLBACK_TYPE else None
+        return {
+            "id": callback_id,
+            "service_id": service_id,
+            "url": payload.get("url") or cls._CALLBACK_URL,
+            "callback_type": callback_type,
+            "callback_channel": payload.get("callback_channel") or cls._CALLBACK_CHANNEL,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": updated_at,
+            "updated_by_id": "user-1",
+            "notification_statuses": statuses,
+            "include_provider_payload": bool(payload.get("include_provider_payload", False)),
+        }
+
+    async def delete_service_callback(self, service_id: str, callback_id: str) -> None:
+        await asyncio.sleep(self._sleep)
 
     async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
         await asyncio.sleep(self._sleep)

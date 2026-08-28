@@ -36,6 +36,7 @@ app/
     ├── helpers.py           Reusable UI utilities (metric cards, CSV export, copy-to-clipboard)
     ├── sync_handlers.py     handle_entity_sync(), handle_full_sync()
     ├── email_helpers.py     API key email generation (new service, rotation, forced rotation)
+    ├── callback_helpers.py  Service callback validation, payload building, API error normalization
     └── pages/               One file per @ui.page route (13 pages)
 ```
 
@@ -158,6 +159,11 @@ All resource pages follow a consistent datagrid pattern:
 * Click-to-copy on ID and name fields.
 * Environment filter when viewing multi-environment data.
 
+Service Callbacks (`/service-callbacks`) additionally supports create, edit, and delete against the remote API:
+* Bearer tokens are **write-only** — they are sent to the API on create/update and are never cached locally. The `service_callbacks` table has no bearer token column, and the API never returns the stored value, so the edit dialog cannot pre-fill it. A blank token on edit means "keep the existing token".
+* `callback_type` and `callback_channel` are **immutable after creation**. The edit dialog does not send either field; changing one requires deleting the callback and recreating it.
+* A service may hold at most one callback per type and one per channel, so the create dialog only offers the types and channels not already in use.
+
 ### E. Settings Page (`/settings`)
 * **Admin Auth:** Username/password per environment (saved encrypted).
 * **Local API Keys:** Add/manage keys with encrypted secret storage.
@@ -172,6 +178,7 @@ All resource pages follow a consistent datagrid pattern:
 * Single-entity syncs (users, providers, etc.) are single API calls without concurrency gating.
 * `sync_users` requires encryption context; it runs `migrate_plaintext_users_to_encrypted` before syncing to convert any legacy plaintext rows, then writes new rows encrypted.
 * `SyncResult` tracks success/error counts with structured `SyncError` objects.
+* `sync_service_callbacks` prunes stale cached rows after each successful per-service fetch, so callbacks deleted out-of-band do not linger in the cache. Pruning runs on the success path **only** — the 404 branch is deliberately skipped, because a 404 means the service is missing or inaccessible, not that it has zero callbacks.
 * `handle_entity_sync()` in `sync_handlers.py` orchestrates multi-environment syncs in parallel via `asyncio.gather()`.
 * On startup, `state.py` calls `migrate_plaintext_users_to_encrypted` so existing plaintext rows in local storage are encrypted before any sync or UI read occurs.
 
@@ -201,6 +208,14 @@ All resource pages follow a consistent datagrid pattern:
 * `NotificationAPI` abstract base defines the interface (~20 methods).
 * `HttpNotificationAPI` implements all methods with `httpx.AsyncClient`, Basic Auth, and retry logic.
 * `MockNotificationAPI` returns hardcoded test data with simulated latency (for development without a live API, enabled via `USE_MOCK_API=true`).
+* Service callback writes: `create_service_callback(service_id, payload)` (`POST /service/{id}/callback`), `update_service_callback(service_id, callback_id, payload)` (`POST /service/{id}/callback/{callback_id}` — the API uses POST here, not PUT or PATCH), and `delete_service_callback(service_id, callback_id)` (`DELETE`, returns 204 with an empty body, so the response is never parsed as JSON).
+* `create_service_callback` is decorated with `@http_retry_connect_only` rather than `@http_retry`. Creates are not idempotent, so only connect-phase failures — which provably never reached the server — are retried; read errors and read timeouts are excluded because the request may have succeeded server-side and a retry would surface as a misleading 409 from the unique constraint. `update_service_callback` and `delete_service_callback` use the standard `@http_retry`.
+
+### 5. Service Callback Helpers and Repository Functions
+
+* `app/ui/callback_helpers.py` — pure helpers for service callback validation (`validate_create`, `validate_update`), payload building (`build_create_payload`, `build_update_payload`), API error normalization (`extract_error_message`, `format_http_error`), and status-control state (`edit_statuses_control_state`, `create_statuses_default`). It imports no NiceGUI, so every function is directly unit-testable. It also mirrors notification-api's `SERVICE_CALLBACK_TYPES`, `CALLBACK_CHANNEL_TYPES`, and `NOTIFICATION_STATUS_TYPES_COMPLETED` as module constants. Error normalization redacts any message keyed on or mentioning `bearer_token`, so a submitted credential echoed back by a validation error never reaches `ui.notify` or the log file.
+* `repository.delete_service_callback(callback_id: str, environment: str) -> bool` — removes a cached callback. The returned bool reports whether a row actually existed, letting the UI warn that the cache was already out of sync rather than reporting a failure.
+* `repository.prune_service_callbacks(service_id: str, environment: str, keep_ids: list[str]) -> int` — removes cached callbacks for a service/environment that the remote API no longer returns, and returns the number of rows removed. An empty `keep_ids` prunes every cached row for that service, which is the correct response to a successful but empty list response.
 
 ## 6. Running Environment
 

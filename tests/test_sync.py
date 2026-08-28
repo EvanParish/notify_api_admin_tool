@@ -942,3 +942,104 @@ async def test_sync_service_callbacks_records_non_404_error(setup_db):
     result = await manager.sync_service_callbacks()
     assert result.error_count > 0
     assert result.errors[0].entity == "service_callbacks"
+
+
+@pytest.mark.asyncio
+async def test_sync_service_callbacks_prunes_stale_rows(setup_db, monkeypatch):
+    await create_all()
+    callbacks = [{"id": "cb-1", "service_id": "svc-1", "url": "https://a.com"}]
+    prune_calls = []
+
+    async def fake_prune(service_id, environment, keep_ids):
+        prune_calls.append((service_id, environment, keep_ids))
+        return 0
+
+    monkeypatch.setattr("app.sync.prune_service_callbacks", fake_prune)
+
+    api = FakeAPIWithCallbacks(callbacks=callbacks)
+    manager = SyncManager(api, max_concurrency=5, environment="dev")
+    result = await manager._sync_service_callbacks_for_service("svc-1", None)
+
+    assert result.success_count == 1
+    assert prune_calls == [("svc-1", "dev", ["cb-1"])]
+
+
+@pytest.mark.asyncio
+async def test_sync_service_callbacks_prunes_all_on_empty_response(setup_db, monkeypatch):
+    await create_all()
+    prune_calls = []
+
+    async def fake_prune(service_id, environment, keep_ids):
+        prune_calls.append((service_id, environment, keep_ids))
+        return 2
+
+    monkeypatch.setattr("app.sync.prune_service_callbacks", fake_prune)
+
+    api = FakeAPIWithCallbacks(callbacks=[])
+    manager = SyncManager(api, max_concurrency=5, environment="dev")
+    result = await manager._sync_service_callbacks_for_service("svc-1", None)
+
+    assert result.success_count == 1
+    assert prune_calls == [("svc-1", "dev", [])]
+
+
+@pytest.mark.asyncio
+async def test_sync_service_callbacks_skips_ids_missing_from_response(setup_db, monkeypatch):
+    await create_all()
+    callbacks = [{"id": "cb-1"}, {"service_id": "svc-1"}, {"id": None}]
+    prune_calls = []
+
+    async def fake_prune(service_id, environment, keep_ids):
+        prune_calls.append(keep_ids)
+        return 0
+
+    monkeypatch.setattr("app.sync.prune_service_callbacks", fake_prune)
+
+    api = FakeAPIWithCallbacks(callbacks=callbacks)
+    manager = SyncManager(api, max_concurrency=5, environment="dev")
+    await manager._sync_service_callbacks_for_service("svc-1", None)
+
+    assert prune_calls == [["cb-1"]]
+
+
+@pytest.mark.asyncio
+async def test_sync_service_callbacks_does_not_prune_on_404(setup_db, monkeypatch):
+    await create_all()
+    prune_calls = []
+
+    async def fake_prune(service_id, environment, keep_ids):
+        prune_calls.append((service_id, environment, keep_ids))
+        return 0
+
+    monkeypatch.setattr("app.sync.prune_service_callbacks", fake_prune)
+
+    class FakeAPI404(FakeAPIWithCallbacks):
+        async def get_service_callbacks(self, service_id):
+            raise Exception("404 NOT FOUND")
+
+    manager = SyncManager(FakeAPI404(), max_concurrency=5, environment="dev")
+    result = await manager._sync_service_callbacks_for_service("svc-1", None)
+
+    # 404s still count as successes, but must not wipe the cache.
+    assert result.success_count == 1
+    assert prune_calls == []
+
+
+@pytest.mark.asyncio
+async def test_sync_service_callbacks_records_prune_failure_as_error(setup_db, monkeypatch):
+    await create_all()
+
+    # No "404"/"NOT FOUND" in the message, so this must not slip through the 404-tolerance
+    # branch -- a prune failure is an ordinary sync error for that service.
+    async def fake_prune(service_id, environment, keep_ids):
+        raise RuntimeError("prune exploded")
+
+    monkeypatch.setattr("app.sync.prune_service_callbacks", fake_prune)
+
+    api = FakeAPIWithCallbacks(callbacks=[{"id": "cb-1", "service_id": "svc-1", "url": "https://a.com"}])
+    manager = SyncManager(api, max_concurrency=5, environment="dev")
+    result = await manager._sync_service_callbacks_for_service("svc-1", None)
+
+    assert result.success_count == 0
+    assert result.error_count == 1
+    assert result.errors[0].entity == "service_callbacks"

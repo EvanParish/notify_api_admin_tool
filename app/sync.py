@@ -13,6 +13,7 @@ from .repository import (
     list_service_ids,
     mark_stale_api_keys_revoked,
     migrate_plaintext_users_to_encrypted,
+    prune_service_callbacks,
     upsert_api_keys,
     upsert_communication_items,
     upsert_inbound_numbers,
@@ -354,6 +355,14 @@ class SyncManager:
             try:
                 callbacks = await self.api.get_service_callbacks(service_id)
                 await upsert_service_callbacks(callbacks, self.environment, service_id)
+                # Callbacks deleted out-of-band must not linger in the cache. Only prune on
+                # the success path: a 404 means the service is missing or inaccessible, not
+                # that it has zero callbacks.
+                await prune_service_callbacks(
+                    service_id,
+                    self.environment,
+                    [c["id"] for c in callbacks if c.get("id")],
+                )
                 result.add_success()
             except Exception as exc:
                 status_code = self._extract_status_code(exc)

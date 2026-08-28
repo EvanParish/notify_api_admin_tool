@@ -2,7 +2,9 @@ import pytest
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
+import tenacity
 from app.api_client import NotificationAPI, HttpNotificationAPI, MockNotificationAPI
+from app.ui.callback_helpers import COMPLETED_NOTIFICATION_STATUSES
 
 
 @pytest.mark.asyncio
@@ -1148,6 +1150,291 @@ async def test_http_api_get_service_callbacks():
             "https://api.example.com/service/svc-1/callback",
             auth=api._basic_auth,
         )
+
+
+@pytest.mark.asyncio
+async def test_base_api_create_service_callback_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.create_service_callback("svc-1", {})
+
+
+@pytest.mark.asyncio
+async def test_base_api_update_service_callback_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.update_service_callback("svc-1", "cb-1", {})
+
+
+@pytest.mark.asyncio
+async def test_base_api_delete_service_callback_raises():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.delete_service_callback("svc-1", "cb-1")
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_service_callback():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "cb-new", "url": "https://example.com/cb"}}
+    mock_response.raise_for_status = MagicMock()
+    payload = {
+        "url": "https://example.com/cb",
+        "callback_type": "delivery_status",
+        "callback_channel": "webhook",
+        "bearer_token": "a-token-long-enough",
+    }
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.create_service_callback("svc-1", payload)
+
+    assert result == {"id": "cb-new", "url": "https://example.com/cb"}
+    call_args = mock_post.call_args
+    assert call_args[0][0] == "https://api.example.com/service/svc-1/callback"
+    assert call_args[1]["json"] == payload
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_service_callback_unwrapped_response():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "cb-new"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response):
+        result = await api.create_service_callback("svc-1", {"url": "https://e.com"})
+
+    assert result == {"id": "cb-new"}
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_service_callback_empty_data_returns_empty_dict():
+    # ``result.get("data") or result`` would return the WRAPPER here because {} is falsy.
+    # Unwrapping must be presence-based, not truthiness-based.
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response):
+        result = await api.create_service_callback("svc-1", {"url": "https://e.com"})
+
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_callback():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "cb-1", "url": "https://example.com/new"}}
+    mock_response.raise_for_status = MagicMock()
+    payload = {"url": "https://example.com/new", "include_provider_payload": False}
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.update_service_callback("svc-1", "cb-1", payload)
+
+    assert result == {"id": "cb-1", "url": "https://example.com/new"}
+    call_args = mock_post.call_args
+    assert call_args[0][0] == "https://api.example.com/service/svc-1/callback/cb-1"
+    assert call_args[1]["json"] == payload
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_callback_empty_data_returns_empty_dict():
+    # Same presence-vs-truthiness trap as create: {"data": {}} must unwrap to {}.
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response):
+        result = await api.update_service_callback("svc-1", "cb-1", {"url": "https://e.com"})
+
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_callback_unwrapped_response():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"id": "cb-1"}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response):
+        result = await api.update_service_callback("svc-1", "cb-1", {"url": "https://e.com"})
+
+    assert result == {"id": "cb-1"}
+
+
+@pytest.mark.asyncio
+async def test_http_api_delete_service_callback():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "delete", return_value=mock_response) as mock_delete:
+        result = await api.delete_service_callback("svc-1", "cb-1")
+
+    assert result is None
+    mock_delete.assert_called_once_with(
+        "https://api.example.com/service/svc-1/callback/cb-1",
+        auth=api._basic_auth,
+    )
+    mock_response.raise_for_status.assert_called_once()
+    # A 204 has no body -- parsing it would raise.
+    mock_response.json.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mock_api_create_service_callback():
+    api = MockNotificationAPI()
+    api._sleep = 0
+    result = await api.create_service_callback(
+        "svc-1", {"url": "https://example.com/cb", "callback_type": "complaint", "callback_channel": "queue"}
+    )
+    assert result["service_id"] == "svc-1"
+    assert result["url"] == "https://example.com/cb"
+    assert result["callback_type"] == "complaint"
+    assert result["id"]
+    assert "bearer_token" not in result
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_service_callback():
+    api = MockNotificationAPI()
+    api._sleep = 0
+    result = await api.update_service_callback("svc-1", "cb-1", {"url": "https://example.com/updated"})
+    assert result["id"] == "cb-1"
+    assert result["service_id"] == "svc-1"
+    assert result["url"] == "https://example.com/updated"
+    assert "bearer_token" not in result
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_service_callback_omitting_statuses_does_not_return_none():
+    # build_update_payload omits notification_statuses when the user does not opt into
+    # changing them. upsert_service_callbacks merges the whole returned row, so a None
+    # here would wipe the cached statuses column and blank the table cell.
+    api = MockNotificationAPI()
+    api._sleep = 0
+    payload = {"url": "https://example.com/updated", "include_provider_payload": False}
+    assert "notification_statuses" not in payload
+    result = await api.update_service_callback("svc-1", "cb-1", payload)
+    assert result["notification_statuses"] is not None
+    assert result["notification_statuses"] == list(COMPLETED_NOTIFICATION_STATUSES)
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_service_callback_echoes_supplied_statuses():
+    api = MockNotificationAPI()
+    api._sleep = 0
+    result = await api.update_service_callback(
+        "svc-1",
+        "cb-1",
+        {"url": "https://example.com/updated", "notification_statuses": ["delivered"]},
+    )
+    assert result["notification_statuses"] == ["delivered"]
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_service_callback_returns_a_complete_row():
+    api = MockNotificationAPI()
+    api._sleep = 0
+    result = await api.update_service_callback("svc-1", "cb-1", {})
+    assert None not in [result[key] for key in ("id", "service_id", "url", "callback_type", "callback_channel")]
+    assert result["include_provider_payload"] is False
+    assert result["updated_at"]
+
+
+@pytest.mark.asyncio
+async def test_mock_api_create_service_callback_defaults_statuses_for_delivery_status():
+    api = MockNotificationAPI()
+    api._sleep = 0
+    result = await api.create_service_callback(
+        "svc-1", {"url": "https://example.com/cb", "callback_type": "delivery_status"}
+    )
+    assert result["notification_statuses"] == list(COMPLETED_NOTIFICATION_STATUSES)
+
+
+@pytest.mark.asyncio
+async def test_mock_api_create_service_callback_leaves_statuses_null_for_non_delivery_status():
+    # The real API stores NULL here for complaint/inbound_sms callbacks, so a defaulted
+    # list would be a less faithful mock, not a safer one.
+    api = MockNotificationAPI()
+    api._sleep = 0
+    result = await api.create_service_callback(
+        "svc-1",
+        {"url": "https://example.com/cb", "callback_type": "complaint", "callback_channel": "queue"},
+    )
+    assert result["notification_statuses"] is None
+
+
+@pytest.mark.asyncio
+async def test_mock_api_create_service_callback_returns_a_complete_row_for_empty_payload():
+    api = MockNotificationAPI()
+    api._sleep = 0
+    result = await api.create_service_callback("svc-1", {})
+    assert None not in [result[key] for key in ("id", "service_id", "url", "callback_type", "callback_channel")]
+    assert result["url"].startswith("https://")
+    assert result["updated_at"] is None
+
+
+def test_mock_api_service_callback_statuses_match_the_shared_constant():
+    # Duplicated in api_client to keep the API layer free of UI imports; this catches drift.
+    assert MockNotificationAPI._CALLBACK_STATUSES == COMPLETED_NOTIFICATION_STATUSES
+
+
+@pytest.mark.asyncio
+async def test_mock_api_delete_service_callback():
+    api = MockNotificationAPI()
+    api._sleep = 0
+    assert await api.delete_service_callback("svc-1", "cb-1") is None
+
+
+def _retry_predicate_matches(fn, exc: BaseException) -> bool:
+    """Ask a tenacity-wrapped function's retry predicate whether it would retry ``exc``.
+
+    ``fn.retry`` is the ``AsyncRetrying`` object tenacity attaches to the wrapper, and
+    ``fn.retry.retry`` is the predicate. Feeding it a real ``RetryCallState`` exercises the
+    configured policy rather than just asserting a decorator attribute exists.
+    """
+    state = tenacity.RetryCallState(retry_object=fn.retry, fn=fn, args=(), kwargs={})
+    state.set_exception((type(exc), exc, exc.__traceback__))
+    return bool(fn.retry.retry(state))
+
+
+def test_service_callback_write_retry_policies_are_asymmetric():
+    """Pin the create/update/delete retry asymmetry.
+
+    Creating a callback is NOT idempotent -- the API enforces a unique constraint on
+    (service_id, callback_type), so a create that succeeded server-side but failed while
+    reading the response would be retried straight into a misleading 409. Connect-phase
+    failures (ConnectError/ConnectTimeout) provably never reached the server, so retrying
+    those is safe and worth doing. Hence create gets ``http_retry_connect_only``.
+
+    Update and delete are idempotent, so they keep the full ``http_retry`` policy, which
+    also covers ReadError and ReadTimeout.
+
+    If you "tidied up" the decorators and landed here: putting ``http_retry`` back on
+    create reintroduces spurious 409s on flaky networks. Don't.
+    """
+    create = HttpNotificationAPI.create_service_callback
+    update = HttpNotificationAPI.update_service_callback
+    delete = HttpNotificationAPI.delete_service_callback
+
+    # All three retry connect-phase failures, which never reach the server.
+    for fn in (create, update, delete):
+        assert _retry_predicate_matches(fn, httpx.ConnectError("boom")) is True
+        assert _retry_predicate_matches(fn, httpx.ConnectTimeout("boom")) is True
+
+    # Only create refuses to retry request-already-sent failures.
+    assert _retry_predicate_matches(create, httpx.ReadTimeout("boom")) is False
+    assert _retry_predicate_matches(create, httpx.ReadError("boom")) is False
+
+    for fn in (update, delete):
+        assert _retry_predicate_matches(fn, httpx.ReadTimeout("boom")) is True
+        assert _retry_predicate_matches(fn, httpx.ReadError("boom")) is True
 
 
 @pytest.mark.asyncio
