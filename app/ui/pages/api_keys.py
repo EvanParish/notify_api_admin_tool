@@ -14,6 +14,7 @@ from app.repository import (
     update_api_key_expiry,
 )
 from app.ui import state as _st
+from app.ui.callback_helpers import format_http_error
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
@@ -179,29 +180,55 @@ async def api_keys_page() -> None:
             if not await ensure_admin_auth(environment, sync_label):
                 return
             api = await build_api_client(environment)
+            submit_button.disable()
             try:
-                payload = await api.create_api_key(service_id, name, key_type)
-            except httpx.HTTPStatusError as exc:
-                if exc.response and exc.response.status_code == 401:
-                    handle_unauthorized(sync_label, environment)
+                try:
+                    payload = await api.create_api_key(service_id, name, key_type)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response is not None and exc.response.status_code == 401:
+                        handle_unauthorized(sync_label, environment)
+                        return
+                    ui.notify(
+                        f"Failed to create API key: {format_http_error(exc)}",
+                        color="red",
+                    )
                     return
-                raise
-            try:
-                secret = _extract_api_key_secret(payload)
-            except ValueError as exc:
-                ui.notify(str(exc), color="red")
-                return
-            data = payload.get("data") if isinstance(payload, dict) else None
-            stored_name = name
-            stored_type = (data.get("key_type") if isinstance(data, dict) else None) or key_type
-            await add_local_key(
-                _st.encryption,
-                service_id,
-                environment,
-                stored_name,
-                secret,
-                stored_type,
-            )
+                except httpx.RequestError as exc:
+                    ui.notify(
+                        f"Could not reach the notification API: {exc}",
+                        color="red",
+                    )
+                    return
+                except Exception as exc:  # noqa: BLE001 - surface any failure in the UI
+                    ui.notify(f"Error creating API key: {exc}", color="red")
+                    return
+                try:
+                    secret = _extract_api_key_secret(payload)
+                except ValueError as exc:
+                    ui.notify(str(exc), color="red")
+                    return
+                data = payload.get("data") if isinstance(payload, dict) else None
+                stored_name = name
+                stored_type = (data.get("key_type") if isinstance(data, dict) else None) or key_type
+                try:
+                    await add_local_key(
+                        _st.encryption,
+                        service_id,
+                        environment,
+                        stored_name,
+                        secret,
+                        stored_type,
+                    )
+                except Exception as exc:  # noqa: BLE001 - the remote key exists; never lose it silently
+                    ui.notify(
+                        f"API key was created remotely but could not be stored locally: {exc}",
+                        color="red",
+                        timeout=0,
+                        close_button=True,
+                    )
+                    return
+            finally:
+                submit_button.enable()
             ui.notify("API key created and stored locally", color="green")
             from app.ui.pages.settings_page import render_local_keys
 
@@ -288,10 +315,13 @@ async def api_keys_page() -> None:
             try:
                 await api.update_api_key_expiry(service_id, key_id, expiry_date)
             except httpx.HTTPStatusError as exc:
-                if exc.response and exc.response.status_code == 401:
+                if exc.response is not None and exc.response.status_code == 401:
                     handle_unauthorized(sync_label, environment)
                     return
-                ui.notify(str(exc), color="red")
+                ui.notify(f"Failed to update expiry: {format_http_error(exc)}", color="red")
+                return
+            except Exception as exc:  # noqa: BLE001 - surface any failure in the UI
+                ui.notify(f"Error updating expiry: {exc}", color="red")
                 return
             updated = await update_api_key_expiry(
                 service_id,
@@ -350,10 +380,13 @@ async def api_keys_page() -> None:
             try:
                 await api.revoke_api_key(service_id, key_id)
             except httpx.HTTPStatusError as exc:
-                if exc.response and exc.response.status_code == 401:
+                if exc.response is not None and exc.response.status_code == 401:
                     handle_unauthorized(sync_label, environment)
                     return
-                ui.notify(str(exc), color="red")
+                ui.notify(f"Failed to revoke API key: {format_http_error(exc)}", color="red")
+                return
+            except Exception as exc:  # noqa: BLE001 - surface any failure in the UI
+                ui.notify(f"Error revoking API key: {exc}", color="red")
                 return
             updated = await mark_api_key_revoked(
                 service_id,

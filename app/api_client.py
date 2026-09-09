@@ -295,7 +295,7 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
         return resp.json().get("apiKeys", [])
 
-    @http_retry
+    @http_retry_connect_only
     async def create_api_key(
         self,
         service_id: str,
@@ -303,6 +303,11 @@ class HttpNotificationAPI(NotificationAPI):
         key_type: str,
         secret_type: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Create an API key.
+
+        Uses ``@http_retry_connect_only``: creating a key is not idempotent, so a
+        ``ReadError``/``ReadTimeout`` retry could mint a second key server-side.
+        """
         payload: Dict[str, Any] = {"name": name, "key_type": key_type}
         if secret_type:
             payload["secret_type"] = secret_type
