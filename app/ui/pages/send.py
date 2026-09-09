@@ -19,6 +19,7 @@ from app.ui.helpers import (
     find_missing_personalisation,
     format_service_label,
     parse_recipients,
+    write_send_results,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import PAGE_RESPONSE_TIMEOUT, build_api_client, refresh_status_badge
@@ -231,14 +232,27 @@ async def send_page() -> None:
                     elif result.get("status") == "error":
                         error_count += 1
                 final_results = [r for r in results if r is not None]
-                response_log.set_content(
-                    json.dumps(
+                summary: Dict[str, Any] = {
+                    "total": len(recipients),
+                    "sent": sent_count,
+                    "errors": error_count,
+                }
+                file_path: Optional[str] = None
+                if len(recipients) > 1:
+                    file_path = write_send_results(
+                        "send_responses",
                         {
-                            "total": len(recipients),
-                            "sent": sent_count,
-                            "errors": error_count,
+                            "environment": selected_env,
+                            "service_id": selected_service,
+                            "template_id": selected_template,
+                            "template_type": t_type,
+                            **summary,
                             "results": final_results,
                         },
+                    )
+                response_log.set_content(
+                    json.dumps(
+                        ({"file": file_path} if file_path else {}) | summary | {"results": final_results},
                         indent=2,
                     )
                 )

@@ -12,7 +12,9 @@ import inspect
 import io
 import json
 import logging
+import os
 import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from nicegui import ui
@@ -280,3 +282,22 @@ def parse_recipients(value: str) -> List[str]:
         return []
     parts = re.split(r"[;,]", value)
     return [part.strip() for part in parts if part.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Send result persistence
+# ---------------------------------------------------------------------------
+SEND_RESULTS_DIR = "data/send_response"
+
+
+def write_send_results(prefix: str, payload: Dict[str, Any], directory: str = SEND_RESULTS_DIR) -> str:
+    """Write a send/bulk-send result payload to a timestamped JSON file.
+
+    Returns the path of the written file.
+    """
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    os.makedirs(directory, exist_ok=True)
+    file_path = os.path.join(directory, f"{prefix}_{timestamp}.json")
+    with open(file_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, default=str)
+    return file_path

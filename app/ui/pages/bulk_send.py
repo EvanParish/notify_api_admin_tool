@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from nicegui import ui
@@ -20,6 +18,7 @@ from app.ui import state as _st
 from app.ui.helpers import (
     find_missing_personalisation,
     format_service_label,
+    write_send_results,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import PAGE_RESPONSE_TIMEOUT, build_api_client, refresh_status_badge
@@ -236,8 +235,6 @@ async def bulk_send_page() -> None:
                     progress_label.text = (
                         f"Sending {percent}% (sent {sent_count}, skipped {skipped_count}, errors {error_count})"
                     )
-                timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-                file_path = os.path.join("data", f"bulk_send_responses_{timestamp}.json")
                 final_results = [r for r in results if r is not None]
                 output = {
                     "environment": selected_env,
@@ -250,8 +247,7 @@ async def bulk_send_page() -> None:
                     "errors": error_count,
                     "results": final_results,
                 }
-                with open(file_path, "w", encoding="utf-8") as handle:
-                    json.dump(output, handle, indent=2)
+                file_path = write_send_results("bulk_send_responses", output)
                 response_log.set_content(
                     json.dumps(
                         {

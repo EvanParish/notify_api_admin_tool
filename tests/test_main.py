@@ -5,6 +5,7 @@ Note: NiceGUI UI components cannot be easily tested without a running server.
 These tests focus on the business logic functions that can be tested in isolation.
 """
 
+import json
 import os
 import pytest
 import httpx
@@ -1341,6 +1342,26 @@ class TestParseRecipients:
     def test_empty(self):
         assert helpers.parse_recipients("") == []
         assert helpers.parse_recipients(None) == []
+
+
+class TestWriteSendResults:
+    def test_writes_timestamped_json(self, tmp_path):
+        payload = {"total": 2, "results": [{"recipient": "a@b.com", "status": "sent"}]}
+        path = helpers.write_send_results("send_responses", payload, directory=str(tmp_path))
+        assert os.path.basename(path).startswith("send_responses_")
+        assert path.endswith(".json")
+        with open(path, encoding="utf-8") as handle:
+            assert json.load(handle) == payload
+
+    def test_creates_missing_directory(self, tmp_path):
+        target = tmp_path / "nested" / "dir"
+        path = helpers.write_send_results("bulk_send_responses", {"sent": 0}, directory=str(target))
+        assert os.path.isfile(path)
+
+    def test_unique_paths(self, tmp_path):
+        first = helpers.write_send_results("send_responses", {"a": 1}, directory=str(tmp_path))
+        second = helpers.write_send_results("send_responses", {"a": 2}, directory=str(tmp_path))
+        assert first != second
 
 
 class TestParseFilterDate:
