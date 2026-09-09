@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from nicegui import app, ui
+from nicegui import Client, app, context, ui
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
@@ -268,3 +268,87 @@ def safe_notify(message: str, color: str = "warning") -> None:
         ui.notify(message, color=color)
     except RuntimeError:
         logger.warning("UI notify skipped: %s", message)
+
+
+# ---------------------------------------------------------------------------
+# Sync progress broadcast
+# ---------------------------------------------------------------------------
+# A sync started in one tab mutates the shared local cache that every tab
+# reads, so progress is broadcast to all connected clients rather than only
+# the one that pressed the button. NiceGUI elements hold a reference to their
+# own client, so updating them from outside that client's request context
+# queues the change on that client's socket.
+#
+# ``ui.notify`` cannot be broadcast this way (it requires an active client
+# context), so error toasts deliberately stay on the initiating tab.
+_progress_widgets: dict[str, tuple] = {}
+
+
+def register_progress_widgets(bar, label) -> None:
+    """Register a client's progress bar and label for broadcast updates."""
+    client = context.client
+    client_id = client.id
+    _progress_widgets[client_id] = (bar, label)
+    client.on_disconnect(lambda: _progress_widgets.pop(client_id, None))
+
+
+def clear_progress_widgets() -> None:
+    _progress_widgets.clear()
+
+
+def progress_widget_count() -> int:
+    return len(_progress_widgets)
+
+
+def _live_progress_widgets() -> list[tuple[str, tuple]]:
+    """Registered widgets whose client is still connected, sweeping the rest.
+
+    ``on_disconnect`` does not reliably fire when a browser is killed, so the
+    registry would otherwise leak entries for dead clients.
+    """
+    live = []
+    for client_id, widgets in list(_progress_widgets.items()):
+        client = Client.instances.get(client_id)
+        if client is None or not client.has_socket_connection:
+            _progress_widgets.pop(client_id, None)
+            continue
+        live.append((client_id, widgets))
+    return live
+
+
+def format_progress(done: int, total: int, message: str) -> str:
+    return f"{message} - {done}/{total}" if total else message
+
+
+async def push_progress(done: int, total: int, message: str) -> None:
+    """Broadcast a sync progress update to every connected client."""
+    text = format_progress(done, total, message)
+    state.sync_message = text
+    fraction = (done / total) if total else 0.0
+    for client_id, (bar, label) in _live_progress_widgets():
+        try:
+            bar.set_visibility(total > 0)
+            bar.value = fraction
+            label.text = text
+        except Exception:
+            logger.debug("Dropping progress widgets for client %s", client_id)
+            _progress_widgets.pop(client_id, None)
+
+
+def set_progress_text(message: str) -> None:
+    """Broadcast a status message without touching the bar."""
+    state.sync_message = message
+    for client_id, (_bar, label) in _live_progress_widgets():
+        try:
+            label.text = message
+        except Exception:  # pragma: no cover - defensive
+            _progress_widgets.pop(client_id, None)
+
+
+def hide_progress() -> None:
+    """Hide every registered progress bar."""
+    for client_id, (bar, _label) in _live_progress_widgets():
+        try:
+            bar.set_visibility(False)
+        except Exception:  # pragma: no cover - defensive
+            _progress_widgets.pop(client_id, None)

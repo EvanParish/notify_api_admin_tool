@@ -2928,7 +2928,7 @@ async def test_sync_for_environment_passes_encryption_to_sync_manager(initialize
             patch.object(_st, "build_api_client", new_callable=AsyncMock, return_value=AsyncMock()) as mock_build,
             patch("app.ui.sync_handlers.SyncManager") as mock_sync_manager_cls,
         ):
-            from app.sync import SyncResult
+            from app.sync import SyncProgress, SyncResult
 
             mock_manager = MagicMock()
             ok_result = SyncResult()
@@ -2940,6 +2940,7 @@ async def test_sync_for_environment_passes_encryption_to_sync_manager(initialize
                 "development",
                 ["sync_users"],
                 mock_sync_label,
+                SyncProgress(AsyncMock()),
             )
 
         assert result.success_count == 1

@@ -167,7 +167,13 @@ def build_shell(on_view_env_change=None) -> tuple:
             ui.label("Notification Admin Dashboard").classes("text-xl font-medium text-slate-900 dark:text-white")
         with ui.row().classes("items-center gap-4"):
             status_badge = ui.badge("API Status: Unknown", color="gray")
+            sync_progress_bar = ui.linear_progress(value=0, show_value=False).props("rounded size=6px").classes("w-44")
+            sync_progress_bar.set_visibility(False)
             sync_label = ui.label("").classes("text-slate-900 dark:text-white")
+            # Progress is broadcast to every connected client, not just the tab
+            # that started the sync, since a sync mutates the shared cache all
+            # tabs read from.
+            _st.register_progress_widgets(sync_progress_bar, sync_label)
             # Multi-select for viewing environments
             env_options = list(_st.config.api_hosts.keys())
             env_select = (

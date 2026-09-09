@@ -6,7 +6,7 @@ from app.db import create_all, get_session, init_engine
 from app.crypto import EncryptionManager
 from app.models import Service, ServiceCallback, Template, User
 from app.repository import DbSaltProvider
-from app.sync import SyncManager
+from app.sync import SyncManager, SyncProgress
 from app.api_client import NotificationAPI
 
 import tests.testing_data as testing_data
@@ -123,8 +123,9 @@ async def test_sync_with_progress_callback(setup_db):
     await sync.sync_services(progress=progress)
     await sync.sync_templates(progress=progress)
 
-    assert "Syncing services" in messages
-    assert any("Templates for" in msg for msg in messages)
+    assert "services" in messages
+    # Per-service messages are gone; fan-out reports the coarse phase name.
+    assert "templates" in messages
 
 
 @pytest.mark.asyncio
@@ -339,9 +340,9 @@ async def test_sync_templates_for_service_direct(setup_db):
     async def progress(msg: str):
         messages.append(msg)
 
-    await sync._sync_templates_for_service("svc-1", progress)
+    await sync._sync_templates_for_service("svc-1", SyncProgress.from_callable(progress))
 
-    assert any("Templates for svc-1" in msg for msg in messages)
+    assert messages == ["templates"]
 
     async with get_session() as session:
         templates = (await session.execute(select(Template))).scalars().all()
@@ -488,9 +489,11 @@ async def test_sync_api_keys_handles_404_with_progress(initialized_db):
         messages.append(msg)
 
     manager = SyncManager(mock_api, max_concurrency=5)
-    await manager.sync_api_keys(progress=progress)
+    result = await manager.sync_api_keys(progress=progress)
 
-    assert any("No API keys" in msg for msg in messages)
+    # A 404 counts as a completed unit, not an error.
+    assert result.error_count == 0
+    assert messages == ["api keys"]
 
 
 @pytest.mark.asyncio
@@ -661,7 +664,7 @@ async def test_sync_sms_senders_handles_404(initialized_db):
     # 404 should be treated as success (no SMS senders)
     assert result.error_count == 0
     assert result.success_count == 1
-    assert any("No SMS senders" in msg for msg in messages)
+    assert messages == ["sms senders"]
 
 
 @pytest.mark.asyncio

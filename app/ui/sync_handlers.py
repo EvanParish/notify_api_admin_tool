@@ -4,7 +4,7 @@ import asyncio
 
 import httpx
 
-from app.sync import SyncManager, SyncResult
+from app.sync import SyncManager, SyncProgress, SyncResult
 from app.ui import state as _st
 
 
@@ -12,6 +12,7 @@ async def _sync_for_environment(
     environment: str,
     method_names: list[str],
     sync_label,
+    progress: SyncProgress,
     pre_sync: list[str] | None = None,
     method_kwargs: dict[str, dict] | None = None,
 ) -> SyncResult:
@@ -28,10 +29,6 @@ async def _sync_for_environment(
         environment=environment,
         encryption=_st.encryption,
     )
-
-    async def progress(msg: str):
-        _st.state.sync_message = f"[{environment}] {msg}"
-        sync_label.text = f"[{environment}] {msg}"
 
     combined_result = SyncResult()
     method_kwargs = method_kwargs or {}
@@ -99,11 +96,26 @@ async def handle_entity_sync(
         _st.safe_notify(message, color="warning")
         return False
 
-    sync_label.text = f"Syncing {label} for {len(envs)} environment(s)..."
-    results = await asyncio.gather(
-        *[_sync_for_environment(env, method_names, sync_label, pre_sync, method_kwargs) for env in envs],
-        return_exceptions=True,
-    )
+    async def on_update(done: int, total: int, message: str) -> None:
+        text = _st.format_progress(done, total, message)
+        sync_label.text = text
+        await _st.push_progress(done, total, message)
+
+    # One aggregate counter shared by every environment. Environments run
+    # concurrently, so a per-environment label would be a race; a single
+    # denominator is the honest representation.
+    progress = SyncProgress(on_update)
+
+    starting = f"Syncing {label} for {len(envs)} environment(s)..."
+    sync_label.text = starting
+    _st.set_progress_text(starting)
+    try:
+        results = await asyncio.gather(
+            *[_sync_for_environment(env, method_names, sync_label, progress, pre_sync, method_kwargs) for env in envs],
+            return_exceptions=True,
+        )
+    finally:
+        _st.hide_progress()
 
     total_success = 0
     total_errors = 0
@@ -134,10 +146,9 @@ async def handle_entity_sync(
         if len(all_errors) > 3:
             _st.safe_notify(f"... and {len(all_errors) - 3} more errors", color="negative")
 
-    if total_errors > 0:
-        sync_label.text = f"Sync complete: {total_success} ok, {total_errors} failed"
-    else:
-        sync_label.text = "Sync complete"
+    terminal = f"Sync complete: {total_success} ok, {total_errors} failed" if total_errors > 0 else "Sync complete"
+    sync_label.text = terminal
+    _st.set_progress_text(terminal)
     await _st.refresh_status_badge(status_badge)
     return total_success > 0
 

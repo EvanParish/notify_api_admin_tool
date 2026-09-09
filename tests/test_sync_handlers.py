@@ -250,7 +250,7 @@ async def test_handle_entity_sync_with_pre_sync(initialized_db, mock_config):
 
 @pytest.mark.asyncio
 async def test_handle_entity_sync_progress_callback(initialized_db, mock_config):
-    """Progress callback updates state.sync_message and sync_label.text with env prefix."""
+    """Progress steps render as a phase name plus a done/total counter."""
 
     original_config, original_state = _st.config, _st.state
     _st.config = mock_config
@@ -258,12 +258,13 @@ async def test_handle_entity_sync_progress_callback(initialized_db, mock_config)
     _st.state = _SyncTestState()
     badge, label = _make_mock_badges()
 
-    captured_messages = []
+    captured_labels = []
 
     async def fake_sync(progress=None):
-        if progress:
-            await progress("Syncing item 1/3")
-            captured_messages.append(_st.state.sync_message)
+        progress.add_total(3)
+        await progress.step("users")
+        captured_labels.append(label.text)
+        return _make_success_result()
 
     mock_manager = MagicMock()
     mock_manager.sync_users = fake_sync
@@ -275,9 +276,9 @@ async def test_handle_entity_sync_progress_callback(initialized_db, mock_config)
             patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
         ):
             await handle_entity_sync(["sync_users"], badge, label, "users")
-            # Progress messages now include [environment] prefix
-            assert any("Syncing item 1/3" in msg for msg in captured_messages)
-            assert any("[development]" in msg for msg in captured_messages)
+
+        assert captured_labels == ["users - 1/3"]
+        assert _st.state.sync_message == "Sync complete"
     finally:
         _st.config, _st.state = original_config, original_state
 
@@ -487,5 +488,142 @@ async def test_handle_entity_sync_with_method_kwargs(initialized_db, mock_config
             )
             assert result is True
             assert captured_kwargs == {"service_ids": ["svc-123"]}
+    finally:
+        _st.config, _st.state = original_config, original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_entity_sync_shares_one_progress_across_envs(initialized_db, mock_config):
+    """All environments feed a single aggregate SyncProgress."""
+    from app.sync import SyncProgress
+
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
+    _st.state.enabled_sync_environments = {"development", "perf"}
+    mock_config.api_hosts = {"development": "http://dev", "perf": "http://perf"}
+    badge, label = _make_mock_badges()
+
+    seen = []
+
+    async def fake_sync(progress=None):
+        seen.append(progress)
+        progress.add_total(3)
+        await progress.step("users")
+        return _make_success_result()
+
+    mock_manager = MagicMock()
+    mock_manager.sync_users = fake_sync
+
+    try:
+        with (
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
+            patch.object(_st, "check_environments_credentials", new_callable=AsyncMock, return_value={}),
+            patch.object(_st, "ensure_admin_auth", new_callable=AsyncMock, return_value=True),
+            patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
+        ):
+            await handle_entity_sync(["sync_users"], badge, label, "users")
+
+        assert len(seen) == 2
+        assert all(isinstance(p, SyncProgress) for p in seen)
+        assert seen[0] is seen[1]
+        # Aggregate: both environments contributed to one counter.
+        assert seen[0].total == 6
+        assert seen[0].done == 2
+    finally:
+        _st.config, _st.state = original_config, original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_entity_sync_broadcasts_progress(initialized_db, mock_config):
+    """Progress updates reach the shared broadcast helper, not just the caller's label."""
+
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
+    badge, label = _make_mock_badges()
+
+    pushed = []
+
+    async def fake_push(done, total, msg):
+        pushed.append((done, total, msg))
+
+    async def fake_sync(progress=None):
+        progress.add_total(1)
+        await progress.step("users")
+        return _make_success_result()
+
+    mock_manager = MagicMock()
+    mock_manager.sync_users = fake_sync
+
+    try:
+        with (
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
+            patch.object(_st, "push_progress", new=fake_push),
+            patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
+        ):
+            await handle_entity_sync(["sync_users"], badge, label, "users")
+
+        assert (1, 1, "users") in pushed
+        assert label.text == "Sync complete"
+    finally:
+        _st.config, _st.state = original_config, original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_entity_sync_hides_bar_when_finished(initialized_db, mock_config):
+    """The bar is hidden once the terminal message is set."""
+
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
+    badge, label = _make_mock_badges()
+
+    try:
+        with (
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
+            patch.object(_st, "hide_progress") as hide,
+        ):
+            await handle_entity_sync(["sync_services"], badge, label, "services")
+
+        hide.assert_called_once()
+    finally:
+        _st.config, _st.state = original_config, original_state
+
+
+@pytest.mark.asyncio
+async def test_handle_entity_sync_skipped_env_adds_no_work(initialized_db, mock_config):
+    """An environment that fails auth contributes nothing to the total."""
+
+    original_config, original_state = _st.config, _st.state
+    _st.config = mock_config
+    _st.config.use_mock_api = True
+    _st.state = _SyncTestState()
+    badge, label = _make_mock_badges()
+
+    seen = []
+
+    async def fake_sync(progress=None):
+        seen.append(progress)
+        return _make_success_result()
+
+    mock_manager = MagicMock()
+    mock_manager.sync_users = fake_sync
+
+    try:
+        with (
+            patch.object(_st, "build_api_client", new_callable=AsyncMock),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
+            patch.object(_st, "ensure_admin_auth", new_callable=AsyncMock, return_value=False),
+            patch("app.ui.sync_handlers.SyncManager", return_value=mock_manager),
+        ):
+            await handle_entity_sync(["sync_users"], badge, label, "users")
+
+        assert seen == []
     finally:
         _st.config, _st.state = original_config, original_state
