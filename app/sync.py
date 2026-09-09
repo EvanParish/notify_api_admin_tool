@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import Counter
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
@@ -43,6 +45,11 @@ class SyncProgress:
     ``total`` is declared up front by whoever knows the work count, so the
     fraction ``done / total`` is monotonic. ``locked`` stops fan-out methods
     from re-declaring totals that :meth:`SyncManager.sync_all` already added.
+
+    The reported label names the phase currently *in flight*, not the unit that
+    last completed. When environments run concurrently they sit in different
+    phases, so the least-advanced one is reported: the label then means "every
+    environment has reached at least here".
     """
 
     on_update: UpdateCallback
@@ -51,6 +58,8 @@ class SyncProgress:
     locked: bool = False
     time_fn: Callable[[], float] = time.monotonic
     _last_push: float | None = field(default=None, repr=False)
+    _active_phases: Counter = field(default_factory=Counter, repr=False)
+    _last_message: str = field(default="", repr=False)
 
     @classmethod
     def from_callable(cls, fn: TextCallback) -> "SyncProgress":
@@ -71,7 +80,32 @@ class SyncProgress:
     def add_total(self, n: int) -> None:
         self.total += n
 
-    async def step(self, msg: str) -> None:
+    def current_phase(self) -> str | None:
+        """The least-advanced phase currently in flight, if any."""
+        if not self._active_phases:
+            return None
+        return min(self._active_phases, key=_phase_rank)
+
+    @asynccontextmanager
+    async def phase(self, name: str):
+        """Mark *name* as in flight for the duration of the block."""
+        self._active_phases[name] += 1
+        # Force the push: a phase change must be visible even inside the
+        # throttle window, or the label keeps naming a finished phase.
+        await self._push(force=True)
+        try:
+            yield self
+        finally:
+            self._active_phases[name] -= 1
+            if self._active_phases[name] <= 0:
+                del self._active_phases[name]
+            # Only worth a push if another environment is still behind in an
+            # earlier phase; otherwise the label is already correct.
+            remaining = self.current_phase()
+            if remaining is not None and remaining != self._last_message:
+                await self._push(force=True)
+
+    async def step(self, msg: str | None = None) -> None:
         """Record one completed work unit and push."""
         if self.done < self.total:
             self.done += 1
@@ -81,14 +115,24 @@ class SyncProgress:
         """Push a status message without recording work."""
         await self._push(msg)
 
-    async def _push(self, msg: str) -> None:
+    def _label(self, msg: str | None) -> str:
+        if msg is not None:
+            self._last_message = msg
+        else:
+            phase = self.current_phase()
+            if phase is not None:
+                self._last_message = phase
+        return self._last_message
+
+    async def _push(self, msg: str | None = None, *, force: bool = False) -> None:
+        label = self._label(msg)
         now = self.time_fn()
         is_first = self._last_push is None
         is_complete = self.total > 0 and self.done >= self.total
-        if not is_first and not is_complete and now - self._last_push < PROGRESS_THROTTLE_SECONDS:
+        if not (force or is_first or is_complete) and now - self._last_push < PROGRESS_THROTTLE_SECONDS:
             return
         self._last_push = now
-        await self.on_update(self.done, self.total, msg)
+        await self.on_update(self.done, self.total, label)
 
 
 ProgressCallback = Optional[SyncProgress]
@@ -104,6 +148,25 @@ PHASE_COMMUNICATION_ITEMS = "communication items"
 PHASE_PROVIDER_DETAILS = "provider details"
 PHASE_INBOUND_NUMBERS = "inbound numbers"
 PHASE_CALLBACKS = "callbacks"
+
+#: Execution order within a single environment. Used to pick the
+#: least-advanced phase when environments are syncing concurrently.
+PHASE_ORDER = (
+    PHASE_SERVICES,
+    PHASE_TEMPLATES,
+    PHASE_API_KEYS,
+    PHASE_SMS_SENDERS,
+    PHASE_USERS,
+    PHASE_COMMUNICATION_ITEMS,
+    PHASE_PROVIDER_DETAILS,
+    PHASE_INBOUND_NUMBERS,
+    PHASE_CALLBACKS,
+)
+_PHASE_RANKS = {name: index for index, name in enumerate(PHASE_ORDER)}
+
+
+def _phase_rank(name: str) -> int:
+    return _PHASE_RANKS.get(name, len(PHASE_ORDER))
 
 
 @dataclass
@@ -212,13 +275,21 @@ class SyncManager:
         result.add_error(error)
         return error
 
-    async def _begin(self, progress: "SyncProgress | None", phase: str, units: int = 1) -> None:
-        """Declare work units (unless sync_all already did) and announce the phase."""
+    @staticmethod
+    @asynccontextmanager
+    async def _phase(progress: "SyncProgress | None", phase: str, units: int = 1):
+        """Declare work units (unless sync_all already did) and hold the phase.
+
+        Holding the phase for the duration of the work is what keeps the label
+        naming what is *in flight* rather than what last finished.
+        """
         if progress is None:
+            yield None
             return
         if not progress.locked:
             progress.add_total(units)
-        await progress.message(phase)
+        async with progress.phase(phase):
+            yield progress
 
     async def sync_all(self, progress: ProgressCallback = None) -> SyncResult:
         progress = SyncProgress.coerce(progress)
@@ -257,15 +328,15 @@ class SyncManager:
     async def sync_services(self, progress: ProgressCallback = None) -> SyncResult:
         progress = SyncProgress.coerce(progress)
         result = SyncResult()
-        await self._begin(progress, PHASE_SERVICES)
-        try:
-            services = await self.api.get_services()
-            await upsert_services(services, self.environment)
-            result.add_success()
-        except Exception as exc:
-            self._record_error(result, "services", exc)
-        if progress:
-            await progress.step(PHASE_SERVICES)
+        async with self._phase(progress, PHASE_SERVICES):
+            try:
+                services = await self.api.get_services()
+                await upsert_services(services, self.environment)
+                result.add_success()
+            except Exception as exc:
+                self._record_error(result, "services", exc)
+            if progress:
+                await progress.step()
         self.last_result = result
         return result
 
@@ -273,12 +344,11 @@ class SyncManager:
         progress = SyncProgress.coerce(progress)
         result = SyncResult()
         service_ids = await list_service_ids(self.environment)
-        if progress and not progress.locked:
-            progress.add_total(len(service_ids))
-        tasks = [self._sync_templates_for_service(sid, progress) for sid in service_ids]
-        sub_results = await asyncio.gather(*tasks)
-        for sub_result in sub_results:
-            result.merge(sub_result)
+        async with self._phase(progress, PHASE_TEMPLATES, len(service_ids)):
+            tasks = [self._sync_templates_for_service(sid, progress) for sid in service_ids]
+            sub_results = await asyncio.gather(*tasks)
+            for sub_result in sub_results:
+                result.merge(sub_result)
         self.last_result = result
         return result
 
@@ -292,7 +362,7 @@ class SyncManager:
             except Exception as exc:
                 self._record_error(result, "templates", exc, service_id=service_id)
             if progress:
-                await progress.step(PHASE_TEMPLATES)
+                await progress.step()
         return result
 
     async def sync_api_keys(
@@ -305,12 +375,11 @@ class SyncManager:
         result = SyncResult()
         if service_ids is None:
             service_ids = await list_service_ids(self.environment)
-        if progress and not progress.locked:
-            progress.add_total(len(service_ids))
-        tasks = [self._sync_api_keys_for_service(sid, progress, include_revoked) for sid in service_ids]
-        sub_results = await asyncio.gather(*tasks)
-        for sub_result in sub_results:
-            result.merge(sub_result)
+        async with self._phase(progress, PHASE_API_KEYS, len(service_ids)):
+            tasks = [self._sync_api_keys_for_service(sid, progress, include_revoked) for sid in service_ids]
+            sub_results = await asyncio.gather(*tasks)
+            for sub_result in sub_results:
+                result.merge(sub_result)
         self.last_result = result
         return result
 
@@ -335,19 +404,18 @@ class SyncManager:
                         result, "api_keys", exc, status_code=status_code, service_id=service_id
                     )
             if progress:
-                await progress.step(PHASE_API_KEYS)
+                await progress.step()
         return result
 
     async def sync_sms_senders(self, progress: ProgressCallback = None) -> SyncResult:
         progress = SyncProgress.coerce(progress)
         result = SyncResult()
         service_ids = await list_service_ids(self.environment)
-        if progress and not progress.locked:
-            progress.add_total(len(service_ids))
-        tasks = [self._sync_sms_senders_for_service(sid, progress) for sid in service_ids]
-        sub_results = await asyncio.gather(*tasks)
-        for sub_result in sub_results:
-            result.merge(sub_result)
+        async with self._phase(progress, PHASE_SMS_SENDERS, len(service_ids)):
+            tasks = [self._sync_sms_senders_for_service(sid, progress) for sid in service_ids]
+            sub_results = await asyncio.gather(*tasks)
+            for sub_result in sub_results:
+                result.merge(sub_result)
         self.last_result = result
         return result
 
@@ -368,73 +436,72 @@ class SyncManager:
                         result, "sms_senders", exc, status_code=status_code, service_id=service_id
                     )
             if progress:
-                await progress.step(PHASE_SMS_SENDERS)
+                await progress.step()
         return result
 
     async def sync_users(self, progress: ProgressCallback = None) -> SyncResult:
         progress = SyncProgress.coerce(progress)
         result = SyncResult()
-        await self._begin(progress, PHASE_USERS)
-        if self.encryption is None:
-            self._record_error(result, "users", message="EncryptionManager is required for sync_users")
+        async with self._phase(progress, PHASE_USERS):
+            if self.encryption is None:
+                self._record_error(result, "users", message="EncryptionManager is required for sync_users")
+            else:
+                try:
+                    await migrate_plaintext_users_to_encrypted(
+                        encryption=self.encryption, environment=self.environment
+                    )
+                    users = await self.api.get_users()
+                    await upsert_users(users, self.environment, encryption=self.encryption)
+                    result.add_success()
+                except Exception as exc:
+                    self._record_error(result, "users", exc)
             if progress:
-                await progress.step(PHASE_USERS)
-            self.last_result = result
-            return result
-        try:
-            await migrate_plaintext_users_to_encrypted(encryption=self.encryption, environment=self.environment)
-            users = await self.api.get_users()
-            await upsert_users(users, self.environment, encryption=self.encryption)
-            result.add_success()
-        except Exception as exc:
-            self._record_error(result, "users", exc)
-        if progress:
-            await progress.step(PHASE_USERS)
+                await progress.step()
         self.last_result = result
         return result
 
     async def sync_provider_details(self, progress: ProgressCallback = None) -> SyncResult:
         progress = SyncProgress.coerce(progress)
         result = SyncResult()
-        await self._begin(progress, PHASE_PROVIDER_DETAILS)
-        try:
-            provider_details = await self.api.get_provider_details()
-            await upsert_provider_details(provider_details, self.environment)
-            result.add_success()
-        except Exception as exc:
-            self._record_error(result, "provider_details", exc)
-        if progress:
-            await progress.step(PHASE_PROVIDER_DETAILS)
+        async with self._phase(progress, PHASE_PROVIDER_DETAILS):
+            try:
+                provider_details = await self.api.get_provider_details()
+                await upsert_provider_details(provider_details, self.environment)
+                result.add_success()
+            except Exception as exc:
+                self._record_error(result, "provider_details", exc)
+            if progress:
+                await progress.step()
         self.last_result = result
         return result
 
     async def sync_communication_items(self, progress: ProgressCallback = None) -> SyncResult:
         progress = SyncProgress.coerce(progress)
         result = SyncResult()
-        await self._begin(progress, PHASE_COMMUNICATION_ITEMS)
-        try:
-            communication_items = await self.api.get_communication_items()
-            await upsert_communication_items(communication_items, self.environment)
-            result.add_success()
-        except Exception as exc:
-            self._record_error(result, "communication_items", exc)
-        if progress:
-            await progress.step(PHASE_COMMUNICATION_ITEMS)
+        async with self._phase(progress, PHASE_COMMUNICATION_ITEMS):
+            try:
+                communication_items = await self.api.get_communication_items()
+                await upsert_communication_items(communication_items, self.environment)
+                result.add_success()
+            except Exception as exc:
+                self._record_error(result, "communication_items", exc)
+            if progress:
+                await progress.step()
         self.last_result = result
         return result
 
     async def sync_inbound_numbers(self, progress: ProgressCallback = None) -> SyncResult:
         progress = SyncProgress.coerce(progress)
         result = SyncResult()
-        await self._begin(progress, PHASE_INBOUND_NUMBERS)
-        try:
-            inbound_numbers = await self.api.get_inbound_numbers()
-            await upsert_inbound_numbers(inbound_numbers, self.environment)
-            result.add_success()
-        except Exception as exc:
-            self._record_error(result, "inbound_numbers", exc)
-        if progress:
-            await progress.step(PHASE_INBOUND_NUMBERS)
+        async with self._phase(progress, PHASE_INBOUND_NUMBERS):
+            try:
+                inbound_numbers = await self.api.get_inbound_numbers()
+                await upsert_inbound_numbers(inbound_numbers, self.environment)
+                result.add_success()
+            except Exception as exc:
+                self._record_error(result, "inbound_numbers", exc)
+            if progress:
+                await progress.step()
         self.last_result = result
         return result
 
@@ -442,12 +509,11 @@ class SyncManager:
         progress = SyncProgress.coerce(progress)
         result = SyncResult()
         service_ids = await list_service_ids(self.environment)
-        if progress and not progress.locked:
-            progress.add_total(len(service_ids))
-        tasks = [self._sync_service_callbacks_for_service(sid, progress) for sid in service_ids]
-        sub_results = await asyncio.gather(*tasks)
-        for sub_result in sub_results:
-            result.merge(sub_result)
+        async with self._phase(progress, PHASE_CALLBACKS, len(service_ids)):
+            tasks = [self._sync_service_callbacks_for_service(sid, progress) for sid in service_ids]
+            sub_results = await asyncio.gather(*tasks)
+            for sub_result in sub_results:
+                result.merge(sub_result)
         self.last_result = result
         return result
 
@@ -476,5 +542,5 @@ class SyncManager:
                         result, "service_callbacks", exc, status_code=status_code, service_id=service_id
                     )
             if progress:
-                await progress.step(PHASE_CALLBACKS)
+                await progress.step()
         return result

@@ -330,3 +330,197 @@ async def test_sync_manager_accepts_plain_callable(initialized_db):
 
     # Constant-time phases announce on entry and again on completion.
     assert messages == ["services", "services"]
+
+
+# --- phase tracking ----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_phase_context_sets_current_phase():
+    from app.sync import PHASE_API_KEYS
+
+    _, on_update = make_recorder()
+    progress = SyncProgress(on_update, time_fn=FakeClock())
+
+    assert progress.current_phase() is None
+    async with progress.phase(PHASE_API_KEYS):
+        assert progress.current_phase() == PHASE_API_KEYS
+    assert progress.current_phase() is None
+
+
+@pytest.mark.asyncio
+async def test_entering_a_phase_pushes_immediately():
+    from app.sync import PHASE_TEMPLATES
+
+    calls, on_update = make_recorder()
+    clock = FakeClock()
+    progress = SyncProgress(on_update, time_fn=clock)
+    progress.add_total(10)
+
+    await progress.step("services")
+    # Well inside the throttle window: a phase change must still be shown,
+    # otherwise the label names a phase that already finished.
+    clock.advance(0.001)
+    async with progress.phase(PHASE_TEMPLATES):
+        pass
+
+    assert calls[1] == (1, 10, PHASE_TEMPLATES)
+
+
+@pytest.mark.asyncio
+async def test_current_phase_is_the_least_advanced_of_concurrent_phases():
+    from app.sync import PHASE_API_KEYS, PHASE_CALLBACKS
+
+    _, on_update = make_recorder()
+    progress = SyncProgress(on_update, time_fn=FakeClock())
+
+    # Two environments running concurrently at different points in the run.
+    async with progress.phase(PHASE_CALLBACKS):
+        async with progress.phase(PHASE_API_KEYS):
+            assert progress.current_phase() == PHASE_API_KEYS
+
+
+@pytest.mark.asyncio
+async def test_leaving_the_least_advanced_phase_advances_the_label():
+    from app.sync import PHASE_API_KEYS, PHASE_CALLBACKS
+
+    _, on_update = make_recorder()
+    progress = SyncProgress(on_update, time_fn=FakeClock())
+
+    async with progress.phase(PHASE_CALLBACKS):
+        async with progress.phase(PHASE_API_KEYS):
+            pass
+        assert progress.current_phase() == PHASE_CALLBACKS
+
+
+@pytest.mark.asyncio
+async def test_same_phase_entered_by_two_environments_is_refcounted():
+    from app.sync import PHASE_TEMPLATES
+
+    _, on_update = make_recorder()
+    progress = SyncProgress(on_update, time_fn=FakeClock())
+
+    async with progress.phase(PHASE_TEMPLATES):
+        async with progress.phase(PHASE_TEMPLATES):
+            pass
+        assert progress.current_phase() == PHASE_TEMPLATES
+    assert progress.current_phase() is None
+
+
+@pytest.mark.asyncio
+async def test_phase_is_exited_when_the_body_raises():
+    from app.sync import PHASE_USERS
+
+    _, on_update = make_recorder()
+    progress = SyncProgress(on_update, time_fn=FakeClock())
+
+    with pytest.raises(RuntimeError):
+        async with progress.phase(PHASE_USERS):
+            raise RuntimeError("boom")
+
+    assert progress.current_phase() is None
+
+
+@pytest.mark.asyncio
+async def test_step_without_message_reports_the_current_phase():
+    from app.sync import PHASE_SMS_SENDERS
+
+    calls, on_update = make_recorder()
+    clock = FakeClock()
+    progress = SyncProgress(on_update, time_fn=clock)
+    progress.add_total(5)
+
+    async with progress.phase(PHASE_SMS_SENDERS):
+        clock.advance(1.0)
+        await progress.step()
+
+    assert calls[-1][2] == PHASE_SMS_SENDERS
+
+
+@pytest.mark.asyncio
+async def test_step_outside_any_phase_reuses_the_last_message():
+    calls, on_update = make_recorder()
+    clock = FakeClock()
+    progress = SyncProgress(on_update, time_fn=clock)
+    progress.add_total(5)
+
+    await progress.message("Syncing all data for 2 environment(s)...")
+    clock.advance(1.0)
+    await progress.step()
+
+    assert calls[-1][2] == "Syncing all data for 2 environment(s)..."
+
+
+@pytest.mark.asyncio
+async def test_sync_all_labels_phases_in_order(initialized_db):
+    from app.sync import PHASE_ORDER, SyncManager
+    from tests.test_sync import FakeAPI
+
+    calls, on_update = make_recorder()
+    progress = SyncProgress(on_update, time_fn=FakeClock())
+
+    await SyncManager(FakeAPI(), encryption=None).sync_all(progress=progress)
+
+    labels = [msg for _, _, msg in calls]
+    assert labels, "expected progress updates"
+    assert all(label in PHASE_ORDER for label in labels)
+    seen_indexes = [PHASE_ORDER.index(label) for label in labels]
+    assert seen_indexes == sorted(seen_indexes)
+
+
+@pytest.mark.asyncio
+async def test_fan_out_phase_is_announced_before_its_work_completes(initialized_db):
+    """The label must name the phase in flight, not the last one that finished.
+
+    Without an entry announcement the label still reads "services" while the
+    first (possibly very slow) template request is in flight.
+    """
+    from app.sync import PHASE_TEMPLATES, SyncManager
+    from tests.test_sync import FakeAPI
+
+    calls, on_update = make_recorder()
+    progress = SyncProgress(on_update, time_fn=FakeClock())
+
+    await SyncManager(FakeAPI(), encryption=None).sync_all(progress=progress)
+
+    first_templates_push = next(c for c in calls if c[2] == PHASE_TEMPLATES)
+    # Only the single services unit has completed at this point.
+    assert first_templates_push[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_slow_fan_out_reports_its_own_phase_not_the_previous_one(initialized_db):
+    """A phase that hangs must be named while it hangs."""
+    import asyncio
+
+    from app.models import Service
+    from app.db import get_session
+    from app.sync import PHASE_TEMPLATES, SyncManager
+    from app.api_client import MockNotificationAPI
+
+    async with get_session() as session:
+        session.add(Service(id="svc-slow", name="Slow", active=True))
+        await session.commit()
+
+    labels_during_hang = []
+    release = asyncio.Event()
+
+    api = MockNotificationAPI()
+
+    async def hang(service_id: str):
+        labels_during_hang.append(progress._last_message)
+        await release.wait()
+        return []
+
+    api.get_templates = hang
+
+    _, on_update = make_recorder()
+    progress = SyncProgress(on_update, time_fn=FakeClock())
+
+    task = asyncio.create_task(SyncManager(api).sync_templates(progress=progress))
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    release.set()
+    await task
+
+    assert labels_during_hang == [PHASE_TEMPLATES]

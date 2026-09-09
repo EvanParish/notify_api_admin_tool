@@ -340,9 +340,13 @@ async def test_sync_templates_for_service_direct(setup_db):
     async def progress(msg: str):
         messages.append(msg)
 
-    await sync._sync_templates_for_service("svc-1", SyncProgress.from_callable(progress))
+    # The private per-service helper runs inside its parent's phase context.
+    tracker = SyncProgress.from_callable(progress)
+    tracker.add_total(1)
+    async with tracker.phase("templates"):
+        await sync._sync_templates_for_service("svc-1", tracker)
 
-    assert messages == ["templates"]
+    assert messages == ["templates", "templates"]
 
     async with get_session() as session:
         templates = (await session.execute(select(Template))).scalars().all()
@@ -493,7 +497,8 @@ async def test_sync_api_keys_handles_404_with_progress(initialized_db):
 
     # A 404 counts as a completed unit, not an error.
     assert result.error_count == 0
-    assert messages == ["api keys"]
+    # Announced on phase entry, then again when the unit completes.
+    assert messages == ["api keys", "api keys"]
 
 
 @pytest.mark.asyncio
@@ -664,7 +669,7 @@ async def test_sync_sms_senders_handles_404(initialized_db):
     # 404 should be treated as success (no SMS senders)
     assert result.error_count == 0
     assert result.success_count == 1
-    assert messages == ["sms senders"]
+    assert messages == ["sms senders", "sms senders"]
 
 
 @pytest.mark.asyncio
