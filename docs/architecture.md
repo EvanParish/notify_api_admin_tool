@@ -101,7 +101,7 @@ All tables are defined in `app/models.py`. Most entities use composite primary k
 
 * **inbound_numbers** — `(id, environment)` PK
    * `number`, `provider`, `active`, `self_managed`
-   * `service_id`, `service_name`, `auth_parameter`, `url_endpoint`
+   * `service_id`, `auth_parameter`, `url_endpoint`
 
 * **service_callbacks** — `(id, environment)` PK
    * `service_id`, `url`, `callback_type`, `callback_channel`

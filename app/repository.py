@@ -146,8 +146,13 @@ def _service_filter_with_unassigned(column, service_ids: str | list[str] | None)
 
 
 def _active_service_ids(environments: list[str] | None = None):
-    """Subquery returning service IDs that are not archived."""
-    subq = select(Service.id).where(func.lower(Service.name).not_like("_archive%"))
+    """Subquery returning service IDs that are not archived.
+
+    The ``_`` is escaped because SQL ``LIKE`` treats a bare underscore as "any single
+    character", which would also exclude names like "Zarchive Test".  The prefix is
+    meant literally, matching :func:`_is_archived_value`'s ``startswith("_archive")``.
+    """
+    subq = select(Service.id).where(func.lower(Service.name).not_like(r"\_archive%", escape="\\"))
     env_clause = _env_filter(Service.environment, environments)
     if env_clause is not None:
         subq = subq.where(env_clause)
@@ -656,15 +661,6 @@ async def update_inbound_number(
             record.url_endpoint = url_endpoint
         if service_id is not None:
             record.service_id = service_id
-            # Resolve the display name from cache.  A miss is expected when services
-            # have not been synced for this environment; the next sync will fill it in.
-            name_result = await session.execute(
-                select(Service.name).where(
-                    Service.id == service_id,
-                    Service.environment == record.environment,
-                )
-            )
-            record.service_name = name_result.scalar_one_or_none()
         await session.commit()
         return True
 
@@ -952,7 +948,6 @@ async def upsert_inbound_numbers(raw: list[dict], environment: str) -> None:
                 active=item.get("active", True),
                 self_managed=item.get("self_managed", False),
                 service_id=service.get("id") if service else None,
-                service_name=service.get("name") if service else None,
                 auth_parameter=item.get("auth_parameter"),
                 url_endpoint=item.get("url_endpoint"),
             )

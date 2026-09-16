@@ -160,11 +160,9 @@ async def inbound_numbers_page() -> None:
             create_provider_hint = ui.label("No SMS providers cached for this environment. Run a sync first.").classes(
                 "text-xs text-red-500"
             )
-            create_service = (
-                ui.select({}, label="Service (optional)", with_input=True).props("clearable").classes("w-full")
-            )
+            create_service = ui.select({}, label="Service", with_input=True).classes("w-full")
             create_service_hint = ui.label("No services cached for this environment. Run a sync first.").classes(
-                "text-xs text-gray-500"
+                "text-xs text-red-500"
             )
             create_active = ui.checkbox("Active", value=True)
             create_self_managed = ui.checkbox("Self Managed")
@@ -202,9 +200,12 @@ async def inbound_numbers_page() -> None:
             self_managed = create_self_managed.value
             auth_parameter = (create_auth_parameter.value or "").strip() or None
             url_endpoint = (create_url_endpoint.value or "").strip() or None
-            if not (environment and number and provider):
+            # Service is required by this tool but not by the API, whose create schema
+            # only requires number and provider.  Numbers created elsewhere can still
+            # arrive unassigned, which is why the table keeps its "(unassigned)" state.
+            if not (environment and number and provider and service_id):
                 ui.notify(
-                    "Environment, number, and provider are required",
+                    "Environment, number, provider, and service are required",
                     color="red",
                 )
                 return
@@ -263,19 +264,25 @@ async def inbound_numbers_page() -> None:
         with ui.dialog() as edit_dialog, ui.card().classes("p-6 w-full max-w-lg"):
             ui.label("Edit Inbound Number").classes("text-md font-semibold")
             selected_number_label = ui.label("")
-            edit_number = ui.input(label="Number").props("clearable").classes("w-full")
+            # None of these inputs are clearable.  handle_update_inbound_number maps ""
+            # to None and both update paths skip a None, so clearing a field would
+            # report success while changing nothing.  There is no blank state to submit
+            # either: the API's update schema sets additionalProperties False and types
+            # every property as a string, so a null is rejected outright.
+            edit_number = ui.input(label="Number").classes("w-full")
             edit_provider = ui.select({}, label="Provider", with_input=True).classes("w-full")
             # Deliberately NOT clearable: the API has no unassign path for inbound
             # numbers, so the UI must not offer a state it cannot submit.
             edit_service = ui.select({}, label="Service", with_input=True).classes("w-full")
             edit_active = ui.checkbox("Active")
             edit_self_managed = ui.checkbox("Self Managed")
-            edit_auth_parameter = ui.input(label="Auth Parameter").props("clearable").classes("w-full")
-            edit_url_endpoint = ui.input(label="URL Endpoint").props("clearable").classes("w-full")
+            edit_auth_parameter = ui.input(label="Auth Parameter").classes("w-full")
+            edit_url_endpoint = ui.input(label="URL Endpoint").classes("w-full")
             ui.label("URL Endpoint is required when Self Managed is checked").classes("text-xs text-gray-500")
-            ui.label("A service cannot be unassigned. Close without updating to cancel a change.").classes(
-                "text-xs text-gray-500"
-            )
+            ui.label(
+                "Fields cannot be blanked here; the API treats an empty field as unchanged. "
+                "A service cannot be unassigned. Close without updating to cancel a change."
+            ).classes("text-xs text-gray-500")
             with ui.row().classes("gap-2"):
                 edit_update_button = ui.button("Update Inbound Number", color="primary")
                 ui.button("Close", on_click=edit_dialog.close, color="gray")
@@ -400,15 +407,9 @@ async def inbound_numbers_page() -> None:
                     "Inbound number updated, but cache is missing. Run sync to refresh.",
                     color="warning",
                 )
-            selected_number["number"] = number_val
-            selected_number["provider"] = provider
-            selected_number["active"] = active
-            selected_number["self_managed"] = self_managed
-            selected_number["auth_parameter"] = auth_parameter
-            selected_number["url_endpoint"] = url_endpoint
-            if service_id is not None:
-                selected_number["service_id"] = service_id
-            update_edit_fields(resolve_selected_number())
+            # No local write-back here.  render_table opens with selected_number.clear()
+            # followed by update_edit_fields(None), so any value written to the dict or
+            # to the dialog inputs at this point is discarded before it can be read.
             edit_dialog.close()
             await refresh_if_needed(render_table)
 

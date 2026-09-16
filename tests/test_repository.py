@@ -1303,7 +1303,6 @@ async def test_update_inbound_number_sets_service(initialized_db):
 
     numbers = await list_inbound_numbers(environment="dev")
     assert numbers[0].service_id == "svc-9"
-    assert numbers[0].service_name == "Nine"
 
 
 @pytest.mark.asyncio
@@ -1316,7 +1315,6 @@ async def test_update_inbound_number_none_service_id_leaves_service_intact(initi
                 environment="dev",
                 number="+15551234567",
                 service_id="svc-9",
-                service_name="Nine",
             )
         )
         await session.commit()
@@ -1330,12 +1328,11 @@ async def test_update_inbound_number_none_service_id_leaves_service_intact(initi
 
     numbers = await list_inbound_numbers(environment="dev")
     assert numbers[0].service_id == "svc-9"
-    assert numbers[0].service_name == "Nine"
     assert numbers[0].number == "+15559999999"
 
 
 @pytest.mark.asyncio
-async def test_update_inbound_number_unknown_service_keeps_id_without_name(initialized_db):
+async def test_update_inbound_number_accepts_an_uncached_service_id(initialized_db):
     async with get_session() as session:
         session.add(InboundNumber(id="n1", environment="dev", number="+15551234567"))
         await session.commit()
@@ -1352,55 +1349,6 @@ async def test_update_inbound_number_unknown_service_keeps_id_without_name(initi
     async with get_session() as session:
         record = (await session.execute(select(InboundNumber).where(InboundNumber.id == "n1"))).scalar_one()
         assert record.service_id == "svc-not-cached"
-        assert record.service_name is None
-
-
-@pytest.mark.asyncio
-async def test_update_inbound_number_resolves_service_name_within_its_environment(initialized_db):
-    async with get_session() as session:
-        session.add(Service(id="svc-dup", name="Dev Name", active=True, environment="dev"))
-        session.add(Service(id="svc-dup", name="Staging Name", active=True, environment="staging"))
-        session.add(InboundNumber(id="n1", environment="staging", number="+15551234567"))
-        await session.commit()
-
-    updated = await update_inbound_number(
-        inbound_number_id="n1",
-        service_id="svc-dup",
-        environment=None,
-    )
-    assert updated is True
-
-    async with get_session() as session:
-        row = (await session.execute(select(InboundNumber).where(InboundNumber.id == "n1"))).scalars().first()
-    assert row.service_name == "Staging Name"
-
-
-@pytest.mark.asyncio
-async def test_update_inbound_number_reassignment_clears_a_stale_service_name(initialized_db):
-    async with get_session() as session:
-        session.add(Service(id="svc-9", name="Nine", active=True, environment="dev"))
-        session.add(
-            InboundNumber(
-                id="n1",
-                environment="dev",
-                number="+15551234567",
-                service_id="svc-9",
-                service_name="Nine",
-            )
-        )
-        await session.commit()
-
-    updated = await update_inbound_number(
-        inbound_number_id="n1",
-        service_id="svc-not-cached",
-        environment="dev",
-    )
-    assert updated is True
-
-    async with get_session() as session:
-        row = (await session.execute(select(InboundNumber).where(InboundNumber.id == "n1"))).scalars().first()
-    assert row.service_id == "svc-not-cached"
-    assert row.service_name is None
 
 
 @pytest.mark.asyncio
@@ -2638,6 +2586,34 @@ async def test_archived_services_excluded_from_entity_queries(initialized_db):
 
     numbers = await list_inbound_numbers(environment="dev")
     assert [n.id for n in numbers] == ["n1"]
+
+
+@pytest.mark.asyncio
+async def test_archive_prefix_is_matched_literally_not_as_a_wildcard(initialized_db):
+    """``_`` in the archive prefix must be a literal underscore, not a LIKE wildcard.
+
+    ``list_service_callbacks`` is used as the probe because it applies a bare
+    ``IN (_active_service_ids)`` with no Python ``_is_archived`` post-filter and no
+    OR-NULL branch, so the assertion isolates the subquery's LIKE pattern.
+    """
+    async with get_session() as session:
+        session.add(Service(id="svc-archived", name="_archive_Old Service", active=False, environment="dev"))
+        session.add(Service(id="svc-lookalike", name="Zarchive Test", active=True, environment="dev"))
+        session.add(Service(id="svc-normal", name="Normal Service", active=True, environment="dev"))
+        session.add(
+            ServiceCallback(id="cb-archived", environment="dev", service_id="svc-archived", url="https://a.com")
+        )
+        session.add(
+            ServiceCallback(id="cb-lookalike", environment="dev", service_id="svc-lookalike", url="https://b.com")
+        )
+        session.add(ServiceCallback(id="cb-normal", environment="dev", service_id="svc-normal", url="https://c.com"))
+        await session.commit()
+
+    callbacks = await list_service_callbacks(environment="dev")
+
+    # A literal "_archive" prefix is still excluded, and an ordinary name is unaffected.
+    # "Zarchive Test" only matched because LIKE treats "_" as "any single character".
+    assert sorted(cb.id for cb in callbacks) == ["cb-lookalike", "cb-normal"]
 
 
 @pytest.mark.asyncio

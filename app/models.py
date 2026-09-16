@@ -175,7 +175,6 @@ class InboundNumber(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     self_managed: Mapped[bool] = mapped_column(Boolean, default=False)
     service_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    service_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     auth_parameter: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     url_endpoint: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 

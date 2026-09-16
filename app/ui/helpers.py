@@ -122,7 +122,18 @@ COPYABLE_CELL_SLOT = """
 
 
 def copy_to_clipboard(text: Any) -> None:
+    """Copy *text* to the client clipboard, or report that there was nothing to copy.
+
+    The early return must stay ahead of ``run_javascript``: a null cell (e.g. the
+    ``service_id`` of an unassigned inbound number) would otherwise overwrite whatever
+    the user already had on their clipboard with an empty string, and then claim
+    success.  ``str(text)`` is checked rather than *text* itself so that ``0`` still
+    copies as ``"0"``.
+    """
     value = "" if text is None else str(text)
+    if not value:
+        safe_notify("Nothing to copy", color="warning")
+        return
     ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(value)})")
     safe_notify(f'Copied "{value}" to clipboard!', color="green")
 

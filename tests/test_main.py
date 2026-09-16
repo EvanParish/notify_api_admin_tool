@@ -1672,19 +1672,62 @@ class TestCopyToClipboard:
     def test_calls_run_javascript(self):
         with (
             patch("app.ui.helpers.ui.run_javascript") as mock_js,
-            patch("app.ui.state.safe_notify"),
+            patch("app.ui.helpers.safe_notify") as mock_notify,
         ):
             helpers.copy_to_clipboard("hello")
             mock_js.assert_called_once()
-            assert "hello" in mock_js.call_args[0][0]
+            assert mock_js.call_args[0][0] == 'navigator.clipboard.writeText("hello")'
+            mock_notify.assert_called_once_with('Copied "hello" to clipboard!', color="green")
 
-    def test_none_value(self):
+    def test_payload_is_json_encoded(self):
+        """Quotes and backslashes must not break out of the JS string literal."""
         with (
             patch("app.ui.helpers.ui.run_javascript") as mock_js,
-            patch("app.ui.state.safe_notify"),
+            patch("app.ui.helpers.safe_notify"),
+        ):
+            helpers.copy_to_clipboard('a"b\\c')
+            assert mock_js.call_args[0][0] == 'navigator.clipboard.writeText("a\\"b\\\\c")'
+
+    def test_none_does_not_touch_clipboard(self):
+        """A null service_id must not clobber the clipboard with an empty string."""
+        with (
+            patch("app.ui.helpers.ui.run_javascript") as mock_js,
+            patch("app.ui.helpers.safe_notify") as mock_notify,
         ):
             helpers.copy_to_clipboard(None)
+            mock_js.assert_not_called()
+            mock_notify.assert_called_once_with("Nothing to copy", color="warning")
+
+    def test_empty_string_does_not_touch_clipboard(self):
+        with (
+            patch("app.ui.helpers.ui.run_javascript") as mock_js,
+            patch("app.ui.helpers.safe_notify") as mock_notify,
+        ):
+            helpers.copy_to_clipboard("")
+            mock_js.assert_not_called()
+            mock_notify.assert_called_once_with("Nothing to copy", color="warning")
+
+    def test_zero_is_copied(self):
+        """The guard tests the stringified value, so 0 copies as "0" rather than
+        being swallowed as falsy.  0 is a real value a user may want."""
+        with (
+            patch("app.ui.helpers.ui.run_javascript") as mock_js,
+            patch("app.ui.helpers.safe_notify") as mock_notify,
+        ):
+            helpers.copy_to_clipboard(0)
             mock_js.assert_called_once()
+            assert mock_js.call_args[0][0] == 'navigator.clipboard.writeText("0")'
+            mock_notify.assert_called_once_with('Copied "0" to clipboard!', color="green")
+
+    def test_false_is_copied_as_python_repr(self):
+        """Pins pre-existing behaviour: ``str(False)`` is ``"False"``, not JS ``"false"``.
+        No COPYABLE_FIELDS entry is a boolean, so this path is not reachable today."""
+        with (
+            patch("app.ui.helpers.ui.run_javascript") as mock_js,
+            patch("app.ui.helpers.safe_notify"),
+        ):
+            helpers.copy_to_clipboard(False)
+            assert mock_js.call_args[0][0] == 'navigator.clipboard.writeText("False")'
 
 
 class TestAddCopyableSlots:
