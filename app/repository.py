@@ -194,6 +194,24 @@ async def update_service(
         return True
 
 
+async def update_service_permissions(service_id: str, permissions: list[str], environment: str) -> bool:
+    """Write the verified permission set to the local cache.
+
+    ``environment`` is required, unlike ``update_service``: a permission write must never
+    land on a row belonging to a different environment.
+    """
+    async with get_session() as session:
+        result = await session.execute(
+            select(Service).where(Service.id == service_id, Service.environment == environment)
+        )
+        service = result.scalars().first()
+        if not service:
+            return False
+        service.permissions = json.dumps(list(permissions))
+        await session.commit()
+        return True
+
+
 async def list_templates(
     service_id: str | list[str] | None = None,
     template_type: str | None = None,

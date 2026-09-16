@@ -79,3 +79,15 @@ def mock_config():
 def mock_encryption(mock_config):
     """Create a mock encryption manager."""
     return EncryptionManager(mock_config.master_key, salt_provider=DbSaltProvider())
+
+
+@pytest.fixture(scope="function", autouse=True)
+def reset_mock_permission_store():
+    """MockNotificationAPI keeps permissions in a class-level store so the multi-call
+    permission flow is coherent in mock mode. Clear it so tests cannot leak into each other.
+    """
+    from app.api_client import MockNotificationAPI
+
+    MockNotificationAPI.reset_permission_store()
+    yield
+    MockNotificationAPI.reset_permission_store()

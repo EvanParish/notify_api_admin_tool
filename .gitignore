@@ -1,5 +1,9 @@
 # my ignore files
 test_output.txt
+# Untracked on purpose. docker-entrypoint.sh chowns this to APP_UID:APP_GID at container
+# start, so it does not need to pre-exist as a tracked directory, and local runs get it
+# from init_engine's os.makedirs. Tracking a .gitkeep here actively broke `git pull` for
+# anyone whose data/ had been created as root by the Docker daemon.
 data/
 logs/
 *.log

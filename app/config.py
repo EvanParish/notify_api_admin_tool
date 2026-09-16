@@ -1,9 +1,22 @@
 import json
 import os
-from typing import Dict
+from typing import Dict, Set
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
+
+# Environment names that are NOT production. Anything absent from this set is treated as
+# production by ``permission_helpers.is_protected_environment``, so a newly added
+# environment, a typo, or a tunnelled GovCloud target all fail closed into the
+# maximum-friction path. Production-ness is DECLARED here, never inferred from a URL: a
+# port-forwarded production API is reached on localhost and no hostname heuristic can see
+# through the tunnel.
+#
+# Both naming conventions live in this repo: load_config()'s built-in defaults use
+# development/production while .env.example uses dev/prod, so both spellings are listed.
+DEFAULT_NON_PRODUCTION_ENVIRONMENTS = frozenset(
+    {"dev", "development", "local", "test", "perf", "sandbox", "staging", "stage"}
+)
 
 
 def _parse_bool(value: str | None, default: bool) -> bool:
@@ -21,6 +34,26 @@ class AppConfig(BaseModel):
     request_timeout: float = 30.0
     port: int = 8080
     container_host: str | None = None
+    non_production_environments: Set[str] = Field(default_factory=lambda: set(DEFAULT_NON_PRODUCTION_ENVIRONMENTS))
+
+    @field_validator("non_production_environments", mode="before")
+    @classmethod
+    def parse_non_production_environments(cls, value):
+        """Comma-separated env names, trimmed and lowercased, blanks ignored.
+
+        ``None`` (the var is absent) yields the default set. An explicitly empty or
+        all-blank string yields an EMPTY set, which marks every environment production.
+        That distinction is deliberate and it fails in the safe direction: someone who
+        writes ``NON_PRODUCTION_ENVIRONMENTS=`` gets maximum friction everywhere, not a
+        silent fallback to a permissive default they did not ask for.
+        """
+        if value is None:
+            return set(DEFAULT_NON_PRODUCTION_ENVIRONMENTS)
+        if isinstance(value, str):
+            return {part.strip().lower() for part in value.split(",") if part.strip()}
+        if isinstance(value, (set, frozenset, list, tuple)):
+            return {str(part).strip().lower() for part in value if str(part).strip()}
+        return set(DEFAULT_NON_PRODUCTION_ENVIRONMENTS)
 
     @field_validator("api_hosts", mode="before")
     @classmethod
@@ -95,6 +128,7 @@ def load_config() -> AppConfig:
         request_timeout=os.getenv("REQUEST_TIMEOUT", "30"),
         port=os.getenv("PORT", "8080"),
         container_host=os.getenv("CONTAINER_HOST"),
+        non_production_environments=os.getenv("NON_PRODUCTION_ENVIRONMENTS"),
     )
 
     # When running in Docker, remap localhost URLs to reach the host machine.

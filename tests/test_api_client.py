@@ -1836,3 +1836,176 @@ async def test_retry_log_without_service_id(caplog):
     messages = [rec.getMessage() for rec in caplog.records]
     assert any("ReadTimeout" in m and "get_services" in m for m in messages)
     assert not any("for service" in m for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_base_api_get_service_not_implemented():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.get_service("svc-1")
+
+
+@pytest.mark.asyncio
+async def test_base_api_update_service_permissions_not_implemented():
+    api = NotificationAPI()
+    with pytest.raises(NotImplementedError):
+        await api.update_service_permissions("svc-1", ["email"])
+
+
+@pytest.mark.asyncio
+async def test_mock_api_get_service_defaults():
+    api = MockNotificationAPI()
+    service = await api.get_service("svc-1")
+
+    assert service["id"] == "svc-1"
+    assert service["name"] == "Test Service"
+    assert service["permissions"] == ["email", "sms"]
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_service_permissions_persists_across_instances():
+    # build_api_client returns a NEW client per call, and the dialog flow spans several
+    # calls (read, re-read, update, verify). The mock store is class-level so the flow is
+    # coherent in mock mode; tests/conftest.py resets it between tests.
+    await MockNotificationAPI().update_service_permissions("svc-1", ["email"])
+    service = await MockNotificationAPI().get_service("svc-1")
+
+    assert service["permissions"] == ["email"]
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_service_permissions_can_clear_everything():
+    api = MockNotificationAPI()
+    result = await api.update_service_permissions("svc-1", [])
+
+    assert result["permissions"] == []
+    assert (await api.get_service("svc-1"))["permissions"] == []
+
+
+@pytest.mark.asyncio
+async def test_mock_api_permission_store_is_per_service():
+    api = MockNotificationAPI()
+    await api.update_service_permissions("svc-1", ["push"])
+
+    assert (await api.get_service("svc-2"))["permissions"] == ["email", "sms"]
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_service():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "svc-1", "name": "VEText", "permissions": ["email"]}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response) as mock_get:
+        result = await api.get_service("svc-1")
+
+    assert result == {"id": "svc-1", "name": "VEText", "permissions": ["email"]}
+    assert mock_get.call_args[0][0] == "https://api.example.com/service/svc-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_service_missing_data_key():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        assert await api.get_service("svc-1") == {}
+
+
+@pytest.mark.asyncio
+async def test_http_api_get_service_non_dict_body():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = ["unexpected"]
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "get", return_value=mock_response):
+        assert await api.get_service("svc-1") == {}
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_permissions_sends_only_permissions():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "svc-1", "permissions": ["email"]}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        result = await api.update_service_permissions("svc-1", ["email"])
+
+    assert result == {"id": "svc-1", "permissions": ["email"]}
+    assert mock_post.call_args[0][0] == "https://api.example.com/service/svc-1"
+    # The runbook forbids sending unrelated service fields on a permission change.
+    assert mock_post.call_args[1]["json"] == {"permissions": ["email"]}
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_permissions_sends_empty_array():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "svc-1", "permissions": []}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        await api.update_service_permissions("svc-1", [])
+
+    # An empty array is a real instruction ("remove everything"), never an omission.
+    assert mock_post.call_args[1]["json"] == {"permissions": []}
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_permissions_does_not_retry_read_timeouts():
+    # A read timeout means the request may have landed. Resending is forbidden by the
+    # runbook, so only connect-phase failures are retried.
+    api = HttpNotificationAPI("https://api.example.com")
+
+    with patch.object(api.client, "post", side_effect=httpx.ReadTimeout("boom")) as mock_post:
+        with pytest.raises(httpx.ReadTimeout):
+            await api.update_service_permissions("svc-1", ["email"])
+
+    assert mock_post.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_permissions_missing_data_key():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response):
+        assert await api.update_service_permissions("svc-1", ["email"]) == {}
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_permissions_non_dict_body():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = ["unexpected"]
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response):
+        assert await api.update_service_permissions("svc-1", ["email"]) == {}
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_service_permissions_retries_connect_errors():
+    """Pin the retry policy's positive half.
+
+    This test and ``test_..._does_not_retry_read_timeouts`` are only meaningful as a pair.
+    The negative test alone passes with NO decorator at all, so it cannot distinguish
+    "retries only connect failures" from "never retries". This one alone passes with the
+    broader ``http_retry``. Together they pin ``http_retry_connect_only`` exactly: connect
+    failures provably never reached the server and are safe to resend, while a read timeout
+    may have already applied a destructive permission replacement.
+    """
+    api = HttpNotificationAPI("https://api.example.com")
+
+    with patch.object(api.client, "post", side_effect=httpx.ConnectError("refused")) as mock_post:
+        with pytest.raises(httpx.ConnectError):
+            await api.update_service_permissions("svc-1", ["email"])
+
+    assert mock_post.call_count == 3  # stop_after_attempt(3)

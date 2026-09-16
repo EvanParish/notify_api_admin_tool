@@ -4,8 +4,23 @@ services:
     container_name: admin-app
     env_file:
       - .env
+    # No `user:` here on purpose. docker-entrypoint.sh must start as root so it can chown
+    # the bind-mounted ./data -- the Docker daemon creates a missing bind source as
+    # root:root, which a non-root container could not write to at all. It then drops to
+    # APP_UID:APP_GID (default 1000) via setpriv, so the app itself never runs as root and
+    # everything under ./data stays readable from the host.
     environment:
       - CONTAINER_HOST=host.docker.internal
+      # Consumed by docker-entrypoint.sh. Declared here as well as in .env so that either
+      # a .env entry or a shell variable works; the entrypoint defaults to 1000 regardless.
+      - APP_UID=${APP_UID:-1000}
+      - APP_GID=${APP_GID:-1000}
+      # NiceGUI persists app.storage.user (the theme preference) to a directory it
+      # creates relative to the CWD, i.e. /app/.nicegui. /app is built as root, so a
+      # container running as the host uid cannot create it. Point it at the bind mount
+      # instead -- writable by that uid, and it survives `up --build`, which the default
+      # location does not.
+      - NICEGUI_STORAGE_PATH=/app/data/.nicegui
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

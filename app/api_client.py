@@ -99,6 +99,12 @@ class NotificationAPI:
     ) -> Dict[str, Any]:
         raise NotImplementedError
 
+    async def get_service(self, service_id: str) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    async def update_service_permissions(self, service_id: str, permissions: List[str]) -> Dict[str, Any]:
+        raise NotImplementedError
+
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -279,6 +285,38 @@ class HttpNotificationAPI(NotificationAPI):
         )
         resp.raise_for_status()
         return resp.json()
+
+    @http_retry
+    async def get_service(self, service_id: str) -> Dict[str, Any]:
+        """Read a single service. The permission editor must never build its proposed
+        array from the local cache, which is a possibly-stale sync snapshot."""
+        resp = await self.client.get(f"{self.base_url}/service/{service_id}", auth=self._basic_auth)
+        resp.raise_for_status()
+        result = resp.json()
+        return result.get("data", {}) if isinstance(result, dict) else {}
+
+    @http_retry_connect_only
+    async def update_service_permissions(self, service_id: str, permissions: List[str]) -> Dict[str, Any]:
+        """Replace the service's ENTIRE permission set.
+
+        This endpoint is not additive. Any permission omitted from *permissions* is removed
+        from the service, and an empty list removes all of them. The body deliberately
+        contains only ``permissions``: the runbook forbids sending unrelated service fields
+        on a permission change.
+
+        ``http_retry_connect_only`` rather than ``http_retry``: full replacement is
+        technically idempotent, but the runbook says not to resend when the outcome is
+        unclear, and connect-phase failures are the only class where the request provably
+        never landed.
+        """
+        resp = await self.client.post(
+            f"{self.base_url}/service/{service_id}",
+            json={"permissions": list(permissions)},
+            auth=self._basic_auth,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        return result.get("data", {}) if isinstance(result, dict) else {}
 
     @http_retry
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
@@ -693,6 +731,17 @@ class MockNotificationAPI(NotificationAPI):
     _CALLBACK_URL = "https://example.com/callback"
     _NOT_SUPPLIED = object()
 
+    _DEFAULT_SERVICE_PERMISSIONS = ("email", "sms")
+    # Class-level on purpose. build_api_client returns a NEW MockNotificationAPI per call,
+    # and the permission flow spans several calls (read, re-read, update, verify). Instance
+    # state would make mock mode report a verification mismatch on every change.
+    # tests/conftest.py resets this between tests.
+    _PERMISSION_STORE: Dict[str, List[str]] = {}
+
+    @classmethod
+    def reset_permission_store(cls) -> None:
+        cls._PERMISSION_STORE.clear()
+
     def __init__(self) -> None:
         self._sleep = 0.1
 
@@ -723,6 +772,25 @@ class MockNotificationAPI(NotificationAPI):
                 "message_limit": message_limit,
                 "rate_limit": rate_limit,
             }
+        }
+
+    async def get_service(self, service_id: str) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        return {
+            "id": service_id,
+            "name": "Test Service",
+            "active": True,
+            "restricted": False,
+            "permissions": list(self._PERMISSION_STORE.get(service_id, self._DEFAULT_SERVICE_PERMISSIONS)),
+        }
+
+    async def update_service_permissions(self, service_id: str, permissions: List[str]) -> Dict[str, Any]:
+        await asyncio.sleep(self._sleep)
+        type(self)._PERMISSION_STORE[service_id] = list(permissions)
+        return {
+            "id": service_id,
+            "name": "Test Service",
+            "permissions": list(permissions),
         }
 
     async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:

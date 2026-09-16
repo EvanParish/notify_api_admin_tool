@@ -12,13 +12,12 @@ import inspect
 import io
 import json
 import logging
-import os
 import re
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from nicegui import ui
 
+from app.ui.artifacts import SEND_RESULTS_DIR, write_json_artifact  # noqa: F401
 from app.ui.state import safe_notify
 
 logger = logging.getLogger(__name__)
@@ -54,6 +53,27 @@ def make_row_key(entity_id: Any, environment: Optional[str]) -> str:
 # ---------------------------------------------------------------------------
 # CSV Export
 # ---------------------------------------------------------------------------
+# Leading characters Excel, LibreOffice Calc, and Google Sheets treat as the start of a
+# formula. Every value in an export is API-controlled text (service names, ids, and now
+# the permissions column), so an unescaped cell is remote code execution in the reviewer's
+# spreadsheet, not just a rendering oddity.
+CSV_FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+def _escape_csv_cell(value: Any) -> Any:
+    """Neutralize spreadsheet formula injection by prefixing a single quote.
+
+    Only ``str`` values are touched. The quote is what every spreadsheet reads as "the
+    rest of this cell is literal text", and it is the standard mitigation; the cost is
+    that a genuinely negative number arriving as the string ``-5`` exports as ``'-5``.
+    That trade is correct for this tool: no column here is numeric, and a mangled cell is
+    recoverable while an executed formula is not.
+    """
+    if isinstance(value, str) and value.startswith(CSV_FORMULA_PREFIXES):
+        return f"'{value}"
+    return value
+
+
 def rows_to_csv(rows: List[Dict[str, Any]], columns: List[Dict[str, Any]]) -> str:
     """Convert table rows to CSV string using column definitions."""
     output = io.StringIO()
@@ -64,7 +84,7 @@ def rows_to_csv(rows: List[Dict[str, Any]], columns: List[Dict[str, Any]]) -> st
     writer = csv.writer(output)
     writer.writerow(labels)
     for row in rows:
-        writer.writerow([row.get(field, "") for field in fields])
+        writer.writerow([_escape_csv_cell(row.get(field, "")) for field in fields])
 
     return output.getvalue()
 
@@ -351,7 +371,8 @@ def parse_recipients(value: str) -> List[str]:
 # ---------------------------------------------------------------------------
 # Send result persistence
 # ---------------------------------------------------------------------------
-SEND_RESULTS_DIR = "data/send_response"
+# Re-exported from app.ui.artifacts, which owns it so app.ui.state can import it
+# without a cycle through this module.
 
 
 def write_send_results(prefix: str, payload: Dict[str, Any], directory: str = SEND_RESULTS_DIR) -> str:
@@ -359,9 +380,4 @@ def write_send_results(prefix: str, payload: Dict[str, Any], directory: str = SE
 
     Returns the path of the written file.
     """
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-    os.makedirs(directory, exist_ok=True)
-    file_path = os.path.join(directory, f"{prefix}_{timestamp}.json")
-    with open(file_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, default=str)
-    return file_path
+    return write_json_artifact(prefix, payload, directory)

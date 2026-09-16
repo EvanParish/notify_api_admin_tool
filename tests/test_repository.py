@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 import logging
 
 import pytest
@@ -2709,3 +2710,55 @@ async def test_prune_service_callbacks_is_scoped_to_service_and_environment(init
     assert await list_service_callbacks(service_id="svc-1", environment="dev") == []
     assert len(await list_service_callbacks(service_id="svc-2", environment="dev")) == 1
     assert len(await list_service_callbacks(service_id="svc-1", environment="staging")) == 1
+
+
+class TestUpdateServicePermissions:
+    @pytest.mark.asyncio
+    async def test_writes_json_array(self, initialized_db):
+        from app.repository import list_services, update_service_permissions, upsert_services
+
+        await upsert_services([{"id": "svc-1", "name": "VEText", "permissions": ["email"]}], "production")
+        assert await update_service_permissions("svc-1", ["email", "sms"], "production") is True
+
+        rows = await list_services("production")
+        assert json.loads(rows[0].permissions) == ["email", "sms"]
+
+    @pytest.mark.asyncio
+    async def test_writes_empty_array(self, initialized_db):
+        from app.repository import list_services, update_service_permissions, upsert_services
+
+        await upsert_services([{"id": "svc-1", "name": "VEText", "permissions": ["email"]}], "production")
+        assert await update_service_permissions("svc-1", [], "production") is True
+
+        rows = await list_services("production")
+        assert json.loads(rows[0].permissions) == []
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_row_is_missing(self, initialized_db):
+        from app.repository import update_service_permissions
+
+        assert await update_service_permissions("nope", ["email"], "production") is False
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_the_row_belongs_to_another_environment(self, initialized_db):
+        from app.repository import list_services, update_service_permissions, upsert_services
+
+        await upsert_services([{"id": "svc-1", "name": "VEText", "permissions": ["email"]}], "staging")
+
+        assert await update_service_permissions("svc-1", ["push"], "production") is False
+        assert json.loads((await list_services("staging"))[0].permissions) == ["email"]
+
+    @pytest.mark.asyncio
+    async def test_does_not_touch_other_environments(self, initialized_db):
+        from app.repository import list_services, update_service_permissions, upsert_services
+
+        await upsert_services([{"id": "svc-1", "name": "VEText", "permissions": ["email"]}], "production")
+        await upsert_services([{"id": "svc-1", "name": "VEText", "permissions": ["email"]}], "staging")
+
+        # Both environments are written with distinct values so the assertions fail no
+        # matter which row an unscoped query would happen to select first.
+        assert await update_service_permissions("svc-1", ["push"], "production") is True
+        assert await update_service_permissions("svc-1", ["sms"], "staging") is True
+
+        assert json.loads((await list_services("production"))[0].permissions) == ["push"]
+        assert json.loads((await list_services("staging"))[0].permissions) == ["sms"]

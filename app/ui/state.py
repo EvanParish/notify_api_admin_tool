@@ -28,6 +28,8 @@ from app.repository import (
     migrate_plaintext_users_to_encrypted,
     set_setting,
 )
+from app.ui.artifacts import SEND_RESULTS_DIR, describe_unwritable_paths
+from app.ui.permission_helpers import PERMISSION_CHANGES_DIR, is_protected_environment
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +88,52 @@ if not os.getenv("PYTEST_CURRENT_TEST"):
 # ---------------------------------------------------------------------------
 # Startup / shutdown
 # ---------------------------------------------------------------------------
-@app.on_startup
+def required_writable_paths() -> list[str]:
+    """Directories the app must be able to create files in, or it cannot function.
+
+    The NiceGUI storage directory is included because it is created relative to the
+    working directory by default, which in the container is the root-owned ``/app``.
+    """
+    return [
+        os.path.dirname(os.path.abspath(config.database_path)),
+        PERMISSION_CHANGES_DIR,
+        SEND_RESULTS_DIR,
+        os.environ.get("NICEGUI_STORAGE_PATH", ".nicegui"),
+    ]
+
+
+def check_required_paths_writable() -> None:
+    """Fail fast, and legibly, when a required directory is not writable.
+
+    Without this the same condition surfaces later as a ``PermissionError`` from SQLite
+    or NiceGUI internals, minutes into a session and nowhere near its cause.
+    """
+    problems = describe_unwritable_paths(required_writable_paths())
+    if not problems:
+        return
+    detail = "\n".join(f"  - {p}" for p in problems)
+    raise RuntimeError(
+        "Required directories are not writable:\n"
+        f"{detail}\n"
+        "If you run this in Docker, the Docker daemon creates a missing bind-mount "
+        "source as root, and an earlier container may have run as root. Fix ownership "
+        "on the host with:\n"
+        "  sudo chown -R $(id -u):$(id -g) data/\n"
+        "and set APP_UID/APP_GID in .env if your user is not 1000."
+    )
+
+
 async def startup() -> None:
+    check_required_paths_writable()
     await create_all()
     await ensure_default_hosts()
     await migrate_plaintext_users_to_encrypted(encryption=encryption)
+
+
+# Registered by call rather than as a decorator: app.on_startup returns None, so
+# `@app.on_startup` rebinds the module-level name to None. NiceGUI still runs the handler,
+# but nothing can reference it afterwards -- which is why the startup sequence had no test.
+app.on_startup(startup)
 
 
 @app.on_shutdown
@@ -142,10 +185,34 @@ async def ensure_default_hosts() -> None:
             await set_setting(f"base_url_{env}", url)
 
 
+async def get_raw_base_url(env: str) -> str | None:
+    """Configured base URL for *env* BEFORE any CONTAINER_HOST remapping.
+
+    No longer used for risk classification -- ``is_env_protected`` reads the declared
+    non-production allowlist instead, because no URL can reveal that a tunnelled
+    ``localhost`` is really GovCloud production. This is the value ``build_api_client``
+    starts from, and the pre-remap distinction still matters there: ``config._remap_host``
+    rewrites ``localhost``/``127.0.0.1`` to ``CONTAINER_HOST``, so the remap must be
+    applied once, by the caller that actually opens the connection, and never baked into
+    the stored setting.
+    """
+    return await get_setting(f"base_url_{env}") or config.api_hosts.get(env)
+
+
+async def is_env_protected(env: str) -> bool:
+    """True when *env* should be treated as production for confirmation purposes.
+
+    Anything not on ``config.non_production_environments`` is production. Note this is
+    keyed on the environment NAME, not its URL, so it holds for a tunnelled or
+    port-forwarded production API.
+    """
+    return is_protected_environment(env, config.non_production_environments)
+
+
 async def build_api_client(env: str) -> NotificationAPI:
     if config.use_mock_api:
         return MockNotificationAPI()
-    base_url = await get_setting(f"base_url_{env}") or config.api_hosts.get(env)
+    base_url = await get_raw_base_url(env)
     if not base_url:
         raise RuntimeError(f"Base URL missing for environment {env}")
     if config.container_host:

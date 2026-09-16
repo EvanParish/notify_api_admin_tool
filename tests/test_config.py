@@ -2,7 +2,13 @@ import json
 import os
 import pytest
 from unittest.mock import patch
-from app.config import AppConfig, _parse_bool, _remap_host, load_config
+from app.config import (
+    DEFAULT_NON_PRODUCTION_ENVIRONMENTS,
+    AppConfig,
+    _parse_bool,
+    _remap_host,
+    load_config,
+)
 
 
 def test_parse_bool_true_values():
@@ -258,3 +264,85 @@ def test_load_config_default_port():
     with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
         config = load_config()
         assert config.port == 8080
+
+
+# ---------------------------------------------------------------------------
+# NON_PRODUCTION_ENVIRONMENTS
+#
+# The allowlist replaced a URL-sniffing heuristic that could not see through an SSH or
+# `kubectl port-forward` tunnel to GovCloud production. Anything NOT parsed into this set
+# is treated as production, so parsing bugs fail closed by construction — but a parsing
+# bug that ADDS a name (a stray blank, a case mismatch) fails open, which is what these
+# tests pin.
+# ---------------------------------------------------------------------------
+def test_default_non_production_environments_covers_both_naming_conventions():
+    # load_config()'s built-in API_PUBLIC_HOSTS defaults use development/production while
+    # .env.example uses dev/prod. Both spellings must be non-production or a stock install
+    # gets maximum friction on its dev environment.
+    assert DEFAULT_NON_PRODUCTION_ENVIRONMENTS == frozenset(
+        {"dev", "development", "local", "test", "perf", "sandbox", "staging", "stage"}
+    )
+    assert "prod" not in DEFAULT_NON_PRODUCTION_ENVIRONMENTS
+    assert "production" not in DEFAULT_NON_PRODUCTION_ENVIRONMENTS
+
+
+def test_non_production_environments_defaults_when_the_field_is_absent():
+    config = AppConfig(master_key="test-key")
+    assert config.non_production_environments == set(DEFAULT_NON_PRODUCTION_ENVIRONMENTS)
+
+
+def test_load_config_non_production_environments_defaults_when_the_var_is_absent():
+    env = {"MASTER_KEY": "test-key"}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+    assert config.non_production_environments == set(DEFAULT_NON_PRODUCTION_ENVIRONMENTS)
+
+
+def test_load_config_non_production_environments_from_csv_with_spaces():
+    env = {"MASTER_KEY": "test-key", "NON_PRODUCTION_ENVIRONMENTS": " dev ,  qa,staging "}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+    assert config.non_production_environments == {"dev", "qa", "staging"}
+
+
+def test_load_config_non_production_environments_single_value():
+    env = {"MASTER_KEY": "test-key", "NON_PRODUCTION_ENVIRONMENTS": "sandbox"}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+    assert config.non_production_environments == {"sandbox"}
+
+
+def test_load_config_non_production_environments_is_lowercased():
+    env = {"MASTER_KEY": "test-key", "NON_PRODUCTION_ENVIRONMENTS": "DEV,Staging,pErF"}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+    assert config.non_production_environments == {"dev", "staging", "perf"}
+
+
+def test_load_config_non_production_environments_empty_string_protects_everything():
+    # Deliberately NOT a fallback to the default: someone who writes
+    # NON_PRODUCTION_ENVIRONMENTS= is asking for maximum friction everywhere, and that is
+    # the safe direction to resolve the ambiguity in.
+    env = {"MASTER_KEY": "test-key", "NON_PRODUCTION_ENVIRONMENTS": ""}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+    assert config.non_production_environments == set()
+
+
+def test_load_config_non_production_environments_blank_entries_are_dropped():
+    env = {"MASTER_KEY": "test-key", "NON_PRODUCTION_ENVIRONMENTS": "dev,, ,  ,qa,"}
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, env, clear=True):
+        config = load_config()
+    # A "" entry would match a blank environment name if the membership test ever ran
+    # before the blank guard, so blanks must never enter the set.
+    assert config.non_production_environments == {"dev", "qa"}
+
+
+def test_non_production_environments_accepts_a_collection():
+    config = AppConfig(master_key="test-key", non_production_environments=["Dev", " QA "])
+    assert config.non_production_environments == {"dev", "qa"}
+
+
+def test_non_production_environments_falls_back_on_an_unusable_type():
+    config = AppConfig(master_key="test-key", non_production_environments=17)
+    assert config.non_production_environments == set(DEFAULT_NON_PRODUCTION_ENVIRONMENTS)
