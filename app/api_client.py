@@ -204,6 +204,7 @@ class NotificationAPI:
         auth_parameter: str | None = None,
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
+        service_id: str | None = None,
     ) -> Dict[str, Any]:
         raise NotImplementedError
 
@@ -216,6 +217,7 @@ class NotificationAPI:
         auth_parameter: str | None = None,
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
+        service_id: str | None = None,
     ) -> Dict[str, Any]:
         raise NotImplementedError
 
@@ -562,6 +564,7 @@ class HttpNotificationAPI(NotificationAPI):
         auth_parameter: str | None = None,
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
+        service_id: str | None = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "number": number,
@@ -575,6 +578,8 @@ class HttpNotificationAPI(NotificationAPI):
             payload["self_managed"] = self_managed
         if url_endpoint is not None:
             payload["url_endpoint"] = url_endpoint
+        if service_id is not None:
+            payload["service_id"] = service_id
         resp = await self.client.post(
             f"{self.base_url}/inbound-number",
             json=payload,
@@ -594,6 +599,7 @@ class HttpNotificationAPI(NotificationAPI):
         auth_parameter: str | None = None,
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
+        service_id: str | None = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {}
         if number is not None:
@@ -608,6 +614,8 @@ class HttpNotificationAPI(NotificationAPI):
             payload["self_managed"] = self_managed
         if url_endpoint is not None:
             payload["url_endpoint"] = url_endpoint
+        if service_id is not None:
+            payload["service_id"] = service_id
         resp = await self.client.post(
             f"{self.base_url}/inbound-number/{inbound_number_id}",
             json=payload,
@@ -1081,6 +1089,7 @@ class MockNotificationAPI(NotificationAPI):
         auth_parameter: str | None = None,
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
+        service_id: str | None = None,
     ) -> Dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
@@ -1091,7 +1100,7 @@ class MockNotificationAPI(NotificationAPI):
             "self_managed": self_managed if self_managed is not None else False,
             "auth_parameter": auth_parameter,
             "url_endpoint": url_endpoint,
-            "service": None,
+            "service": {"id": service_id, "name": f"Mock Service {service_id}"} if service_id else None,
         }
 
     async def update_inbound_number(
@@ -1103,6 +1112,7 @@ class MockNotificationAPI(NotificationAPI):
         auth_parameter: str | None = None,
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
+        service_id: str | None = None,
     ) -> Dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
@@ -1113,7 +1123,7 @@ class MockNotificationAPI(NotificationAPI):
             "self_managed": self_managed if self_managed is not None else False,
             "auth_parameter": auth_parameter,
             "url_endpoint": url_endpoint,
-            "service": None,
+            "service": {"id": service_id, "name": f"Mock Service {service_id}"} if service_id else None,
         }
 
     async def send_notification(

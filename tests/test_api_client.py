@@ -1524,6 +1524,59 @@ async def test_http_api_update_inbound_number_partial():
         assert payload == {"active": True}
         assert "number" not in payload
         assert "provider" not in payload
+        assert "service_id" not in payload
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_inbound_number_with_service_id():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "inbound-new"}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        await api.create_inbound_number(
+            number="+12025551212",
+            provider="pinpoint",
+            service_id="svc-1",
+        )
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["service_id"] == "svc-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_inbound_number_omits_null_service_id():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "inbound-new"}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        await api.create_inbound_number(
+            number="+12025551212",
+            provider="pinpoint",
+        )
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload == {"number": "+12025551212", "provider": "pinpoint"}
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_inbound_number_with_service_id():
+    api = HttpNotificationAPI("https://api.example.com")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": {"id": "inbound-1"}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(api.client, "post", return_value=mock_response) as mock_post:
+        await api.update_inbound_number(
+            inbound_number_id="inbound-1",
+            service_id="svc-2",
+        )
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload == {"service_id": "svc-2"}
 
 
 @pytest.mark.asyncio
@@ -1542,6 +1595,29 @@ async def test_mock_api_create_inbound_number():
 
 
 @pytest.mark.asyncio
+async def test_mock_api_create_inbound_number_echoes_supplied_service():
+    api = MockNotificationAPI()
+    result = await api.create_inbound_number(
+        number="+12025551212",
+        provider="pinpoint",
+        service_id="svc-1",
+    )
+
+    assert result["service"] == {"id": "svc-1", "name": "Mock Service svc-1"}
+
+
+@pytest.mark.asyncio
+async def test_mock_api_create_inbound_number_without_service_id_returns_no_service():
+    api = MockNotificationAPI()
+    result = await api.create_inbound_number(
+        number="+12025551212",
+        provider="pinpoint",
+    )
+
+    assert result["service"] is None
+
+
+@pytest.mark.asyncio
 async def test_mock_api_update_inbound_number():
     api = MockNotificationAPI()
     result = await api.update_inbound_number(
@@ -1553,6 +1629,35 @@ async def test_mock_api_update_inbound_number():
     assert result["id"] == "inbound-1"
     assert result["number"] == "+12025559999"
     assert result["active"] is False
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_inbound_number_echoes_supplied_service():
+    api = MockNotificationAPI()
+    result = await api.update_inbound_number(
+        inbound_number_id="inbound-1",
+        service_id="svc-1",
+    )
+
+    assert result["service"] == {"id": "svc-1", "name": "Mock Service svc-1"}
+
+
+@pytest.mark.asyncio
+async def test_mock_api_update_inbound_number_without_service_id_returns_no_service():
+    # Unlike update_service_callback, returning None for an omitted key is safe here
+    # because this return value never reaches the cache.  Both UI call sites in
+    # inbound_numbers.py bare-await the response and discard it; the cache is updated
+    # separately via repository.update_inbound_number.  upsert_inbound_numbers is fed
+    # solely from sync's get_inbound_numbers, so this service=None -- which would map
+    # to service_id/service_name=None -- never reaches session.merge to blank a
+    # cached assignment.
+    api = MockNotificationAPI()
+    result = await api.update_inbound_number(
+        inbound_number_id="inbound-1",
+        active=True,
+    )
+
+    assert result["service"] is None
 
 
 @pytest.mark.asyncio

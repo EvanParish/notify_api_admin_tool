@@ -15,6 +15,7 @@ from app.repository import (
     resolve_local_key,
     list_api_keys,
     list_inbound_numbers,
+    UNASSIGNED_SERVICE_FILTER,
     list_service_callbacks,
     list_sms_senders,
     list_provider_details,
@@ -1175,6 +1176,87 @@ async def test_list_inbound_numbers_by_environment(initialized_db):
 
 
 @pytest.mark.asyncio
+async def test_list_inbound_numbers_unassigned_only(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
+        session.add(InboundNumber(id="n2", environment="dev", number="+2222"))
+        await session.commit()
+
+    numbers = await list_inbound_numbers(service_id=UNASSIGNED_SERVICE_FILTER)
+    assert [n.id for n in numbers] == ["n2"]
+
+
+@pytest.mark.asyncio
+async def test_list_inbound_numbers_unassigned_plus_service(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(Service(id="svc-2", name="Svc2", active=True, environment="dev"))
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
+        session.add(InboundNumber(id="n2", environment="dev", number="+2222", service_id="svc-2"))
+        session.add(InboundNumber(id="n3", environment="dev", number="+3333"))
+        await session.commit()
+
+    numbers = await list_inbound_numbers(service_id=["svc-1", UNASSIGNED_SERVICE_FILTER])
+    assert sorted(n.id for n in numbers) == ["n1", "n3"]
+
+
+@pytest.mark.asyncio
+async def test_list_inbound_numbers_no_service_filter_returns_all(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
+        session.add(InboundNumber(id="n2", environment="dev", number="+2222"))
+        await session.commit()
+
+    numbers = await list_inbound_numbers()
+    assert sorted(n.id for n in numbers) == ["n1", "n2"]
+
+
+@pytest.mark.asyncio
+async def test_list_inbound_numbers_empty_string_service_id_returns_all(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
+        session.add(InboundNumber(id="n2", environment="dev", number="+2222"))
+        await session.commit()
+
+    numbers = await list_inbound_numbers(service_id="")
+    assert sorted(n.id for n in numbers) == ["n1", "n2"]
+
+
+@pytest.mark.asyncio
+async def test_list_inbound_numbers_empty_string_is_ignored_alongside_the_sentinel(initialized_db):
+    # Characterization guard, not a driver: this passes with or without the `sid and`
+    # filter in _service_filter_with_unassigned, because n3 is dropped by the
+    # archived-service clause either way ("" is neither NULL nor an active service id).
+    # n3 exists so the guard is what excludes it once that clause is loosened -- without
+    # the guard the filter degrades to `IN ('') OR IS NULL`, which would then match n3.
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
+        session.add(InboundNumber(id="n2", environment="dev", number="+2222"))
+        session.add(InboundNumber(id="n3", environment="dev", number="+3333", service_id=""))
+        await session.commit()
+
+    numbers = await list_inbound_numbers(service_id=["", UNASSIGNED_SERVICE_FILTER])
+    assert [n.id for n in numbers] == ["n2"]
+
+
+@pytest.mark.asyncio
+async def test_list_inbound_numbers_unassigned_is_environment_scoped(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-1", name="Svc1", active=True, environment="dev"))
+        session.add(InboundNumber(id="n1", environment="dev", number="+1111", service_id="svc-1"))
+        session.add(InboundNumber(id="n2", environment="dev", number="+2222"))
+        session.add(InboundNumber(id="n3", environment="staging", number="+3333"))
+        await session.commit()
+
+    numbers = await list_inbound_numbers(service_id=UNASSIGNED_SERVICE_FILTER, environment="dev")
+    assert [n.id for n in numbers] == ["n2"]
+
+
+@pytest.mark.asyncio
 async def test_update_inbound_number(initialized_db):
     async with get_session() as session:
         session.add(
@@ -1203,6 +1285,122 @@ async def test_update_inbound_number(initialized_db):
         assert record.number == "+15559876543"
         assert record.active is False
         assert record.url_endpoint == "https://example.com/callback"
+
+
+@pytest.mark.asyncio
+async def test_update_inbound_number_sets_service(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-9", name="Nine", active=True, environment="dev"))
+        session.add(InboundNumber(id="n1", environment="dev", number="+15551234567"))
+        await session.commit()
+
+    updated = await update_inbound_number(
+        inbound_number_id="n1",
+        service_id="svc-9",
+        environment="dev",
+    )
+    assert updated is True
+
+    numbers = await list_inbound_numbers(environment="dev")
+    assert numbers[0].service_id == "svc-9"
+    assert numbers[0].service_name == "Nine"
+
+
+@pytest.mark.asyncio
+async def test_update_inbound_number_none_service_id_leaves_service_intact(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-9", name="Nine", active=True, environment="dev"))
+        session.add(
+            InboundNumber(
+                id="n1",
+                environment="dev",
+                number="+15551234567",
+                service_id="svc-9",
+                service_name="Nine",
+            )
+        )
+        await session.commit()
+
+    updated = await update_inbound_number(
+        inbound_number_id="n1",
+        number="+15559999999",
+        environment="dev",
+    )
+    assert updated is True
+
+    numbers = await list_inbound_numbers(environment="dev")
+    assert numbers[0].service_id == "svc-9"
+    assert numbers[0].service_name == "Nine"
+    assert numbers[0].number == "+15559999999"
+
+
+@pytest.mark.asyncio
+async def test_update_inbound_number_unknown_service_keeps_id_without_name(initialized_db):
+    async with get_session() as session:
+        session.add(InboundNumber(id="n1", environment="dev", number="+15551234567"))
+        await session.commit()
+
+    updated = await update_inbound_number(
+        inbound_number_id="n1",
+        service_id="svc-not-cached",
+        environment="dev",
+    )
+    assert updated is True
+
+    # NOTE: list_inbound_numbers() filters out rows whose service_id is not a cached,
+    # non-archived Service, so it cannot observe this row.  Read it directly.
+    async with get_session() as session:
+        record = (await session.execute(select(InboundNumber).where(InboundNumber.id == "n1"))).scalar_one()
+        assert record.service_id == "svc-not-cached"
+        assert record.service_name is None
+
+
+@pytest.mark.asyncio
+async def test_update_inbound_number_resolves_service_name_within_its_environment(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-dup", name="Dev Name", active=True, environment="dev"))
+        session.add(Service(id="svc-dup", name="Staging Name", active=True, environment="staging"))
+        session.add(InboundNumber(id="n1", environment="staging", number="+15551234567"))
+        await session.commit()
+
+    updated = await update_inbound_number(
+        inbound_number_id="n1",
+        service_id="svc-dup",
+        environment=None,
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        row = (await session.execute(select(InboundNumber).where(InboundNumber.id == "n1"))).scalars().first()
+    assert row.service_name == "Staging Name"
+
+
+@pytest.mark.asyncio
+async def test_update_inbound_number_reassignment_clears_a_stale_service_name(initialized_db):
+    async with get_session() as session:
+        session.add(Service(id="svc-9", name="Nine", active=True, environment="dev"))
+        session.add(
+            InboundNumber(
+                id="n1",
+                environment="dev",
+                number="+15551234567",
+                service_id="svc-9",
+                service_name="Nine",
+            )
+        )
+        await session.commit()
+
+    updated = await update_inbound_number(
+        inbound_number_id="n1",
+        service_id="svc-not-cached",
+        environment="dev",
+    )
+    assert updated is True
+
+    async with get_session() as session:
+        row = (await session.execute(select(InboundNumber).where(InboundNumber.id == "n1"))).scalars().first()
+    assert row.service_id == "svc-not-cached"
+    assert row.service_name is None
 
 
 @pytest.mark.asyncio

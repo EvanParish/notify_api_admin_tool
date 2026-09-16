@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from app.api_client import MockNotificationAPI, HttpNotificationAPI
 from app.config import AppConfig
 from app.crypto import EncryptionManager
-from app.repository import DbSaltProvider
+from app.repository import DbSaltProvider, UNASSIGNED_SERVICE_FILTER
 from app.ui import state as _st
 from app.ui import helpers
 from app.ui import email_helpers
@@ -1221,6 +1221,219 @@ class TestResolveServiceName:
 
     def test_empty_service_id_returns_empty(self):
         assert helpers.resolve_service_name("", {"a": "b"}) == ""
+
+
+class TestWithOption:
+    def test_missing_value_is_injected(self):
+        options = {"a": "Alpha"}
+        result = helpers.with_option(options, "b", "Bravo")
+        assert result == {"a": "Alpha", "b": "Bravo"}
+
+    def test_existing_value_keeps_original_label(self):
+        options = {"a": "Alpha"}
+        result = helpers.with_option(options, "a", "Should Not Win")
+        assert result == {"a": "Alpha"}
+
+    def test_none_value_is_ignored(self):
+        options = {"a": "Alpha"}
+        assert helpers.with_option(options, None, "Bravo") == {"a": "Alpha"}
+
+    def test_empty_string_value_is_ignored(self):
+        options = {"a": "Alpha"}
+        assert helpers.with_option(options, "", "Bravo") == {"a": "Alpha"}
+
+    def test_label_defaults_to_value_with_suffix(self):
+        result = helpers.with_option({}, "b")
+        assert result == {"b": "b (not synced)"}
+
+    def test_input_dict_is_not_mutated(self):
+        options = {"a": "Alpha"}
+        helpers.with_option(options, "b", "Bravo")
+        assert options == {"a": "Alpha"}
+
+    def test_pass_through_returns_a_copy(self):
+        options = {"a": "Alpha"}
+        result = helpers.with_option(options, "a")
+        assert result is not options
+        assert result == options
+
+
+class _FakeSelect:
+    def __init__(self):
+        self.calls = []
+
+    def set_options(self, options, *, value=...):
+        self.calls.append((options, value))
+
+
+class TestSetOptionsPreserving:
+    def test_present_value_passes_options_through(self):
+        fake = _FakeSelect()
+        helpers.set_options_preserving(fake, {"a": "Alpha"}, "a")
+        assert fake.calls == [({"a": "Alpha"}, "a")]
+
+    def test_absent_value_is_injected_with_not_synced_label(self):
+        fake = _FakeSelect()
+        helpers.set_options_preserving(fake, {"a": "Alpha"}, "b")
+        assert fake.calls == [({"a": "Alpha", "b": "b (not synced)"}, "b")]
+
+    def test_absent_value_uses_explicit_label(self):
+        fake = _FakeSelect()
+        helpers.set_options_preserving(fake, {"a": "Alpha"}, "b", "Bravo")
+        assert fake.calls == [({"a": "Alpha", "b": "Bravo"}, "b")]
+
+    def test_none_value_leaves_options_unchanged(self):
+        fake = _FakeSelect()
+        helpers.set_options_preserving(fake, {"a": "Alpha"}, None)
+        assert fake.calls == [({"a": "Alpha"}, None)]
+
+    def test_options_and_value_arrive_in_a_single_call(self):
+        fake = _FakeSelect()
+        helpers.set_options_preserving(fake, {}, "b")
+        assert len(fake.calls) == 1
+        options, value = fake.calls[0]
+        assert options == {"b": "b (not synced)"}
+        assert value == "b"
+
+
+class TestBuildServiceFilterOptions:
+    @staticmethod
+    def _service(svc_id="svc-1", name="Alpha", environment="dev"):
+        return SimpleNamespace(id=svc_id, name=name, environment=environment)
+
+    def test_sentinel_is_the_first_key(self):
+        result = page_inbound_numbers.build_service_filter_options([self._service()])
+        assert list(result)[0] == UNASSIGNED_SERVICE_FILTER
+        assert result[UNASSIGNED_SERVICE_FILTER] == page_inbound_numbers.UNASSIGNED_FILTER_LABEL
+
+    def test_services_follow_keyed_by_id(self):
+        services = [self._service(), self._service(svc_id="svc-2", name="Bravo", environment="perf")]
+        result = page_inbound_numbers.build_service_filter_options(services)
+        assert list(result) == [UNASSIGNED_SERVICE_FILTER, "svc-1", "svc-2"]
+        assert result["svc-1"] == "Alpha (dev)"
+        assert result["svc-2"] == "Bravo (perf)"
+
+    def test_empty_services_yields_only_the_sentinel(self):
+        assert page_inbound_numbers.build_service_filter_options([]) == {
+            UNASSIGNED_SERVICE_FILTER: page_inbound_numbers.UNASSIGNED_FILTER_LABEL
+        }
+
+
+class TestFullServiceName:
+    @pytest.mark.parametrize("service_id", [None, ""])
+    def test_falsy_service_id_returns_the_unassigned_label(self, service_id):
+        result = page_inbound_numbers.full_service_name(service_id, {"svc-1": "Alpha"})
+        assert result == page_inbound_numbers.UNASSIGNED_CELL_LABEL
+
+    def test_known_id_returns_the_cached_name(self):
+        assert page_inbound_numbers.full_service_name("svc-1", {"svc-1": "Alpha"}) == "Alpha"
+
+    def test_unknown_id_returns_none_so_not_synced_suffix_survives(self):
+        assert page_inbound_numbers.full_service_name("svc-9", {"svc-1": "Alpha"}) is None
+        # The None is load-bearing: with_option falls back to its own suffix only on a
+        # falsy label.  A bare service_id here would suppress it.
+        assert helpers.with_option({}, "svc-9", None) == {"svc-9": "svc-9 (not synced)"}
+
+
+class TestServiceCellLabel:
+    def test_no_service_reads_as_unassigned(self):
+        result = page_inbound_numbers.service_cell_label(None, {"svc-1": "Alpha"})
+        assert result == page_inbound_numbers.UNASSIGNED_CELL_LABEL
+
+    def test_known_id_returns_the_cached_name(self):
+        assert page_inbound_numbers.service_cell_label("svc-1", {"svc-1": "Alpha"}) == "Alpha"
+
+    def test_empty_cached_name_does_not_read_as_unassigned(self):
+        # Regression guard.  upsert_services stores name="" for a null/absent API name,
+        # and resolve_service_name returns "" for that -- indistinguishable from "no
+        # service" if you gate on its return value instead of on service_id.  Claiming
+        # an assigned number is unassigned is the one way this column can lie.
+        result = page_inbound_numbers.service_cell_label("svc-1", {"svc-1": ""})
+        assert result != page_inbound_numbers.UNASSIGNED_CELL_LABEL
+        assert result == ""
+
+    def test_unknown_id_falls_back_to_the_id(self):
+        assert page_inbound_numbers.service_cell_label("svc-9", {"svc-1": "Alpha"}) == "svc-9"
+
+    def test_long_name_is_truncated_like_the_shared_helper(self):
+        name_map = {"svc-1": "A Very Long Service Name That Overflows"}
+        assert page_inbound_numbers.service_cell_label("svc-1", name_map) == helpers.resolve_service_name(
+            "svc-1", name_map
+        )
+
+
+class TestMatchesInboundSearch:
+    @staticmethod
+    def _number(num_id="n1", number="+12025551212", service_id="svc-1"):
+        return SimpleNamespace(id=num_id, number=number, service_id=service_id)
+
+    NAME_MAP = {"svc-1": "Alpha Team"}
+
+    def test_matches_on_number(self):
+        assert page_inbound_numbers.matches_inbound_search(self._number(), "2025551", self.NAME_MAP)
+
+    def test_matches_on_id(self):
+        assert page_inbound_numbers.matches_inbound_search(self._number(num_id="abc-9"), "abc", self.NAME_MAP)
+
+    def test_matches_on_service_id(self):
+        assert page_inbound_numbers.matches_inbound_search(self._number(), "svc-1", self.NAME_MAP)
+
+    def test_matches_on_service_name_via_the_map(self):
+        assert page_inbound_numbers.matches_inbound_search(self._number(), "alpha", self.NAME_MAP)
+
+    def test_unassigned_query_matches_a_row_with_no_service(self):
+        number = self._number(service_id=None)
+        assert page_inbound_numbers.matches_inbound_search(number, "unassigned", self.NAME_MAP)
+
+    def test_unassigned_query_does_not_match_an_assigned_row(self):
+        assert not page_inbound_numbers.matches_inbound_search(self._number(), "unassigned", self.NAME_MAP)
+
+    def test_assigned_row_named_unassigned_still_matches_via_its_name(self):
+        # Matches for the right reason -- the name-map disjunct, not the label disjunct.
+        name_map = {"svc-1": "Unassigned Claims Unit"}
+        assert page_inbound_numbers.matches_inbound_search(self._number(), "unassigned", name_map)
+
+    def test_empty_query_returns_true(self):
+        assert page_inbound_numbers.matches_inbound_search(self._number(), "", self.NAME_MAP)
+
+    def test_empty_query_returns_true_for_an_unassigned_row(self):
+        assert page_inbound_numbers.matches_inbound_search(self._number(service_id=None), "", self.NAME_MAP)
+
+    def test_non_matching_query_returns_false(self):
+        assert not page_inbound_numbers.matches_inbound_search(self._number(), "zzzz", self.NAME_MAP)
+
+    def test_null_fields_do_not_raise(self):
+        number = SimpleNamespace(id=None, number=None, service_id=None)
+        assert not page_inbound_numbers.matches_inbound_search(number, "zzzz", {})
+
+
+class TestSmsProviderIdentifierOptions:
+    @staticmethod
+    def _provider(identifier="pinpoint", display_name="AWS Pinpoint", notification_type="sms"):
+        return SimpleNamespace(
+            id="provider-uuid-1",
+            identifier=identifier,
+            display_name=display_name,
+            notification_type=notification_type,
+        )
+
+    def test_sms_provider_is_keyed_by_identifier(self):
+        result = helpers.sms_provider_identifier_options([self._provider()])
+        assert result == {"pinpoint": "AWS Pinpoint (pinpoint)"}
+
+    def test_non_sms_provider_is_excluded(self):
+        providers = [self._provider(identifier="ses", display_name="AWS SES", notification_type="email")]
+        assert helpers.sms_provider_identifier_options(providers) == {}
+
+    def test_null_identifier_is_excluded(self):
+        assert helpers.sms_provider_identifier_options([self._provider(identifier=None)]) == {}
+
+    def test_null_display_name_falls_back_to_identifier(self):
+        result = helpers.sms_provider_identifier_options([self._provider(display_name=None)])
+        assert result == {"pinpoint": "pinpoint (pinpoint)"}
+
+    def test_empty_input_returns_empty_dict(self):
+        assert helpers.sms_provider_identifier_options([]) == {}
 
 
 class TestGetViewEnvironment:

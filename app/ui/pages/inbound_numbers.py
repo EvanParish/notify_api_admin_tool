@@ -5,7 +5,13 @@ from typing import Any
 import httpx
 from nicegui import ui
 
-from app.repository import list_inbound_numbers, list_services, update_inbound_number
+from app.repository import (
+    UNASSIGNED_SERVICE_FILTER,
+    list_inbound_numbers,
+    list_provider_details,
+    list_services,
+    update_inbound_number,
+)
 from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
@@ -18,6 +24,8 @@ from app.ui.helpers import (
     make_sortable,
     refresh_if_needed,
     resolve_service_name,
+    set_options_preserving,
+    sms_provider_identifier_options,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
@@ -30,13 +38,81 @@ from app.ui.state import (
 )
 from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
+# Two spellings on purpose.  The filter option must read as a *control* among options
+# shaped "Name (env)"; the table cell must read as *field empty*, matching this repo's
+# existing "(not synced)" convention.  Do not collapse them into one string.
+UNASSIGNED_CELL_LABEL = "(unassigned)"
+UNASSIGNED_FILTER_LABEL = "— Unassigned —"
+
+
+def build_service_filter_options(services) -> dict[str, str]:
+    """Filter-by-Service options with the unassigned sentinel pinned first."""
+    return {
+        UNASSIGNED_SERVICE_FILTER: UNASSIGNED_FILTER_LABEL,
+        **{svc.id: format_service_label(svc) for svc in services},
+    }
+
+
+def full_service_name(service_id: str | None, name_map: dict[str, str]) -> str | None:
+    """Untruncated Service-column value for an inbound number.
+
+    Returns the unassigned label when there is no service, the cached name when known,
+    or ``None`` on a cache miss so ``with_option`` can append its "(not synced)" suffix.
+
+    Deliberately diverges from :func:`service_cell_label` on a cache miss only: this
+    feeds the edit dialog and the clipboard, which need the ``None`` as a signal, while
+    the table cell must render something and falls back to the raw ID.
+    """
+    if not service_id:
+        return UNASSIGNED_CELL_LABEL
+    return name_map.get(service_id)
+
+
+def service_cell_label(service_id: str | None, name_map: dict[str, str]) -> str:
+    """Truncated Service-column text.  Only a missing service reads as unassigned.
+
+    Gates on ``service_id`` rather than on ``resolve_service_name``'s return value,
+    because that helper also returns "" for a cached service with an empty name --
+    treating that as unassigned would state something false about an assigned number.
+
+    Deliberately diverges from :func:`full_service_name` on a cache miss only: that one
+    returns ``None``, this one falls back to the raw ID because a cell must render
+    something.  Keep the two agreeing on every other input.
+    """
+    if not service_id:
+        return UNASSIGNED_CELL_LABEL
+    return resolve_service_name(service_id, name_map)
+
+
+def matches_inbound_search(number, query: str, name_map: dict[str, str]) -> bool:
+    """Free-text match for the inbound numbers table.
+
+    Matches the underlying model values, not the rendered row -- the rendered service
+    name is truncated to 21 characters, so matching it would break search for any
+    longer name.  The unassigned label is matched only for rows that genuinely have
+    no service, so a service actually named "...unassigned..." matches via its name
+    instead.
+    """
+    if not query:
+        return True
+    return (
+        query in (number.number or "").lower()
+        or query in (number.id or "").lower()
+        or query in (number.service_id or "").lower()
+        or query in (name_map.get(number.service_id or "", "")).lower()
+        or (not number.service_id and query in UNASSIGNED_CELL_LABEL.lower())
+    )
+
 
 @ui.page("/inbound-numbers", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def inbound_numbers_page() -> None:
     inbound_search_query = ""
 
     async def refresh_service_options() -> None:  # pragma: no cover
-        options = {svc.id: format_service_label(svc) for svc in await list_services(get_view_environment())}
+        # Not set_options_preserving: this select is multiple=True, so its value is a
+        # list, and with_option's `value in options` raises TypeError on an unhashable
+        # list.  Keep the set_options + filter-the-list form.
+        options = build_service_filter_options(await list_services(get_view_environment()))
         service_select.set_options(options)
         if service_select.value:
             service_select.value = [v for v in service_select.value if v in options]
@@ -80,7 +156,16 @@ async def inbound_numbers_page() -> None:
                 label="Environment",
             ).classes("w-full")
             create_number = ui.input(label="Number (e.g., +12025551212)").props("clearable").classes("w-full")
-            create_provider = ui.input(label="Provider (e.g., pinpoint)").props("clearable").classes("w-full")
+            create_provider = ui.select({}, label="Provider", with_input=True).classes("w-full")
+            create_provider_hint = ui.label("No SMS providers cached for this environment. Run a sync first.").classes(
+                "text-xs text-red-500"
+            )
+            create_service = (
+                ui.select({}, label="Service (optional)", with_input=True).props("clearable").classes("w-full")
+            )
+            create_service_hint = ui.label("No services cached for this environment. Run a sync first.").classes(
+                "text-xs text-gray-500"
+            )
             create_active = ui.checkbox("Active", value=True)
             create_self_managed = ui.checkbox("Self Managed")
             create_auth_parameter = ui.input(label="Auth Parameter").props("clearable").classes("w-full")
@@ -90,10 +175,29 @@ async def inbound_numbers_page() -> None:
                 create_submit_button = ui.button("Create Inbound Number", color="green")
                 ui.button("Cancel", on_click=create_dialog.close, color="gray")
 
+        async def refresh_create_provider_options() -> None:  # pragma: no cover
+            options = sms_provider_identifier_options(await list_provider_details(create_env.value))
+            create_provider.set_options(options)
+            if create_provider.value not in options:
+                create_provider.value = None
+            create_provider_hint.set_visibility(not options)
+
+        async def refresh_create_service_options() -> None:  # pragma: no cover
+            options = {svc.id: format_service_label(svc) for svc in await list_services(create_env.value)}
+            create_service.set_options(options)
+            if create_service.value not in options:
+                create_service.value = None
+            create_service_hint.set_visibility(not options)
+
+        async def handle_create_env_change(_=None) -> None:  # pragma: no cover
+            await refresh_create_provider_options()
+            await refresh_create_service_options()
+
         async def handle_create_inbound_number() -> None:  # pragma: no cover
             environment = create_env.value
             number = (create_number.value or "").strip()
-            provider = (create_provider.value or "").strip()
+            provider = create_provider.value
+            service_id = create_service.value or None
             active = create_active.value
             self_managed = create_self_managed.value
             auth_parameter = (create_auth_parameter.value or "").strip() or None
@@ -121,6 +225,7 @@ async def inbound_numbers_page() -> None:
                     self_managed=self_managed,
                     auth_parameter=auth_parameter,
                     url_endpoint=url_endpoint,
+                    service_id=service_id,
                 )
             except httpx.HTTPStatusError as exc:
                 if exc.response and exc.response.status_code == 401:
@@ -139,13 +244,17 @@ async def inbound_numbers_page() -> None:
         async def handle_open_create_dialog() -> None:  # pragma: no cover
             create_env.value = _st.state.environment
             create_number.value = ""
-            create_provider.value = ""
+            create_provider.value = None
+            create_service.value = None
             create_active.value = True
             create_self_managed.value = False
             create_auth_parameter.value = ""
             create_url_endpoint.value = ""
+            await refresh_create_provider_options()
+            await refresh_create_service_options()
             create_dialog.open()
 
+        create_env.on_value_change(handle_create_env_change)
         create_submit_button.on_click(handle_create_inbound_number)
 
         # Edit Inbound Number dialog
@@ -155,12 +264,18 @@ async def inbound_numbers_page() -> None:
             ui.label("Edit Inbound Number").classes("text-md font-semibold")
             selected_number_label = ui.label("")
             edit_number = ui.input(label="Number").props("clearable").classes("w-full")
-            edit_provider = ui.input(label="Provider").props("clearable").classes("w-full")
+            edit_provider = ui.select({}, label="Provider", with_input=True).classes("w-full")
+            # Deliberately NOT clearable: the API has no unassign path for inbound
+            # numbers, so the UI must not offer a state it cannot submit.
+            edit_service = ui.select({}, label="Service", with_input=True).classes("w-full")
             edit_active = ui.checkbox("Active")
             edit_self_managed = ui.checkbox("Self Managed")
             edit_auth_parameter = ui.input(label="Auth Parameter").props("clearable").classes("w-full")
             edit_url_endpoint = ui.input(label="URL Endpoint").props("clearable").classes("w-full")
             ui.label("URL Endpoint is required when Self Managed is checked").classes("text-xs text-gray-500")
+            ui.label("A service cannot be unassigned. Close without updating to cancel a change.").classes(
+                "text-xs text-gray-500"
+            )
             with ui.row().classes("gap-2"):
                 edit_update_button = ui.button("Update Inbound Number", color="primary")
                 ui.button("Close", on_click=edit_dialog.close, color="gray")
@@ -182,7 +297,8 @@ async def inbound_numbers_page() -> None:
             if not num:
                 selected_number_label.text = "No inbound number selected."
                 edit_number.value = ""
-                edit_provider.value = ""
+                edit_provider.value = None
+                edit_service.value = None
                 edit_active.value = True
                 edit_self_managed.value = False
                 edit_auth_parameter.value = ""
@@ -192,7 +308,6 @@ async def inbound_numbers_page() -> None:
             number_val = num.get("number") or ""
             selected_number_label.text = f"Selected: {number_val} ({num_id})"
             edit_number.value = number_val
-            edit_provider.value = num.get("provider") or ""
             edit_active.value = bool(num.get("active"))
             edit_self_managed.value = bool(num.get("self_managed"))
             edit_auth_parameter.value = num.get("auth_parameter") or ""
@@ -203,6 +318,21 @@ async def inbound_numbers_page() -> None:
             if not num:
                 ui.notify("Select an inbound number from the table first", color="red")
                 return
+            environment = resolve_selected_environment(num)
+            provider_options: dict[str, str] = {}
+            service_options_for_edit: dict[str, str] = {}
+            if environment:
+                provider_options = sms_provider_identifier_options(await list_provider_details(environment))
+                service_options_for_edit = {
+                    svc.id: format_service_label(svc) for svc in await list_services(environment)
+                }
+            set_options_preserving(edit_provider, provider_options, num.get("provider"))
+            set_options_preserving(
+                edit_service,
+                service_options_for_edit,
+                num.get("service_id"),
+                num.get("_full_service_name"),
+            )
             update_edit_fields(num)
             edit_dialog.open()
 
@@ -217,7 +347,8 @@ async def inbound_numbers_page() -> None:
                 ui.notify("Selected inbound number is missing required details", color="red")
                 return
             number_val = (edit_number.value or "").strip() or None
-            provider = (edit_provider.value or "").strip() or None
+            provider = edit_provider.value or None
+            service_id = edit_service.value or None
             active = edit_active.value
             self_managed = edit_self_managed.value
             auth_parameter = (edit_auth_parameter.value or "").strip() or None
@@ -240,6 +371,7 @@ async def inbound_numbers_page() -> None:
                     self_managed=self_managed,
                     auth_parameter=auth_parameter,
                     url_endpoint=url_endpoint,
+                    service_id=service_id,
                 )
             except httpx.HTTPStatusError as exc:
                 if exc.response and exc.response.status_code == 401:
@@ -258,6 +390,7 @@ async def inbound_numbers_page() -> None:
                 self_managed=self_managed,
                 auth_parameter=auth_parameter,
                 url_endpoint=url_endpoint,
+                service_id=service_id,
                 environment=environment,
             )
             if updated:
@@ -273,6 +406,8 @@ async def inbound_numbers_page() -> None:
             selected_number["self_managed"] = self_managed
             selected_number["auth_parameter"] = auth_parameter
             selected_number["url_endpoint"] = url_endpoint
+            if service_id is not None:
+                selected_number["service_id"] = service_id
             update_edit_fields(resolve_selected_number())
             edit_dialog.close()
             await refresh_if_needed(render_table)
@@ -287,7 +422,7 @@ async def inbound_numbers_page() -> None:
                 .classes("w-full md:w-1/2")
             )
         _services = await list_services(get_view_environment())
-        service_options = {svc.id: format_service_label(svc) for svc in _services}
+        service_options = build_service_filter_options(_services)
         service_select = (
             ui.select(
                 service_options,
@@ -316,14 +451,7 @@ async def inbound_numbers_page() -> None:
             selected_services = service_select.value or []
             numbers = await list_inbound_numbers(selected_services or None, environment=get_view_environment())
             if inbound_search_query:
-                numbers = [
-                    n
-                    for n in numbers
-                    if inbound_search_query in (n.number or "").lower()
-                    or inbound_search_query in (n.id or "").lower()
-                    or inbound_search_query in (n.service_id or "").lower()
-                    or inbound_search_query in (service_name_map.get(n.service_id or "", "")).lower()
-                ]
+                numbers = [n for n in numbers if matches_inbound_search(n, inbound_search_query, service_name_map)]
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},
                 {"name": "environment", "label": "Environment", "field": "environment"},
@@ -358,8 +486,11 @@ async def inbound_numbers_page() -> None:
                     "active": n.active,
                     "self_managed": n.self_managed,
                     "service_id": n.service_id,
-                    "service_name": resolve_service_name(n.service_id, service_name_map),
-                    "_full_service_name": service_name_map.get(n.service_id or "", n.service_id or ""),
+                    "service_name": service_cell_label(n.service_id, service_name_map),
+                    # A None here cannot produce an empty clipboard: COPYABLE_CELL_SLOT
+                    # coalesces `_full_<field> || props.value`, so a null falls through
+                    # to the rendered cell text.
+                    "_full_service_name": full_service_name(n.service_id, service_name_map),
                     "auth_parameter": n.auth_parameter,
                     "url_endpoint": n.url_endpoint,
                 }
@@ -394,6 +525,8 @@ async def inbound_numbers_page() -> None:
                     color="green",
                 )
                 ui.space()
+                # The "(unassigned)" literal reaching the CSV is deliberate: the export
+                # should match what is on screen.
                 add_export_button(table_rows, columns, "inbound_numbers.csv")
             table = ui.table(
                 columns=make_sortable(columns),

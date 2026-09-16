@@ -261,6 +261,59 @@ def resolve_service_name(
     return truncate_service_name(name, limit)
 
 
+def with_option(
+    options: Dict[str, str],
+    value: str | None,
+    label: str | None = None,
+) -> Dict[str, str]:
+    """Return *options* guaranteed to contain *value* as a key.
+
+    NiceGUI's ``ui.select`` silently discards an assigned value that is absent from
+    its options.  When a cached lookup table is stale, the select blanks itself and
+    the field is then omitted from the update payload -- the caller reports success
+    while the edit quietly does nothing.  Injecting the current value as an option
+    keeps it selectable and submittable.
+
+    The input dict is not mutated.  An existing key keeps its original label.
+
+    This is the single-value primitive that :func:`set_options_preserving` wraps; that
+    wrapper is the only production caller.  Multi-select callers must not use it -- the
+    ``value in options`` test raises ``TypeError`` on an unhashable list.
+    """
+    if not value or value in options:
+        return dict(options)
+    return {**options, value: label or f"{value} (not synced)"}
+
+
+def set_options_preserving(select, options, value, label=None) -> None:
+    """Point *select* at *options*, keeping *value* selected even if the cache is stale.
+
+    Options and value are applied in a single ``set_options`` call so the two cannot be
+    sequenced wrongly.  Assigning ``value`` separately, after options that lack it, would
+    silently null the selection -- the field would then be omitted from the update payload
+    while the UI still reported success.
+    """
+    select.set_options(with_option(options, value, label), value=value or None)
+
+
+def sms_provider_identifier_options(providers) -> Dict[str, str]:
+    """Build select options for fields storing a provider *identifier* string.
+
+    ``InboundNumber.provider`` is a plain string column upstream with no foreign key,
+    so these options are keyed by ``ProviderDetail.identifier`` (e.g. ``"pinpoint"``).
+    This is deliberately different from ``SmsSender.provider_id``, which is a UUID and
+    keys by ``ProviderDetail.id``.
+
+    Only SMS providers are included.  Rows with no identifier are omitted -- there is
+    nothing submittable for them.
+    """
+    return {
+        p.identifier: f"{p.display_name or p.identifier} ({p.identifier})"
+        for p in providers
+        if p.notification_type == "sms" and p.identifier
+    }
+
+
 def truncate_text(value: Optional[str], limit: int = 50) -> Optional[str]:
     if not value:
         return value

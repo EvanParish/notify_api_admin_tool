@@ -102,6 +102,11 @@ async def set_secure_setting(key: str, value: str, encryption: EncryptionManager
     await set_setting(key, encrypted)
 
 
+# Sentinel used by the UI's "Filter by Service" select to mean "no service assigned".
+# Lives here so the select option key and the query clause cannot drift apart.
+UNASSIGNED_SERVICE_FILTER = "__unassigned__"
+
+
 def _env_filter(column, environments: list[str] | None):
     """Build environment filter clause for queries."""
     if not environments:
@@ -116,6 +121,28 @@ def _service_filter(column, service_ids: str | list[str] | None):
         return None
     ids = [service_ids] if isinstance(service_ids, str) else service_ids
     return column.in_(ids)
+
+
+def _service_filter_with_unassigned(column, service_ids: str | list[str] | None):
+    """Like :func:`_service_filter`, but maps ``UNASSIGNED_SERVICE_FILTER`` to ``column IS NULL``.
+
+    Real service IDs and the sentinel compose as OR, so selecting one service plus
+    "unassigned" returns both sets.  Empty and ``None`` entries are ignored rather than
+    emitting ``IN ('')``, which would match nothing.
+
+    Only valid for columns whose archived-service clause also admits NULL -- currently
+    ``InboundNumber.service_id`` and ``ApiKey.service_id``.  The other three list
+    functions use a bare ``IN (_active_service_ids)``, so a sentinel passed there would
+    always return zero rows.
+    """
+    ids = [service_ids] if isinstance(service_ids, str) else list(service_ids or [])
+    disjuncts = []
+    real_ids = [sid for sid in ids if sid and sid != UNASSIGNED_SERVICE_FILTER]
+    if real_ids:
+        disjuncts.append(column.in_(real_ids))
+    if UNASSIGNED_SERVICE_FILTER in ids:
+        disjuncts.append(column.is_(None))
+    return or_(*disjuncts) if disjuncts else None
 
 
 def _active_service_ids(environments: list[str] | None = None):
@@ -518,9 +545,18 @@ async def list_inbound_numbers(
     service_id: str | list[str] | None = None,
     environment: str | list[str] | None = None,
 ) -> list[InboundNumber]:
+    """List cached inbound numbers, optionally filtered by service and environment.
+
+    ``service_id`` accepts a single ID, a list of IDs, or ``UNASSIGNED_SERVICE_FILTER``
+    to select numbers with no service.  The sentinel composes with real IDs as OR.
+
+    Note that the two are not a partition of all rows: ``_active_service_ids`` is
+    environment-scoped, so a number pointing at a service cached only in another
+    environment is excluded regardless of the filter.
+    """
     async with get_session() as session:
         query = select(InboundNumber)
-        svc_clause = _service_filter(InboundNumber.service_id, service_id)
+        svc_clause = _service_filter_with_unassigned(InboundNumber.service_id, service_id)
         if svc_clause is not None:
             query = query.where(svc_clause)
         envs = [environment] if isinstance(environment, str) else environment
@@ -595,6 +631,7 @@ async def update_inbound_number(
     auth_parameter: str | None = None,
     self_managed: bool | None = None,
     url_endpoint: str | None = None,
+    service_id: str | None = None,
     environment: str | None = None,
 ) -> bool:
     async with get_session() as session:
@@ -617,6 +654,17 @@ async def update_inbound_number(
             record.self_managed = self_managed
         if url_endpoint is not None:
             record.url_endpoint = url_endpoint
+        if service_id is not None:
+            record.service_id = service_id
+            # Resolve the display name from cache.  A miss is expected when services
+            # have not been synced for this environment; the next sync will fill it in.
+            name_result = await session.execute(
+                select(Service.name).where(
+                    Service.id == service_id,
+                    Service.environment == record.environment,
+                )
+            )
+            record.service_name = name_result.scalar_one_or_none()
         await session.commit()
         return True
 

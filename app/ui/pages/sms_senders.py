@@ -24,6 +24,7 @@ from app.ui.helpers import (
     make_sortable,
     refresh_if_needed,
     resolve_service_name,
+    set_options_preserving,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
@@ -243,7 +244,6 @@ async def sms_senders_page() -> None:
             selected_sender_label.text = f"Selected: {sms_sender_val} ({sender_id})"
             edit_sms_sender.value = sms_sender_val
             edit_description.value = sender.get("description") or ""
-            edit_provider.value = sender.get("provider_id")
             edit_is_default.value = bool(sender.get("is_default"))
             edit_rate_limit.value = sender.get("rate_limit")
             edit_rate_limit_interval.value = sender.get("rate_limit_interval")
@@ -259,11 +259,12 @@ async def sms_senders_page() -> None:
                 ui.notify("Select an SMS sender from the table first", color="red")
                 return
             environment = resolve_selected_environment(sender)
+            options: dict[str, str] = {}
             if environment:
                 providers = await list_provider_details(environment)
                 sms_providers = [p for p in providers if p.notification_type == "sms"]
                 options = {p.id: f"{p.display_name} ({p.identifier})" for p in sms_providers}
-                edit_provider.set_options(options)
+            set_options_preserving(edit_provider, options, sender.get("provider_id"))
             update_edit_fields(sender)
             edit_dialog.open()
 
