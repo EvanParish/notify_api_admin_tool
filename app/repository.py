@@ -4,6 +4,7 @@ import base64
 import binascii
 import json
 import logging
+import time
 from typing import Type
 
 from datetime import datetime, timezone
@@ -256,7 +257,13 @@ async def add_local_key(
     key_name: str,
     key_secret: str,
     key_type: str,
-) -> None:
+    api_key_id: str | None = None,
+) -> int:
+    """Store an encrypted key secret and return the new row's id.
+
+    *api_key_id* is optional because the create flow only learns the remote id after
+    a subsequent sync, and the Settings page manual-entry form never learns it at all.
+    """
     encrypted_secret = await encryption.encrypt(key_secret)
     async with get_session() as session:
         record = LocalApiKey(
@@ -265,9 +272,62 @@ async def add_local_key(
             key_name=key_name,
             key_secret=encrypted_secret,
             key_type=key_type,
+            api_key_id=api_key_id,
         )
         session.add(record)
         await session.commit()
+        return record.id
+
+
+async def link_local_key(local_row_id: int, api_key_id: str) -> bool:
+    """Point an existing local key row at a remote ``ApiKey``.
+
+    Returns False when the row is gone, so callers can warn rather than raise: the
+    secret is already stored by this point and must not be lost to a failed link.
+    """
+    async with get_session() as session:
+        record = await session.get(LocalApiKey, local_row_id)
+        if record is None:
+            return False
+        record.api_key_id = api_key_id
+        await session.commit()
+        return True
+
+
+async def backfill_local_key_api_ids() -> int:
+    """Link unlinked local keys to their remote key by name, and return the count.
+
+    Only an unambiguous match is linked.  Unlike the create flow, which can assume the
+    newest key with a given name is the one it just made, this runs long after the
+    fact with no tiebreaker available, so two remote keys sharing a name leave the
+    local row unlinked rather than pointing a secret at the wrong key.
+    """
+    async with get_session() as session:
+        unlinked = list(
+            (await session.execute(select(LocalApiKey).where(LocalApiKey.api_key_id.is_(None)))).scalars().all()
+        )
+        linked = 0
+        for row in unlinked:
+            matches = list(
+                (
+                    await session.execute(
+                        select(ApiKey).where(
+                            ApiKey.service_id == row.service_id,
+                            ApiKey.environment == row.environment,
+                            ApiKey.name == row.key_name,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if len(matches) != 1:
+                continue
+            row.api_key_id = matches[0].id
+            linked += 1
+        if linked:
+            await session.commit()
+        return linked
 
 
 async def resolve_local_key(encryption: EncryptionManager, key_id: int) -> str:
@@ -526,13 +586,55 @@ async def update_communication_item(
         return True
 
 
+# ---------------------------------------------------------------------------
+# User list cache
+#
+# ``list_users`` decrypts ``name`` and ``email_address`` for every row, and the
+# API Keys page calls it on every table render to resolve ``created_by`` to an
+# email address.  Results are memoised for 12 hours or until the users table is
+# written, whichever comes first.
+#
+# ``time.monotonic`` rather than wall clock: an NTP step or DST change must not
+# be able to extend or collapse the TTL.
+# ---------------------------------------------------------------------------
+_USER_CACHE_TTL_SECONDS = 12 * 60 * 60
+_user_cache: dict[tuple, tuple[float, list[User]]] = {}
+
+
+def _user_cache_key(envs: list[str] | None, encryption: EncryptionManager | None) -> tuple:
+    """Build the cache key for a ``list_users`` call.
+
+    Environments are sorted so ``["dev", "prod"]`` and ``["prod", "dev"]`` share one
+    entry.  ``encryption is None`` is part of the key so that a caller without an
+    ``EncryptionManager`` still raises on encrypted data instead of being served the
+    decrypted rows an encryption-enabled caller put in the cache.
+    """
+    return (tuple(sorted(envs)) if envs else (), encryption is None)
+
+
+def _invalidate_user_cache() -> None:
+    """Drop every cached user list.
+
+    Clear-all rather than per-environment: an entry keyed ``("dev", "prod")`` holds
+    rows that a dev-only write invalidates.
+    """
+    _user_cache.clear()
+
+
 async def list_users(
     environment: str | list[str] | None = None,
     encryption: EncryptionManager | None = None,
 ) -> list[User]:
+    envs = [environment] if isinstance(environment, str) else environment
+    cache_key = _user_cache_key(envs, encryption)
+    cached = _user_cache.get(cache_key)
+    if cached is not None and cached[0] > time.monotonic():
+        # Shallow copy: a caller sorting or clearing the list in place must not be
+        # able to corrupt the cached entry.
+        return list(cached[1])
+
     async with get_session() as session:
         query = select(User)
-        envs = [environment] if isinstance(environment, str) else environment
         env_clause = _env_filter(User.environment, envs)
         if env_clause is not None:
             query = query.where(env_clause)
@@ -561,7 +663,9 @@ async def list_users(
                     row.email_address = await encryption.decrypt(row.email_address)
             if not (row.email_address or "").lower().startswith("_archived"):
                 visible_rows.append(row)
-        return visible_rows
+        # Reached only on success: the ValueError paths above must not be cached.
+        _user_cache[cache_key] = (time.monotonic() + _USER_CACHE_TTL_SECONDS, visible_rows)
+        return list(visible_rows)
 
 
 async def list_inbound_numbers(
@@ -889,6 +993,7 @@ async def upsert_users(
             )
             await session.merge(record)
         await session.commit()
+    _invalidate_user_cache()
 
 
 async def migrate_plaintext_users_to_encrypted(
@@ -916,6 +1021,7 @@ async def migrate_plaintext_users_to_encrypted(
                 migrated += 1
         if migrated:
             await session.commit()
+            _invalidate_user_cache()
         return migrated
 
 

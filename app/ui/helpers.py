@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional
 
 from nicegui import ui
 
+from app.repository import _is_expired
+
 from app.ui.artifacts import SEND_RESULTS_DIR, write_json_artifact  # noqa: F401
 from app.ui.state import safe_notify
 
@@ -269,6 +271,59 @@ def format_service_label(service) -> str:
 def build_service_name_map(services) -> Dict[str, str]:
     """Build a {service_id: service_name} lookup from a list of Service objects."""
     return {svc.id: svc.name for svc in services}
+
+
+def build_user_email_map(users) -> Dict[str, str]:
+    """Build a {user_id: email_address} lookup from a list of User objects."""
+    return {user.id: user.email_address for user in users if user.email_address}
+
+
+def resolve_user_email(user_id: str | None, email_map: Dict[str, str]) -> str:
+    """Look up a user email by ID.  Falls back to *user_id* when unknown."""
+    if not user_id:
+        return ""
+    return email_map.get(user_id) or user_id
+
+
+def build_api_key_map(keys) -> Dict[str, Any]:
+    """Build a {api_key_id: ApiKey} lookup from a list of ApiKey objects."""
+    return {key.id: key for key in keys}
+
+
+def local_key_status(api_key) -> str:
+    """Describe the remote state of a stored local key secret.
+
+    Returns "" when the local key is unlinked or its remote row is not in the local
+    cache, since in that case nothing is known rather than the key being healthy.
+    """
+    if api_key is None:
+        return ""
+    if getattr(api_key, "revoked", False):
+        return "Revoked"
+    if _is_expired(getattr(api_key, "expiry_date", None)):
+        return "Expired"
+    return "Active"
+
+
+def format_local_key_label(key_name: str, status: str) -> str:
+    """Annotate a key-selector option when the stored secret is no longer usable."""
+    if status == "Revoked":
+        return f"{key_name} (revoked)"
+    if status == "Expired":
+        return f"{key_name} (expired)"
+    return key_name
+
+
+def build_local_key_options(local_keys, api_key_map: Dict[str, Any]) -> Dict[int, str]:
+    """Build the {local_row_id: label} option map for a stored-key selector.
+
+    Keys whose remote counterpart is revoked or expired stay selectable but are
+    labelled, so the send failure is explained before it happens rather than after.
+    """
+    return {
+        key.id: format_local_key_label(key.key_name, local_key_status(api_key_map.get(key.api_key_id)))
+        for key in local_keys
+    }
 
 
 def truncate_service_name(name: str | None, limit: int = 21) -> str:

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from nicegui import ui
 
 from app.repository import (
+    list_api_keys,
     list_local_keys,
     list_services,
     list_sms_senders,
@@ -16,6 +17,8 @@ from app.repository import (
 )
 from app.ui import state as _st
 from app.ui.helpers import (
+    build_api_key_map,
+    build_local_key_options,
     find_missing_personalisation,
     format_service_label,
     parse_recipients,
@@ -94,7 +97,8 @@ async def send_page() -> None:
         async def load_keys() -> None:
             selected_service = service_select.value
             keys = await list_local_keys(selected_service, env_select.value)
-            key_select.set_options({k.id: k.key_name for k in keys})
+            api_key_map = build_api_key_map(await list_api_keys([selected_service], environment=env_select.value))
+            key_select.set_options(build_local_key_options(keys, api_key_map))
 
         async def load_templates() -> None:
             selected_service = service_select.value

@@ -204,6 +204,11 @@ class LocalApiKey(Base):
     key_name: Mapped[str] = mapped_column(String)
     key_secret: Mapped[str] = mapped_column(Text)
     key_type: Mapped[str] = mapped_column(Enum("normal", "team", "test", name="key_type"))
+    # Remote ApiKey.id this secret belongs to.  Nullable: the Settings page manual-entry
+    # form and every row predating this column have no way to know it.  Expiry and
+    # revoked state are read from the api_keys row rather than copied here, so they
+    # cannot drift.
+    api_key_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 
 
 class Setting(Base):

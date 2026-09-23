@@ -273,3 +273,82 @@ async def test_migration_adds_missing_column(tmp_path):
     finally:
         db_mod.engine = original_engine
         db_mod.SessionLocal = original_session
+
+
+@pytest.mark.asyncio
+async def test_migration_adds_local_api_key_columns(tmp_path):
+    """An install predating api_key_id/environment must gain both columns rather than
+    needing the database deleted, which would destroy unrecoverable key secrets."""
+    from app import db as db_mod
+
+    db_file = tmp_path / "migrate_local_keys.db"
+    original_engine = db_mod.engine
+    original_session = db_mod.SessionLocal
+    try:
+        init_engine(str(db_file))
+        await create_all()
+        async with db_mod.engine.begin() as conn:
+            await conn.execute(text("DROP TABLE local_api_keys"))
+            await conn.execute(
+                text(
+                    "CREATE TABLE local_api_keys ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, service_id VARCHAR, "
+                    "key_name VARCHAR, key_secret TEXT, key_type VARCHAR)"
+                )
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO local_api_keys (service_id, key_name, key_secret, key_type) "
+                    "VALUES ('svc-1', 'Legacy Key', 'ciphertext', 'normal')"
+                )
+            )
+
+        await create_all()
+        async with db_mod.engine.begin() as conn:
+            cols = await conn.execute(text("PRAGMA table_info(local_api_keys)"))
+            col_names = {row[1] for row in cols}
+            assert "environment" in col_names
+            assert "api_key_id" in col_names
+            # The pre-existing secret must survive the migration.
+            rows = list(await conn.execute(text("SELECT key_name, key_secret FROM local_api_keys")))
+            assert rows == [("Legacy Key", "ciphertext")]
+
+        # Re-running must be a no-op rather than an error.
+        await create_all()
+    finally:
+        db_mod.engine = original_engine
+        db_mod.SessionLocal = original_session
+
+
+@pytest.mark.asyncio
+async def test_create_all_backfills_local_key_api_ids(tmp_path):
+    """Existing unlinked local keys get linked on startup."""
+    from app import db as db_mod
+    from app.models import ApiKey, LocalApiKey
+
+    db_file = tmp_path / "backfill.db"
+    original_engine = db_mod.engine
+    original_session = db_mod.SessionLocal
+    try:
+        init_engine(str(db_file))
+        await create_all()
+        async with get_session() as session:
+            session.add(ApiKey(id="remote-1", environment="dev", service_id="svc-1", name="Key One"))
+            session.add(
+                LocalApiKey(
+                    service_id="svc-1",
+                    environment="dev",
+                    key_name="Key One",
+                    key_secret="ciphertext",
+                    key_type="normal",
+                )
+            )
+            await session.commit()
+
+        await create_all()
+        async with get_session() as session:
+            stored = await session.get(LocalApiKey, 1)
+            assert stored.api_key_id == "remote-1"
+    finally:
+        db_mod.engine = original_engine
+        db_mod.SessionLocal = original_session

@@ -91,3 +91,16 @@ def reset_mock_permission_store():
     MockNotificationAPI.reset_permission_store()
     yield
     MockNotificationAPI.reset_permission_store()
+
+
+@pytest.fixture(scope="function", autouse=True)
+def reset_user_cache():
+    """``list_users`` memoises decrypted rows for 12 hours.  Each test gets a fresh
+    temporary database, so a surviving entry from a previous test would be served
+    against the wrong data.  Clear it on both sides of the test.
+    """
+    from app import repository
+
+    repository._invalidate_user_cache()
+    yield
+    repository._invalidate_user_cache()

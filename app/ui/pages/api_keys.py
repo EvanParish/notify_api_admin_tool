@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any, Dict, List, Optional
 
@@ -8,8 +9,10 @@ from nicegui import ui
 
 from app.repository import (
     add_local_key,
+    link_local_key,
     list_api_keys,
     list_services,
+    list_users,
     mark_api_key_revoked,
     update_api_key_expiry,
 )
@@ -20,12 +23,14 @@ from app.ui.helpers import (
     add_export_button,
     add_service_context_menu,
     build_service_name_map,
+    build_user_email_map,
     format_environment,
     format_service_label,
     make_row_key,
     make_sortable,
     refresh_if_needed,
     resolve_service_name,
+    resolve_user_email,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
 from app.ui.state import (
@@ -37,6 +42,8 @@ from app.ui.state import (
     refresh_status_badge,
 )
 from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_filter_date(value: Optional[str]) -> Optional[date]:
@@ -68,6 +75,7 @@ def _matches_search(
     service_name: str,
     name: str | None,
     created_by: str | None,
+    created_by_email: str | None = None,
 ) -> bool:
     if not search_term:
         return True
@@ -77,7 +85,36 @@ def _matches_search(
         or search_term in service_name.lower()
         or search_term in (name or "").lower()
         or search_term in (created_by or "").lower()
+        or search_term in (created_by_email or "").lower()
     )
+
+
+async def _link_created_local_key(
+    local_row_id: int,
+    service_id: str,
+    environment: str,
+    key_name: str,
+) -> bool:
+    """Attach the remote key id to a just-created local key row.
+
+    The create-key endpoint returns only the secret string (data/openapi.yaml:727), so
+    the id has to be recovered from ``api_keys`` after the follow-up sync.  Matching is
+    by name, taking the newest by ``created_at`` when names collide -- correct here
+    because the key was created seconds ago.
+
+    Never raises.  The secret is already stored by the time this runs, and failing to
+    label it must not be escalated into losing it.
+    """
+    try:
+        keys = await list_api_keys([service_id], environment=environment)
+        matches = [key for key in keys if key.name == key_name]
+        if not matches:
+            return False
+        newest = max(matches, key=lambda key: key.created_at or "")
+        return await link_local_key(local_row_id, newest.id)
+    except Exception:  # noqa: BLE001 - a failed link is a labelling problem, not a data loss one
+        logger.exception("Could not link local key %s to its remote key", local_row_id)
+        return False
 
 
 def _extract_api_key_secret(payload: Dict[str, Any]) -> str:
@@ -211,7 +248,7 @@ async def api_keys_page() -> None:
                 stored_name = name
                 stored_type = (data.get("key_type") if isinstance(data, dict) else None) or key_type
                 try:
-                    await add_local_key(
+                    local_row_id = await add_local_key(
                         _st.encryption,
                         service_id,
                         environment,
@@ -235,6 +272,14 @@ async def api_keys_page() -> None:
             await refresh_if_needed(render_local_keys)
             create_dialog.close()
             await page_sync_api_keys(environment, service_ids=[service_id])
+            # Only now does api_keys hold the row this secret belongs to.
+            if not await _link_created_local_key(local_row_id, service_id, environment, stored_name):
+                ui.notify(
+                    "API key stored, but it could not be matched to a remote key. "
+                    "Its expiry will not be shown until the next sync.",
+                    color="warning",
+                )
+            await refresh_if_needed(render_local_keys)
             await refresh_if_needed(render_table)
 
         async def handle_open_create_dialog() -> None:  # pragma: no cover
@@ -443,6 +488,7 @@ async def api_keys_page() -> None:
             end_date = _parse_filter_date(expires_to.value)
             search_term = (search_input.value or "").strip().lower()
             service_name_map = build_service_name_map(await list_services(get_view_environment()))
+            user_email_map = build_user_email_map(await list_users(get_view_environment(), encryption=_st.encryption))
             keys = await list_api_keys(selected_services or None, environment=get_view_environment())
             columns = [
                 {"name": "id", "label": "ID", "field": "id"},
@@ -469,7 +515,7 @@ async def api_keys_page() -> None:
                     "name": key.name,
                     "key_type": key.key_type,
                     "expiry_date": key.expiry_date.split(".")[0].replace("T", " ") if key.expiry_date else None,
-                    "created_by": key.created_by,
+                    "created_by": resolve_user_email(key.created_by, user_email_map),
                     "created_at": key.created_at[:10] if key.created_at else None,
                     "last_used_at": key.last_used_at.split(".")[0].replace("T", " ") if key.last_used_at else None,
                     "revoked": key.revoked,
@@ -484,6 +530,7 @@ async def api_keys_page() -> None:
                     service_name_map.get(key.service_id, ""),
                     key.name,
                     key.created_by,
+                    resolve_user_email(key.created_by, user_email_map),
                 )
             ]
             with ui.row().classes("w-full items-center"):

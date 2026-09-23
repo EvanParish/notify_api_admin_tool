@@ -10,6 +10,7 @@ from app.repository import (
     clear_table_data,
     get_secure_setting,
     get_setting,
+    list_api_keys,
     list_local_keys,
     list_services,
     set_secure_setting,
@@ -19,8 +20,10 @@ from app.ui import state as _st
 from app.ui.helpers import (
     add_copyable_slots,
     add_export_button,
+    build_api_key_map,
     format_service_label,
     make_row_key,
+    local_key_status,
     make_sortable,
     refresh_if_needed,
 )
@@ -234,24 +237,36 @@ async def save_local_key(
 @ui.refreshable
 async def render_local_keys() -> None:
     keys = await list_local_keys()
+    # Deliberately unfiltered: this list spans every environment, so the remote keys
+    # it is matched against must too.
+    api_key_map = build_api_key_map(await list_api_keys())
     columns = [
         {"name": "id", "label": "ID", "field": "id"},
         {"name": "service_id", "label": "Service", "field": "service_id"},
         {"name": "environment", "label": "Environment", "field": "environment"},
         {"name": "key_name", "label": "Name", "field": "key_name"},
         {"name": "key_type", "label": "Type", "field": "key_type"},
+        {"name": "api_key_id", "label": "API Key ID", "field": "api_key_id"},
+        {"name": "expiry_date", "label": "Expires", "field": "expiry_date"},
+        {"name": "status", "label": "Status", "field": "status"},
     ]
-    rows: List[Dict[str, Any]] = [
-        {
-            "_row_key": make_row_key(k.id, k.environment),
-            "id": k.id,
-            "service_id": k.service_id,
-            "environment": k.environment,
-            "key_name": k.key_name,
-            "key_type": k.key_type,
-        }
-        for k in keys
-    ]
+    rows: List[Dict[str, Any]] = []
+    for k in keys:
+        remote = api_key_map.get(k.api_key_id)
+        expiry = getattr(remote, "expiry_date", None) if remote is not None else None
+        rows.append(
+            {
+                "_row_key": make_row_key(k.id, k.environment),
+                "id": k.id,
+                "service_id": k.service_id,
+                "environment": k.environment,
+                "key_name": k.key_name,
+                "key_type": k.key_type,
+                "api_key_id": k.api_key_id,
+                "expiry_date": expiry.split(".")[0].replace("T", " ") if expiry else None,
+                "status": local_key_status(remote),
+            }
+        )
     with ui.row().classes("w-full justify-end"):
         add_export_button(rows, columns, "local_api_keys.csv")
     table = ui.table(

@@ -4,6 +4,7 @@ import logging
 
 import pytest
 from sqlalchemy import select
+from app import repository
 from app.repository import (
     get_setting,
     set_setting,
@@ -40,6 +41,8 @@ from app.repository import (
     upsert_api_keys,
     upsert_users,
     migrate_plaintext_users_to_encrypted,
+    link_local_key,
+    backfill_local_key_api_ids,
 )
 from app.crypto import EncryptionManager
 from app.repository import DbSaltProvider
@@ -2762,3 +2765,208 @@ class TestUpdateServicePermissions:
 
         assert json.loads((await list_services("production"))[0].permissions) == ["push"]
         assert json.loads((await list_services("staging"))[0].permissions) == ["sms"]
+
+
+class TestListUsersCache:
+    """``list_users`` decrypts every row, so results are memoised for 12 hours or
+    until the users table is written, whichever comes first."""
+
+    @staticmethod
+    async def _add_user(user_id: str, environment: str, email: str) -> None:
+        async with get_session() as session:
+            session.add(User(id=user_id, environment=environment, email_address=email, name=user_id))
+            await session.commit()
+
+    @pytest.mark.asyncio
+    async def test_second_call_within_ttl_does_not_requery(self, initialized_db):
+        await self._add_user("u1", "dev", "u1@test.com")
+        first = await list_users(environment="dev")
+        assert [u.id for u in first] == ["u1"]
+
+        # Written behind the cache's back; a cached read must not see it.
+        await self._add_user("u2", "dev", "u2@test.com")
+        second = await list_users(environment="dev")
+        assert [u.id for u in second] == ["u1"]
+
+    @pytest.mark.asyncio
+    async def test_different_environments_do_not_collide(self, initialized_db):
+        await self._add_user("u1", "dev", "u1@test.com")
+        await self._add_user("u2", "prod", "u2@test.com")
+
+        assert [u.id for u in await list_users(environment="dev")] == ["u1"]
+        assert [u.id for u in await list_users(environment="prod")] == ["u2"]
+
+    @pytest.mark.asyncio
+    async def test_environment_order_shares_one_entry(self, initialized_db):
+        await self._add_user("u1", "dev", "u1@test.com")
+        await list_users(environment=["dev", "prod"])
+
+        await self._add_user("u2", "prod", "u2@test.com")
+        # Reversed order must resolve to the same key, so the new row stays hidden.
+        assert [u.id for u in await list_users(environment=["prod", "dev"])] == ["u1"]
+
+    @pytest.mark.asyncio
+    async def test_encryption_none_does_not_reuse_encrypted_entry(self, initialized_db):
+        encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+        async with get_session() as session:
+            session.add(
+                User(
+                    id="u1",
+                    environment="dev",
+                    email_address=await encryption.encrypt("u1@test.com"),
+                    name=await encryption.encrypt("User One"),
+                )
+            )
+            await session.commit()
+
+        decrypted = await list_users(environment="dev", encryption=encryption)
+        assert decrypted[0].email_address == "u1@test.com"
+
+        # Without an EncryptionManager the call must still refuse encrypted data
+        # rather than being served the decrypted entry.
+        with pytest.raises(ValueError, match="EncryptionManager is required"):
+            await list_users(environment="dev")
+
+    @pytest.mark.asyncio
+    async def test_entry_expires_after_ttl(self, initialized_db, monkeypatch):
+        clock = {"now": 1000.0}
+        monkeypatch.setattr(repository.time, "monotonic", lambda: clock["now"])
+
+        await self._add_user("u1", "dev", "u1@test.com")
+        await list_users(environment="dev")
+
+        await self._add_user("u2", "dev", "u2@test.com")
+        clock["now"] += repository._USER_CACHE_TTL_SECONDS - 1
+        assert [u.id for u in await list_users(environment="dev")] == ["u1"]
+
+        clock["now"] += 2
+        assert sorted(u.id for u in await list_users(environment="dev")) == ["u1", "u2"]
+
+    @pytest.mark.asyncio
+    async def test_upsert_users_invalidates_cache(self, initialized_db):
+        encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+        await upsert_users([{"id": "u1", "email_address": "u1@test.com"}], "dev", encryption=encryption)
+        assert [u.id for u in await list_users(environment="dev", encryption=encryption)] == ["u1"]
+
+        await upsert_users([{"id": "u2", "email_address": "u2@test.com"}], "dev", encryption=encryption)
+        users = await list_users(environment="dev", encryption=encryption)
+        assert sorted(u.id for u in users) == ["u1", "u2"]
+
+    @pytest.mark.asyncio
+    async def test_migration_invalidates_cache(self, initialized_db):
+        encryption = EncryptionManager("test-key", salt_provider=DbSaltProvider())
+        await self._add_user("u1", "dev", "u1@test.com")
+
+        # Populate the cache from plaintext, then migrate the row to ciphertext.
+        assert [u.id for u in await list_users(environment="dev")] == ["u1"]
+        await migrate_plaintext_users_to_encrypted(encryption=encryption, environment="dev")
+
+        # A stale entry would still satisfy the encryption=None call; a cleared one raises.
+        with pytest.raises(ValueError, match="EncryptionManager is required"):
+            await list_users(environment="dev")
+
+    @pytest.mark.asyncio
+    async def test_returned_list_is_a_copy(self, initialized_db):
+        await self._add_user("u1", "dev", "u1@test.com")
+        first = await list_users(environment="dev")
+        first.clear()
+
+        assert [u.id for u in await list_users(environment="dev")] == ["u1"]
+
+
+class TestLocalKeyLinking:
+    """Local keys carry the remote ``ApiKey.id`` so expiry and revoked state can be
+    read from the synced ``api_keys`` row instead of being copied and going stale."""
+
+    @staticmethod
+    async def _add_remote_key(key_id: str, service_id: str, environment: str, name: str) -> None:
+        async with get_session() as session:
+            session.add(ApiKey(id=key_id, environment=environment, service_id=service_id, name=name))
+            await session.commit()
+
+    @staticmethod
+    async def _get_local(row_id: int) -> LocalApiKey:
+        async with get_session() as session:
+            return await session.get(LocalApiKey, row_id)
+
+    @pytest.mark.asyncio
+    async def test_add_local_key_returns_row_id(self, initialized_db, mock_encryption):
+        row_id = await add_local_key(mock_encryption, "svc-1", "dev", "Key One", "secret", "normal")
+        assert isinstance(row_id, int)
+        assert (await self._get_local(row_id)).key_name == "Key One"
+
+    @pytest.mark.asyncio
+    async def test_add_local_key_persists_api_key_id(self, initialized_db, mock_encryption):
+        row_id = await add_local_key(
+            mock_encryption, "svc-1", "dev", "Key One", "secret", "normal", api_key_id="remote-1"
+        )
+        assert (await self._get_local(row_id)).api_key_id == "remote-1"
+
+    @pytest.mark.asyncio
+    async def test_add_local_key_defaults_api_key_id_to_none(self, initialized_db, mock_encryption):
+        row_id = await add_local_key(mock_encryption, "svc-1", "dev", "Key One", "secret", "normal")
+        assert (await self._get_local(row_id)).api_key_id is None
+
+    @pytest.mark.asyncio
+    async def test_link_local_key_sets_id(self, initialized_db, mock_encryption):
+        row_id = await add_local_key(mock_encryption, "svc-1", "dev", "Key One", "secret", "normal")
+        assert await link_local_key(row_id, "remote-1") is True
+        assert (await self._get_local(row_id)).api_key_id == "remote-1"
+
+    @pytest.mark.asyncio
+    async def test_link_local_key_missing_row(self, initialized_db):
+        assert await link_local_key(9999, "remote-1") is False
+
+    @pytest.mark.asyncio
+    async def test_backfill_links_unique_name_match(self, initialized_db, mock_encryption):
+        await self._add_remote_key("remote-1", "svc-1", "dev", "Key One")
+        row_id = await add_local_key(mock_encryption, "svc-1", "dev", "Key One", "secret", "normal")
+
+        assert await backfill_local_key_api_ids() == 1
+        assert (await self._get_local(row_id)).api_key_id == "remote-1"
+
+    @pytest.mark.asyncio
+    async def test_backfill_skips_ambiguous_name(self, initialized_db, mock_encryption):
+        # Two remote keys share a name in the same service and environment.  There is
+        # no "just created" signal to break the tie, so guessing is worse than leaving
+        # the secret unlinked.
+        await self._add_remote_key("remote-1", "svc-1", "dev", "Key One")
+        await self._add_remote_key("remote-2", "svc-1", "dev", "Key One")
+        row_id = await add_local_key(mock_encryption, "svc-1", "dev", "Key One", "secret", "normal")
+
+        assert await backfill_local_key_api_ids() == 0
+        assert (await self._get_local(row_id)).api_key_id is None
+
+    @pytest.mark.asyncio
+    async def test_backfill_does_not_match_across_environments(self, initialized_db, mock_encryption):
+        await self._add_remote_key("remote-1", "svc-1", "prod", "Key One")
+        row_id = await add_local_key(mock_encryption, "svc-1", "dev", "Key One", "secret", "normal")
+
+        assert await backfill_local_key_api_ids() == 0
+        assert (await self._get_local(row_id)).api_key_id is None
+
+    @pytest.mark.asyncio
+    async def test_backfill_does_not_match_across_services(self, initialized_db, mock_encryption):
+        await self._add_remote_key("remote-1", "svc-2", "dev", "Key One")
+        row_id = await add_local_key(mock_encryption, "svc-1", "dev", "Key One", "secret", "normal")
+
+        assert await backfill_local_key_api_ids() == 0
+        assert (await self._get_local(row_id)).api_key_id is None
+
+    @pytest.mark.asyncio
+    async def test_backfill_leaves_already_linked_rows_alone(self, initialized_db, mock_encryption):
+        await self._add_remote_key("remote-1", "svc-1", "dev", "Key One")
+        row_id = await add_local_key(
+            mock_encryption, "svc-1", "dev", "Key One", "secret", "normal", api_key_id="remote-original"
+        )
+
+        assert await backfill_local_key_api_ids() == 0
+        assert (await self._get_local(row_id)).api_key_id == "remote-original"
+
+    @pytest.mark.asyncio
+    async def test_backfill_is_idempotent(self, initialized_db, mock_encryption):
+        await self._add_remote_key("remote-1", "svc-1", "dev", "Key One")
+        await add_local_key(mock_encryption, "svc-1", "dev", "Key One", "secret", "normal")
+
+        assert await backfill_local_key_api_ids() == 1
+        assert await backfill_local_key_api_ids() == 0

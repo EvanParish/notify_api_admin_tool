@@ -40,11 +40,23 @@ async def create_all() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(models.Base.metadata.create_all)
     await _apply_migrations()
+    # Local imported here rather than at module scope: repository imports from this
+    # module, so a top-level import would be circular.
+    from .repository import backfill_local_key_api_ids
+
+    linked = await backfill_local_key_api_ids()
+    if linked:
+        logger.info("Linked %d local API key(s) to their remote key", linked)
 
 
 _MIGRATIONS: list[tuple[str, str, str]] = [
     ("templates", "communication_item_id", "VARCHAR"),
     ("api_keys", "last_used_at", "VARCHAR"),
+    # Added long after local_api_keys shipped but never listed here, so installs
+    # predating it still lack the column.  The documented remedy was to delete the
+    # database, which destroys stored key secrets that cannot be re-fetched.
+    ("local_api_keys", "environment", "VARCHAR"),
+    ("local_api_keys", "api_key_id", "VARCHAR"),
 ]
 
 

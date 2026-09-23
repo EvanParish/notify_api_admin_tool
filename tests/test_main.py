@@ -1179,6 +1179,38 @@ class TestBuildServiceNameMap:
         assert helpers.build_service_name_map([]) == {}
 
 
+class TestBuildUserEmailMap:
+    def test_builds_map(self):
+        user1 = MagicMock()
+        user1.id = "user-1"
+        user1.email_address = "one@example.com"
+        user2 = MagicMock()
+        user2.id = "user-2"
+        user2.email_address = "two@example.com"
+        result = helpers.build_user_email_map([user1, user2])
+        assert result == {"user-1": "one@example.com", "user-2": "two@example.com"}
+
+    def test_skips_users_without_email(self):
+        user = MagicMock()
+        user.id = "user-1"
+        user.email_address = None
+        assert helpers.build_user_email_map([user]) == {}
+
+    def test_empty_list(self):
+        assert helpers.build_user_email_map([]) == {}
+
+
+class TestResolveUserEmail:
+    def test_returns_email_when_known(self):
+        assert helpers.resolve_user_email("user-1", {"user-1": "one@example.com"}) == "one@example.com"
+
+    def test_falls_back_to_id_when_unknown(self):
+        assert helpers.resolve_user_email("user-9", {"user-1": "one@example.com"}) == "user-9"
+
+    def test_none_returns_empty(self):
+        assert helpers.resolve_user_email(None, {}) == ""
+
+
 class TestTruncateServiceName:
     def test_short_name_unchanged(self):
         assert helpers.truncate_service_name("Short Name") == "Short Name"
@@ -3066,7 +3098,7 @@ async def test_bulk_send_page_passes_encryption_to_list_users(initialized_db, mo
     mock_api = MagicMock()
     mock_api.send_notification = AsyncMock(return_value={"id": "ok"})
     mock_service = SimpleNamespace(id="svc-1", name="Service 1", environment="development")
-    mock_key = SimpleNamespace(id="key-1", key_name="key-1")
+    mock_key = SimpleNamespace(id="key-1", key_name="key-1", api_key_id=None)
     mock_template = SimpleNamespace(id="tmpl-1", name="Template 1", subject=None, content=None)
 
     try:
@@ -4789,3 +4821,161 @@ class TestStartupWritabilityCheck:
                 await _st.startup()
 
         create_all.assert_not_awaited()
+
+
+class TestBuildApiKeyMap:
+    def test_builds_map(self):
+        key1 = MagicMock()
+        key1.id = "remote-1"
+        key2 = MagicMock()
+        key2.id = "remote-2"
+        result = helpers.build_api_key_map([key1, key2])
+        assert result == {"remote-1": key1, "remote-2": key2}
+
+    def test_empty_list(self):
+        assert helpers.build_api_key_map([]) == {}
+
+
+class TestLocalKeyStatus:
+    @staticmethod
+    def _key(revoked=False, expiry_date=None):
+        key = MagicMock()
+        key.revoked = revoked
+        key.expiry_date = expiry_date
+        return key
+
+    def test_unlinked_has_no_status(self):
+        assert helpers.local_key_status(None) == ""
+
+    def test_active(self):
+        assert helpers.local_key_status(self._key()) == "Active"
+
+    def test_revoked(self):
+        assert helpers.local_key_status(self._key(revoked=True)) == "Revoked"
+
+    def test_expired(self):
+        assert helpers.local_key_status(self._key(expiry_date="2000-01-01T00:00:00")) == "Expired"
+
+    def test_future_expiry_is_active(self):
+        assert helpers.local_key_status(self._key(expiry_date="2999-01-01T00:00:00")) == "Active"
+
+    def test_revoked_takes_precedence_over_expired(self):
+        key = self._key(revoked=True, expiry_date="2000-01-01T00:00:00")
+        assert helpers.local_key_status(key) == "Revoked"
+
+
+class TestFormatLocalKeyLabel:
+    def test_unlinked_is_bare_name(self):
+        assert helpers.format_local_key_label("Key One", "") == "Key One"
+
+    def test_active_is_bare_name(self):
+        assert helpers.format_local_key_label("Key One", "Active") == "Key One"
+
+    def test_revoked_is_flagged(self):
+        assert helpers.format_local_key_label("Key One", "Revoked") == "Key One (revoked)"
+
+    def test_expired_is_flagged(self):
+        assert helpers.format_local_key_label("Key One", "Expired") == "Key One (expired)"
+
+
+class TestLinkCreatedLocalKey:
+    """The create-key API response contains only the secret, so the remote id has to
+    be recovered by re-reading api_keys after the follow-up sync."""
+
+    @pytest.mark.asyncio
+    async def test_links_single_match(self):
+        key = MagicMock()
+        key.id = "remote-1"
+        key.name = "Key One"
+        key.created_at = "2026-01-01T00:00:00"
+        linked = AsyncMock(return_value=True)
+
+        with (
+            patch.object(page_api_keys, "list_api_keys", AsyncMock(return_value=[key])),
+            patch.object(page_api_keys, "link_local_key", linked),
+        ):
+            result = await page_api_keys._link_created_local_key(7, "svc-1", "dev", "Key One")
+
+        assert result is True
+        linked.assert_awaited_once_with(7, "remote-1")
+
+    @pytest.mark.asyncio
+    async def test_picks_newest_when_names_collide(self):
+        older = MagicMock(id="remote-old", created_at="2026-01-01T00:00:00")
+        older.name = "Key One"
+        newer = MagicMock(id="remote-new", created_at="2026-06-01T00:00:00")
+        newer.name = "Key One"
+        linked = AsyncMock(return_value=True)
+
+        with (
+            patch.object(page_api_keys, "list_api_keys", AsyncMock(return_value=[older, newer])),
+            patch.object(page_api_keys, "link_local_key", linked),
+        ):
+            await page_api_keys._link_created_local_key(7, "svc-1", "dev", "Key One")
+
+        linked.assert_awaited_once_with(7, "remote-new")
+
+    @pytest.mark.asyncio
+    async def test_ignores_other_names(self):
+        other = MagicMock(id="remote-1", created_at="2026-01-01T00:00:00")
+        other.name = "Other Key"
+        linked = AsyncMock()
+
+        with (
+            patch.object(page_api_keys, "list_api_keys", AsyncMock(return_value=[other])),
+            patch.object(page_api_keys, "link_local_key", linked),
+        ):
+            result = await page_api_keys._link_created_local_key(7, "svc-1", "dev", "Key One")
+
+        assert result is False
+        linked.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_match_returns_false(self):
+        linked = AsyncMock()
+        with (
+            patch.object(page_api_keys, "list_api_keys", AsyncMock(return_value=[])),
+            patch.object(page_api_keys, "link_local_key", linked),
+        ):
+            assert await page_api_keys._link_created_local_key(7, "svc-1", "dev", "Key One") is False
+        linked.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_lookup_failure_does_not_raise(self):
+        """The secret is already stored by this point; a failed link must never
+        propagate and lose it."""
+        with patch.object(page_api_keys, "list_api_keys", AsyncMock(side_effect=RuntimeError("boom"))):
+            assert await page_api_keys._link_created_local_key(7, "svc-1", "dev", "Key One") is False
+
+
+class TestBuildLocalKeyOptions:
+    @staticmethod
+    def _local(row_id, name, api_key_id=None):
+        local = MagicMock(id=row_id, api_key_id=api_key_id)
+        local.key_name = name
+        return local
+
+    def test_unlinked_key_is_unannotated(self):
+        options = helpers.build_local_key_options([self._local(1, "Key One")], {})
+        assert options == {1: "Key One"}
+
+    def test_linked_active_key_is_unannotated(self):
+        remote = MagicMock(revoked=False, expiry_date=None)
+        options = helpers.build_local_key_options([self._local(1, "Key One", "remote-1")], {"remote-1": remote})
+        assert options == {1: "Key One"}
+
+    def test_revoked_key_is_flagged(self):
+        remote = MagicMock(revoked=True, expiry_date=None)
+        options = helpers.build_local_key_options([self._local(1, "Key One", "remote-1")], {"remote-1": remote})
+        assert options == {1: "Key One (revoked)"}
+
+    def test_expired_key_is_flagged(self):
+        remote = MagicMock(revoked=False, expiry_date="2000-01-01T00:00:00")
+        options = helpers.build_local_key_options([self._local(1, "Key One", "remote-1")], {"remote-1": remote})
+        assert options == {1: "Key One (expired)"}
+
+    def test_linked_but_missing_remote_row_is_unannotated(self):
+        # The api_keys cache may simply not have been synced; that is not evidence
+        # the key is bad.
+        options = helpers.build_local_key_options([self._local(1, "Key One", "remote-1")], {})
+        assert options == {1: "Key One"}
