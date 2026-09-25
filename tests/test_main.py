@@ -2939,6 +2939,65 @@ async def test_sms_senders_page(initialized_db, mock_config):
         _st.state = original_state
 
 
+def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://example.test/service/svc-1/sms-sender")
+    response = httpx.Response(status_code, request=request)
+    return httpx.HTTPStatusError(f"{status_code}", request=request, response=response)
+
+
+@pytest.mark.asyncio
+async def test_service_has_active_sms_senders_true_when_active_sender_exists():
+    api = AsyncMock()
+    api.get_sms_senders.return_value = [{"id": "s1", "archived": False, "is_default": True}]
+    assert await page_sms_senders.service_has_active_sms_senders(api, "svc-1") is True
+    api.get_sms_senders.assert_awaited_once_with("svc-1")
+
+
+@pytest.mark.asyncio
+async def test_service_has_active_sms_senders_false_when_empty():
+    api = AsyncMock()
+    api.get_sms_senders.return_value = []
+    assert await page_sms_senders.service_has_active_sms_senders(api, "svc-1") is False
+
+
+@pytest.mark.asyncio
+async def test_service_has_active_sms_senders_ignores_archived():
+    api = AsyncMock()
+    api.get_sms_senders.return_value = [{"id": "s1", "archived": True, "is_default": True}]
+    assert await page_sms_senders.service_has_active_sms_senders(api, "svc-1") is False
+
+
+@pytest.mark.asyncio
+async def test_service_has_active_sms_senders_false_on_404():
+    api = AsyncMock()
+    api.get_sms_senders.side_effect = _http_status_error(404)
+    assert await page_sms_senders.service_has_active_sms_senders(api, "svc-1") is False
+
+
+@pytest.mark.asyncio
+async def test_service_has_active_sms_senders_reraises_other_errors():
+    api = AsyncMock()
+    api.get_sms_senders.side_effect = _http_status_error(500)
+    with pytest.raises(httpx.HTTPStatusError):
+        await page_sms_senders.service_has_active_sms_senders(api, "svc-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "cached, expected",
+    [
+        ([], False),
+        ([SimpleNamespace(archived=True)], False),
+        ([SimpleNamespace(archived=True), SimpleNamespace(archived=False)], True),
+    ],
+)
+async def test_cached_service_has_active_sms_senders(cached, expected):
+    with patch("app.ui.pages.sms_senders.list_sms_senders", new_callable=AsyncMock, return_value=cached) as mock_list:
+        result = await page_sms_senders.cached_service_has_active_sms_senders("svc-1", "development")
+    assert result is expected
+    mock_list.assert_awaited_once_with("svc-1", environment="development")
+
+
 @pytest.mark.asyncio
 async def test_provider_details_page(initialized_db, mock_config):
     original = _st.config

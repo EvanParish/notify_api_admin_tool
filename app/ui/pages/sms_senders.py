@@ -38,6 +38,27 @@ from app.ui.state import (
 from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 
 
+async def service_has_active_sms_senders(api: Any, service_id: str) -> bool:
+    """Query the live API for non-archived SMS senders on ``service_id``.
+
+    A 404 means the service has no senders. Other errors propagate so the caller
+    can decide how to handle them rather than guessing.
+    """
+    try:
+        senders = await api.get_sms_senders(service_id)
+    except httpx.HTTPStatusError as exc:
+        if exc.response is not None and exc.response.status_code == 404:
+            return False
+        raise
+    return any(not sender.get("archived") for sender in senders or [])
+
+
+async def cached_service_has_active_sms_senders(service_id: str, environment: str) -> bool:
+    """Check the local cache for non-archived SMS senders. May be stale; UI hint only."""
+    cached = await list_sms_senders(service_id, environment=environment)
+    return any(not sender.archived for sender in cached)
+
+
 @ui.page("/sms-senders", response_timeout=PAGE_RESPONSE_TIMEOUT)
 async def sms_senders_page() -> None:
     sms_sender_search_query = ""
@@ -126,6 +147,14 @@ async def sms_senders_page() -> None:
             await refresh_create_service_options()
             await refresh_create_provider_options()
 
+        async def handle_create_service_change(_=None) -> None:  # pragma: no cover
+            # UI hint from the local cache; authoritative check happens on submit.
+            service_id = create_service.value
+            if not (service_id and create_env.value):
+                return
+            if not await cached_service_has_active_sms_senders(service_id, create_env.value):
+                create_is_default.value = True
+
         async def handle_create_sms_sender() -> None:  # pragma: no cover
             environment = create_env.value
             service_id = create_service.value
@@ -157,6 +186,27 @@ async def sms_senders_page() -> None:
             if not await ensure_admin_auth(environment, sync_label):
                 return
             api = await build_api_client(environment)
+            # The API requires the first sender on a service to be the default.
+            # Check live state (the local cache may be stale) and force it.
+            if not is_default:
+                try:
+                    has_senders = await service_has_active_sms_senders(api, service_id)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response is not None and exc.response.status_code == 401:
+                        handle_unauthorized(sync_label, environment)
+                        return
+                    ui.notify(f"Failed to check existing SMS senders: {exc}", color="red")
+                    return
+                except Exception as exc:
+                    ui.notify(f"Error checking existing SMS senders: {exc}", color="red")
+                    return
+                if not has_senders:
+                    is_default = True
+                    create_is_default.value = True
+                    ui.notify(
+                        "Service has no SMS senders; creating this one as the default",
+                        color="info",
+                    )
             try:
                 await api.create_sms_sender(
                     service_id=service_id,
@@ -195,6 +245,7 @@ async def sms_senders_page() -> None:
             create_dialog.open()
 
         create_env.on_value_change(handle_create_env_change)
+        create_service.on_value_change(handle_create_service_change)
         create_submit_button.on_click(handle_create_sms_sender)
 
         # Edit SMS Sender dialog
