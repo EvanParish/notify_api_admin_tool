@@ -33,6 +33,7 @@ from app.repository import (
     update_communication_item,
     clear_table_data,
     count_active_api_keys_by_service,
+    count_sms_senders_by_service,
     count_templates_by_service,
     _is_expired,
     upsert_service_callbacks,
@@ -2136,6 +2137,90 @@ async def test_count_templates_by_service_multiple_environments(initialized_db):
     assert ("svc-1", "dev") in counts
     assert ("svc-1", "staging") in counts
     assert ("svc-1", "prod") not in counts
+
+
+@pytest.mark.asyncio
+async def test_count_sms_senders_by_service_empty(initialized_db):
+    """No SMS senders should return empty dict."""
+    counts = await count_sms_senders_by_service()
+    assert counts == {}
+
+
+@pytest.mark.asyncio
+async def test_count_sms_senders_by_service_counts(initialized_db):
+    """Senders are counted per (service_id, environment)."""
+    async with get_session() as session:
+        session.add(SmsSender(id="s1", service_id="svc-1", environment="dev", sms_sender="111"))
+        session.add(SmsSender(id="s2", service_id="svc-1", environment="dev", sms_sender="222"))
+        session.add(SmsSender(id="s3", service_id="svc-2", environment="dev", sms_sender="333"))
+        session.add(SmsSender(id="s4", service_id="svc-1", environment="staging", sms_sender="444"))
+        await session.commit()
+
+    counts = await count_sms_senders_by_service()
+    assert counts == {("svc-1", "dev"): 2, ("svc-2", "dev"): 1, ("svc-1", "staging"): 1}
+
+
+@pytest.mark.asyncio
+async def test_count_sms_senders_by_service_excludes_archived(initialized_db):
+    """archived=True senders are not counted; a service with only archived senders is absent."""
+    async with get_session() as session:
+        session.add(SmsSender(id="s1", service_id="svc-1", environment="dev", sms_sender="111", archived=False))
+        session.add(SmsSender(id="s2", service_id="svc-1", environment="dev", sms_sender="222", archived=True))
+        session.add(SmsSender(id="s3", service_id="svc-2", environment="dev", sms_sender="333", archived=True))
+        await session.commit()
+
+    counts = await count_sms_senders_by_service()
+    assert counts == {("svc-1", "dev"): 1}
+
+
+@pytest.mark.asyncio
+async def test_count_sms_senders_by_service_environment_filter(initialized_db):
+    """A single environment string filters results."""
+    async with get_session() as session:
+        session.add(SmsSender(id="s1", service_id="svc-1", environment="dev", sms_sender="111"))
+        session.add(SmsSender(id="s2", service_id="svc-1", environment="staging", sms_sender="222"))
+        await session.commit()
+
+    counts = await count_sms_senders_by_service(environment="dev")
+    assert counts == {("svc-1", "dev"): 1}
+
+
+@pytest.mark.asyncio
+async def test_count_sms_senders_by_service_multiple_environments(initialized_db):
+    """A list of environments filters results."""
+    async with get_session() as session:
+        session.add(SmsSender(id="s1", service_id="svc-1", environment="dev", sms_sender="111"))
+        session.add(SmsSender(id="s2", service_id="svc-1", environment="staging", sms_sender="222"))
+        session.add(SmsSender(id="s3", service_id="svc-1", environment="prod", sms_sender="333"))
+        await session.commit()
+
+    counts = await count_sms_senders_by_service(environment=["dev", "staging"])
+    assert counts == {("svc-1", "dev"): 1, ("svc-1", "staging"): 1}
+
+
+@pytest.mark.asyncio
+async def test_count_sms_senders_by_service_drops_null_environment(initialized_db):
+    """Rows with environment=None cannot match a service row and are dropped."""
+    async with get_session() as session:
+        session.add(SmsSender(id="s1", service_id="svc-1", environment=None, sms_sender="111"))
+        session.add(SmsSender(id="s2", service_id="svc-1", environment="dev", sms_sender="222"))
+        await session.commit()
+
+    counts = await count_sms_senders_by_service()
+    assert counts == {("svc-1", "dev"): 1}
+
+
+@pytest.mark.asyncio
+async def test_count_sms_senders_by_service_ignores_archive_name_prefix(initialized_db):
+    """Only the archived flag excludes a sender; the _archive name prefix used by list_sms_senders does not."""
+    async with get_session() as session:
+        session.add(
+            SmsSender(id="s1", service_id="svc-1", environment="dev", sms_sender="_archive_111", archived=False)
+        )
+        await session.commit()
+
+    counts = await count_sms_senders_by_service()
+    assert counts == {("svc-1", "dev"): 1}
 
 
 @pytest.mark.asyncio

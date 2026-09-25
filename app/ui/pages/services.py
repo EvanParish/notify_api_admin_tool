@@ -8,6 +8,7 @@ from nicegui import ui
 
 from app.repository import (
     count_active_api_keys_by_service,
+    count_sms_senders_by_service,
     count_templates_by_service,
     list_services,
     update_service,
@@ -732,6 +733,7 @@ async def services_table(
     rows = await list_services(view_env)
     active_key_counts = await count_active_api_keys_by_service(view_env)
     template_counts = await count_templates_by_service(view_env)
+    sms_sender_counts = await count_sms_senders_by_service(view_env)
     if _st.service_search_query:
         rows = [
             row
@@ -745,6 +747,7 @@ async def services_table(
         {"name": "name", "label": "Name", "field": "name"},
         {"name": "active_keys", "label": "Active Keys", "field": "active_keys"},
         {"name": "templates", "label": "Templates", "field": "templates"},
+        {"name": "sms_senders", "label": "SMS Senders", "field": "sms_senders"},
         {"name": "active", "label": "Active", "field": "active"},
         {"name": "restricted", "label": "Restricted", "field": "restricted"},
         {"name": "message_limit", "label": "Msg Limit", "field": "message_limit"},
@@ -762,6 +765,7 @@ async def services_table(
             "name": row.name,
             "active_keys": active_key_counts.get((row.id, row.environment), 0),
             "templates": template_counts.get((row.id, row.environment), 0),
+            "sms_senders": sms_sender_counts.get((row.id, row.environment), 0),
             "active": row.active,
             "restricted": row.restricted,
             "message_limit": row.message_limit,

@@ -391,6 +391,28 @@ async def count_active_api_keys_by_service(
         return {(sid, env): cnt for sid, env, cnt in rows if sid is not None and env is not None}
 
 
+async def count_sms_senders_by_service(
+    environment: str | list[str] | None = None,
+) -> dict[tuple[str, str], int]:
+    """Count non-archived SMS senders grouped by (service_id, environment).
+
+    Archived means ``SmsSender.archived`` is true. This deliberately differs from
+    ``list_sms_senders``, which applies the ``_archive`` name-prefix rule instead.
+    """
+    async with get_session() as session:
+        query = (
+            select(SmsSender.service_id, SmsSender.environment, func.count(SmsSender.id))
+            .where(SmsSender.archived == False)  # noqa: E712
+            .group_by(SmsSender.service_id, SmsSender.environment)
+        )
+        envs = [environment] if isinstance(environment, str) else environment
+        env_clause = _env_filter(SmsSender.environment, envs)
+        if env_clause is not None:
+            query = query.where(env_clause)
+        rows = (await session.execute(query)).all()
+        return {(sid, env): cnt for sid, env, cnt in rows if sid is not None and env is not None}
+
+
 async def update_api_key_expiry(
     service_id: str,
     key_id: str,

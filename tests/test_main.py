@@ -2786,6 +2786,7 @@ async def test_services_table_func(initialized_db, mock_config):
                 new_callable=AsyncMock,
                 return_value={},
             ),
+            patch("app.ui.pages.services.count_sms_senders_by_service", new_callable=AsyncMock, return_value={}),
             patch("app.ui.pages.services.ui.table", return_value=mock_obj),
             patch("app.ui.pages.services.ui.row", return_value=mock_obj),
             patch("app.ui.pages.services.ui.button", return_value=mock_obj),
@@ -2830,6 +2831,7 @@ async def test_services_table_func_with_selection(initialized_db, mock_config):
                 new_callable=AsyncMock,
                 return_value={},
             ),
+            patch("app.ui.pages.services.count_sms_senders_by_service", new_callable=AsyncMock, return_value={}),
             patch("app.ui.pages.services.ui.table", return_value=mock_obj),
             patch("app.ui.pages.services.ui.row", return_value=mock_obj),
             patch("app.ui.pages.services.ui.button", return_value=mock_obj),
@@ -3299,6 +3301,7 @@ async def test_services_table_with_search_query(initialized_db, mock_config):
                 new_callable=AsyncMock,
                 return_value={},
             ),
+            patch("app.ui.pages.services.count_sms_senders_by_service", new_callable=AsyncMock, return_value={}),
             patch("app.ui.pages.services.ui.table", return_value=mock_obj),
             patch("app.ui.pages.services.ui.row", return_value=mock_obj),
             patch("app.ui.pages.services.ui.button", return_value=mock_obj),
@@ -3436,6 +3439,7 @@ async def test_services_table_renders_permissions_untruncated(initialized_db, mo
                 new_callable=AsyncMock,
                 return_value={},
             ),
+            patch("app.ui.pages.services.count_sms_senders_by_service", new_callable=AsyncMock, return_value={}),
             patch("app.ui.pages.services.count_templates_by_service", new_callable=AsyncMock, return_value={}),
             patch("app.ui.pages.services.ui.table", return_value=mock_obj),
             patch("app.ui.pages.services.ui.row", return_value=mock_obj),
@@ -3451,6 +3455,87 @@ async def test_services_table_renders_permissions_untruncated(initialized_db, mo
         _st.service_search_query = ""
 
     assert captured[0]["permissions"] == "email, sms, international_sms, letter, inbound_sms"
+
+
+@pytest.mark.asyncio
+async def test_services_table_renders_sms_sender_count(initialized_db, mock_config):
+    """SMS Senders column follows Templates; values come from the per-(service, environment)
+    count lookup, so the same service id in two environments gets distinct counts. Missing keys default to 0.
+    """
+    original = _st.config
+    original_state = _st.state
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    _st.service_search_query = ""
+
+    def make_row(service_id: str, environment: str = "development") -> SimpleNamespace:
+        return SimpleNamespace(
+            id=service_id,
+            environment=environment,
+            name=f"Service {service_id}",
+            active=True,
+            restricted=False,
+            message_limit=1000,
+            rate_limit=100,
+            research_mode=False,
+            count_as_live=True,
+            permissions=json.dumps(["sms"]),
+        )
+
+    captured_rows: list = []
+    captured_columns: list = []
+
+    def capture_export(rows, columns, *args, **kwargs):
+        captured_rows.extend(rows)
+        captured_columns.extend(columns)
+
+    mock_obj = MagicMock()
+    mock_obj.__enter__ = Mock(return_value=mock_obj)
+    mock_obj.__exit__ = Mock(return_value=False)
+    mock_obj.classes = MagicMock(return_value=mock_obj)
+    mock_obj.props = MagicMock(return_value=mock_obj)
+    mock_obj.add_slot = MagicMock(return_value=mock_obj)
+    mock_obj.on = MagicMock(return_value=mock_obj)
+
+    try:
+        with (
+            patch(
+                "app.ui.pages.services.list_services",
+                new_callable=AsyncMock,
+                return_value=[make_row("svc-1"), make_row("svc-1", "production"), make_row("svc-2")],
+            ),
+            patch(
+                "app.ui.pages.services.count_active_api_keys_by_service",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch("app.ui.pages.services.count_templates_by_service", new_callable=AsyncMock, return_value={}),
+            patch(
+                "app.ui.pages.services.count_sms_senders_by_service",
+                new_callable=AsyncMock,
+                return_value={("svc-1", "development"): 3, ("svc-1", "production"): 5},
+            ) as sms_counts,
+            patch("app.ui.pages.services.ui.table", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.row", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.button", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.space"),
+            patch("app.ui.pages.services.add_copyable_slots"),
+            patch("app.ui.pages.services.add_export_button", side_effect=capture_export),
+        ):
+            await page_services.services_table.func(lambda: None)
+    finally:
+        _st.config = original
+        _st.state = original_state
+        _st.service_search_query = ""
+
+    # SharedTestState defaults view_environments to [], so get_view_environment() returns None ("all").
+    sms_counts.assert_awaited_once_with(None)
+    names = [c["name"] for c in captured_columns]
+    assert names.index("sms_senders") == names.index("templates") + 1
+    sms_column = captured_columns[names.index("sms_senders")]
+    assert sms_column == {"name": "sms_senders", "label": "SMS Senders", "field": "sms_senders"}
+    by_key = {(r["id"], r["environment_value"]): r["sms_senders"] for r in captured_rows}
+    assert by_key == {("svc-1", "development"): 3, ("svc-1", "production"): 5, ("svc-2", "development"): 0}
 
 
 # ---------------------------------------------------------------------------
@@ -3682,6 +3767,7 @@ async def test_services_table_permissions_button_is_conditional(initialized_db, 
                     new_callable=AsyncMock,
                     return_value={},
                 ),
+                patch("app.ui.pages.services.count_sms_senders_by_service", new_callable=AsyncMock, return_value={}),
                 patch("app.ui.pages.services.count_templates_by_service", new_callable=AsyncMock, return_value={}),
                 patch("app.ui.pages.services.ui.table", side_effect=probe.factory("table")),
                 patch("app.ui.pages.services.ui.row", side_effect=probe.factory("row")),
