@@ -5,6 +5,7 @@ Note: NiceGUI UI components cannot be easily tested without a running server.
 These tests focus on the business logic functions that can be tested in isolation.
 """
 
+import asyncio
 import os
 import json
 import pytest
@@ -820,6 +821,18 @@ class TestSafeClientDelete:
             shell._safe_client_delete(mock_self)
             assert mock_self._deleted is True
 
+    async def test_keyerror_releases_connected_waiters(self):
+        # The original delete() pulses _connected after the line that raises, so the
+        # patch must do it; otherwise `await client.connected()` callers hang forever.
+        mock_self = MagicMock()
+        mock_self._connected = asyncio.Event()
+        waiter = asyncio.create_task(mock_self._connected.wait())
+        await asyncio.sleep(0)
+        with patch.object(shell, "_original_client_delete", side_effect=KeyError("already deleted")):
+            shell._safe_client_delete(mock_self)
+        await asyncio.wait_for(waiter, timeout=1)
+        assert not mock_self._connected.is_set()
+
 
 class TestAppStateViewEnvironmentsFallback:
     """Test AppState view_environments fallback to empty list (all)."""
@@ -1522,38 +1535,6 @@ class TestPageResponseTimeout:
     def test_constant_exceeds_default(self):
         # NiceGUI default is 3.0s; ours must be higher
         assert _st.PAGE_RESPONSE_TIMEOUT > 3.0
-
-
-class TestHandleTimeoutError:
-    @staticmethod
-    def _make_request(path: str):
-        from starlette.requests import Request
-
-        scope = {
-            "type": "http",
-            "method": "GET",
-            "path": path,
-            "raw_path": path.encode(),
-            "query_string": b"",
-            "headers": [(b"host", b"testserver")],
-            "scheme": "http",
-            "server": ("testserver", 80),
-        }
-        return Request(scope)
-
-    async def test_returns_504_with_retry_link(self):
-        request = self._make_request("/")
-        resp = await _st.handle_timeout_error(request, TimeoutError("Response not ready after 10.0 seconds"))
-        body = resp.body.decode()
-        assert resp.status_code == 504
-        assert "Page Load Timeout" in body
-        assert "Retry" in body
-
-    async def test_retry_link_contains_request_url(self):
-        request = self._make_request("/my-page")
-        resp = await _st.handle_timeout_error(request, TimeoutError("timeout"))
-        assert resp.status_code == 504
-        assert "/my-page" in resp.body.decode()
 
 
 class TestFindMissingPersonalisation:

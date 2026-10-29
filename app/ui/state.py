@@ -14,8 +14,6 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from nicegui import Client, app, context, ui
-from starlette.requests import Request
-from starlette.responses import HTMLResponse
 
 from app.api_client import HttpNotificationAPI, MockNotificationAPI, NotificationAPI
 from app.config import AppConfig, _remap_host, load_config
@@ -142,37 +140,6 @@ async def shutdown() -> None:
         await c.aclose()
     _active_api_clients.clear()
     await dispose_engine()
-
-
-@app.exception_handler(TimeoutError)
-async def handle_timeout_error(request: Request, exc: TimeoutError) -> HTMLResponse:
-    """Return a friendly retry page instead of a 500 error on page-load timeouts."""
-    logger.warning("Page timed out: %s %s – %s", request.method, request.url.path, exc)
-    page_url = str(request.url)
-    html = (
-        "<!DOCTYPE html>"
-        '<html lang="en"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        "<title>Page Load Timeout</title>"
-        "<style>"
-        "body{margin:0;min-height:100vh;display:flex;align-items:center;"
-        "justify-content:center;background:#0b0f14;color:#e2e8f0;"
-        "font-family:system-ui,sans-serif}"
-        ".card{text-align:center;padding:2.5rem;border-radius:12px;"
-        "background:#161b22;border:1px solid #30363d;max-width:480px}"
-        "h1{font-size:1.5rem;margin:0 0 .75rem}"
-        "p{color:#8b949e;margin:0 0 1.5rem;line-height:1.5}"
-        "a{display:inline-block;padding:.625rem 1.5rem;background:#238636;"
-        "color:#fff;text-decoration:none;border-radius:6px;font-weight:600}"
-        "a:hover{background:#2ea043}"
-        "</style></head><body><div class='card'>"
-        "<h1>⏱️ Page Load Timeout</h1>"
-        "<p>The page took too long to load. This is usually temporary "
-        "&mdash; please try again.</p>"
-        f'<a href="{page_url}">Retry</a>'
-        "</div></body></html>"
-    )
-    return HTMLResponse(content=html, status_code=504)
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +323,9 @@ def register_progress_widgets(bar, label) -> None:
     client = context.client
     client_id = client.id
     _progress_widgets[client_id] = (bar, label)
-    client.on_disconnect(lambda: _progress_widgets.pop(client_id, None))
+    # on_delete, not on_disconnect: since NiceGUI 3 on_disconnect fires on every transient
+    # socket drop, which would silently stop progress updates for a tab that reconnects.
+    client.on_delete(lambda: _progress_widgets.pop(client_id, None))
 
 
 def clear_progress_widgets() -> None:
@@ -368,15 +337,16 @@ def progress_widget_count() -> int:
 
 
 def _live_progress_widgets() -> list[tuple[str, tuple]]:
-    """Registered widgets whose client is still connected, sweeping the rest.
+    """Registered widgets whose client still exists, sweeping the rest.
 
-    ``on_disconnect`` does not reliably fire when a browser is killed, so the
-    registry would otherwise leak entries for dead clients.
+    ``on_delete`` is the primary cleanup; this sweep is a backstop against leaked
+    entries. It deliberately keeps clients that are only *disconnected*: NiceGUI 3
+    replays queued updates on reconnect, so dropping a tab during a transient socket
+    drop would silently end its progress updates for the rest of the sync.
     """
     live = []
     for client_id, widgets in list(_progress_widgets.items()):
-        client = Client.instances.get(client_id)
-        if client is None or not client.has_socket_connection:
+        if Client.instances.get(client_id) is None:
             _progress_widgets.pop(client_id, None)
             continue
         live.append((client_id, widgets))

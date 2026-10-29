@@ -45,12 +45,12 @@ def test_register_stores_widgets(monkeypatch):
     assert _st.progress_widget_count() == 1
 
 
-def test_disconnect_removes_widgets(monkeypatch):
+def test_delete_removes_widgets(monkeypatch):
     client = make_client("a")
     register(monkeypatch, client, FakeWidget(), FakeWidget())
 
-    # NiceGUI invokes the handler registered via Client.on_disconnect.
-    handler = client.on_disconnect.call_args[0][0]
+    # NiceGUI invokes the handler registered via Client.on_delete.
+    handler = client.on_delete.call_args[0][0]
     handler()
 
     assert _st.progress_widget_count() == 0
@@ -88,14 +88,18 @@ async def test_push_with_zero_total_hides_bar(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_disconnected_client_is_swept(monkeypatch):
+async def test_transiently_disconnected_client_is_kept(monkeypatch):
+    # NiceGUI 3 replays queued updates on reconnect; sweeping a tab during a brief socket
+    # drop would end its progress updates for the rest of the sync.
     client = make_client("a", connected=False)
-    register(monkeypatch, client, FakeWidget(), FakeWidget())
+    bar, label = FakeWidget(), FakeWidget()
+    register(monkeypatch, client, bar, label)
     install_clients(monkeypatch, client)
 
     await _st.push_progress(1, 2, "x")
 
-    assert _st.progress_widget_count() == 0
+    assert _st.progress_widget_count() == 1
+    assert label.text == "x - 1/2"
 
 
 @pytest.mark.asyncio
