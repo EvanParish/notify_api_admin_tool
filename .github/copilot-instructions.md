@@ -4,7 +4,7 @@
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+uv sync  # exact versions from uv.lock (add --no-dev to skip test tools)
 
 # Run the app (NiceGUI web UI on port 8080)
 python main.py

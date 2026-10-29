@@ -6,16 +6,16 @@ This project has comprehensive test coverage (98%) for all core functionality.
 
 ```bash
 # Install dependencies (if not already installed)
-pip install -r requirements.txt
+uv sync --frozen
 
 # Run all tests
-python -m pytest tests/
+uv run pytest tests/
 
 # Run tests with coverage report
-python -m pytest tests/ --cov=app --cov-report=term-missing
+uv run pytest tests/ --cov=app --cov-report=term-missing
 
 # Run tests with HTML coverage report
-python -m pytest tests/ --cov=app --cov-report=html
+uv run pytest tests/ --cov=app --cov-report=html
 # Then open htmlcov/index.html in your browser
 ```
 
@@ -37,22 +37,22 @@ tests/
 
 ```bash
 # Run a specific test file
-python -m pytest tests/test_utils.py -v
+uv run pytest tests/test_utils.py -v
 
 # Run a specific test function
-python -m pytest tests/test_utils.py::test_extract_placeholders_empty -v
+uv run pytest tests/test_utils.py::test_extract_placeholders_empty -v
 
 # Run tests matching a pattern
-python -m pytest tests/ -k "encryption" -v
+uv run pytest tests/ -k "encryption" -v
 
 # Run with verbose output
-python -m pytest tests/ -vv
+uv run pytest tests/ -vv
 
 # Stop on first failure
-python -m pytest tests/ -x
+uv run pytest tests/ -x
 
 # Show local variables on failure
-python -m pytest tests/ -l
+uv run pytest tests/ -l
 ```
 
 ## Test Coverage
@@ -78,8 +78,8 @@ Tests can be easily integrated into CI/CD pipelines:
 # Example GitHub Actions
 - name: Run tests
   run: |
-    pip install -r requirements.txt
-    pytest tests/ --cov=app --cov-report=xml
+    uv sync --frozen
+    uv run pytest tests/ --cov=app --cov-report=xml
     
 - name: Upload coverage
   uses: codecov/codecov-action@v3

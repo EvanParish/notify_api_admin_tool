@@ -238,8 +238,8 @@ Service Callbacks (`/service-callbacks`) additionally supports create, edit, and
 
 ### Direct
 ```bash
-pip install -r requirements.txt
-python main.py
+uv sync  # exact versions from uv.lock (add --no-dev to skip test tools)
+uv run python main.py
 # NiceGUI serves on http://localhost:8080
 ```
 
