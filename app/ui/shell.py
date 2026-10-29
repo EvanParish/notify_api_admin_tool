@@ -93,8 +93,13 @@ def _safe_client_delete(self) -> None:
     try:
         _original_client_delete(self)
     except KeyError:
+        # NiceGUI #1826 (still documented in 3.x): the client was already gone from
+        # Client.instances. Finish the steps the original skipped after the raise: mark it
+        # deleted and pulse _connected so any `await client.connected()` waiter terminates.
         logger.warning("NiceGUI client already deleted: %s", self.id)
         self._deleted = True
+        self._connected.set()
+        self._connected.clear()
 
 
 Client.delete = _safe_client_delete
@@ -129,13 +134,14 @@ async def ensure_theme_preference(dark_mode, theme_button=None) -> None:
 def _nav_link(icon: str, label: str, href: str) -> None:
     """Create a styled navigation link with icon."""
     with ui.link(target=href).classes(
-        "flex items-center gap-3 px-4 py-2.5 rounded-lg no-underline "
+        # flex-nowrap: Quasar's .flex sets flex-wrap: wrap, which pushes long labels under the icon.
+        "flex flex-nowrap items-center gap-3 px-4 py-2.5 rounded-lg no-underline "
         "text-slate-600 dark:text-slate-300 "
         "hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white "
         "transition-colors duration-150"
     ):
         ui.icon(icon).classes("text-lg")
-        ui.label(label).classes("text-sm font-medium")
+        ui.label(label).classes("text-sm font-medium whitespace-nowrap")
 
 
 def _nav_section(title: str) -> None:

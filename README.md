@@ -34,8 +34,8 @@ MASTER_KEY=your-secure-random-string-here
 **Direct:**
 
 ```bash
-pip install -r requirements.txt
-python main.py
+uv sync  # exact versions from uv.lock (add --no-dev to skip test tools)
+uv run python main.py
 # Open http://localhost:8080
 ```
 
