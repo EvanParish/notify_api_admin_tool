@@ -22,9 +22,10 @@ from app.ui.helpers import (
     add_export_button,
     build_api_key_map,
     format_service_label,
-    make_row_key,
     local_key_status,
+    make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
@@ -267,8 +268,20 @@ async def render_local_keys() -> None:
                 "status": local_key_status(remote),
             }
         )
+
+    def _local_key_export_rows() -> List[Dict[str, Any]]:
+        # key_secret is stripped by the export denylist inside model_to_export_dict.
+        out = []
+        for k in keys:
+            remote = api_key_map.get(k.api_key_id)
+            expiry = getattr(remote, "expiry_date", None) if remote is not None else None
+            out.append(model_to_export_dict(k, expiry_date=expiry, status=local_key_status(remote)))
+        return out
+
     with ui.row().classes("w-full justify-end"):
-        add_export_button(rows, columns, "local_api_keys.csv")
+        add_export_button(
+            rows, columns, "local_api_keys.csv", export_rows=_local_key_export_rows, table_ref=lambda: table
+        )
     table = ui.table(
         columns=make_sortable(columns),
         rows=rows,

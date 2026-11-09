@@ -28,6 +28,7 @@ from app.ui.helpers import (
     format_service_label,
     make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
     resolve_service_name,
     resolve_user_email,
@@ -503,6 +504,20 @@ async def api_keys_page() -> None:
                 {"name": "created_at", "label": "Created", "field": "created_at"},
                 {"name": "version", "label": "Version", "field": "version"},
             ]
+            keys = [
+                key
+                for key in keys
+                if _matches_expiry_range(key.expiry_date, start_date, end_date)
+                and _matches_search(
+                    search_term,
+                    key.id,
+                    key.service_id,
+                    service_name_map.get(key.service_id, ""),
+                    key.name,
+                    key.created_by,
+                    resolve_user_email(key.created_by, user_email_map),
+                )
+            ]
             table_rows: List[Dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(key.id, key.environment),
@@ -522,16 +537,6 @@ async def api_keys_page() -> None:
                     "version": key.version,
                 }
                 for key in keys
-                if _matches_expiry_range(key.expiry_date, start_date, end_date)
-                and _matches_search(
-                    search_term,
-                    key.id,
-                    key.service_id,
-                    service_name_map.get(key.service_id, ""),
-                    key.name,
-                    key.created_by,
-                    resolve_user_email(key.created_by, user_email_map),
-                )
             ]
             with ui.row().classes("w-full items-center"):
                 ui.button("Sync API Keys", on_click=handle_sync_keys)
@@ -543,7 +548,21 @@ async def api_keys_page() -> None:
                 create_button = ui.button("Create Personal API Key", color="green")
                 create_button.on_click(handle_open_create_dialog)
                 ui.space()
-                add_export_button(table_rows, columns, "api_keys.csv")
+                add_export_button(
+                    table_rows,
+                    columns,
+                    "api_keys.csv",
+                    export_rows=lambda: [
+                        model_to_export_dict(
+                            key,
+                            service_name=service_name_map.get(key.service_id or "", key.service_id or ""),
+                            created_by_email=resolve_user_email(key.created_by, user_email_map),
+                        )
+                        for key in keys
+                    ],
+                    table_ref=lambda: table,
+                    sensitive_notice="Includes decrypted creator email addresses.",
+                )
 
             def handle_row_select(e) -> None:  # pragma: no cover
                 if e.selection:

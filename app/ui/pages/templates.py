@@ -15,6 +15,7 @@ from app.ui.helpers import (
     format_service_label,
     make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
     resolve_service_name,
     truncate_text,
@@ -124,6 +125,15 @@ async def templates_page() -> None:
                     return ci.va_profile_item_id, ci.id, ci.name, ci.va_profile_item_id
                 return None, row.communication_item_id, None, None
 
+            def _template_export_row(row) -> Dict[str, Any]:
+                _, _, ci_name, ci_num = _resolve_comm_item(row)
+                return model_to_export_dict(
+                    row,
+                    service_name=service_name_map.get(row.service_id, row.service_id),
+                    communication_item_name=ci_name,
+                    communication_item_va_profile_item_id=ci_num,
+                )
+
             table_rows: List[Dict[str, Any]] = []
             for row in rows:
                 com_display, ci_id, ci_name, ci_num = _resolve_comm_item(row)
@@ -153,7 +163,14 @@ async def templates_page() -> None:
             with ui.row().classes("w-full items-center"):
                 ui.button("Sync Templates", on_click=handle_sync_templates)
                 ui.space()
-                add_export_button(table_rows, columns, "templates.csv")
+                add_export_button(
+                    table_rows,
+                    columns,
+                    "templates.csv",
+                    export_rows=lambda: [_template_export_row(row) for row in rows],
+                    table_ref=lambda: table,
+                    sensitive_notice="Includes reply-to email addresses.",
+                )
             table = ui.table(
                 columns=make_sortable(columns),
                 rows=table_rows,

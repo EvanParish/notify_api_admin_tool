@@ -12,6 +12,7 @@ from app.ui.helpers import (
     format_environment,
     make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
@@ -132,7 +133,17 @@ async def users_page() -> None:
             with ui.row().classes("w-full items-center"):
                 ui.button("Sync Users", on_click=handle_sync_users)
                 ui.space()
-                add_export_button(table_rows, columns, "users.csv")
+                add_export_button(
+                    table_rows,
+                    columns,
+                    "users.csv",
+                    export_rows=lambda: [model_to_export_dict(u) for u in users],
+                    table_ref=lambda: table,
+                    sensitive_notice=(
+                        "Includes decrypted user names, email addresses, mobile numbers, identity provider "
+                        "user IDs, permissions, service/organisation memberships and additional information."
+                    ),
+                )
             table = ui.table(
                 columns=make_sortable(columns),
                 rows=table_rows,

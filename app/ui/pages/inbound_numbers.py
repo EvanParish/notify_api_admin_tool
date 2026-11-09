@@ -22,6 +22,7 @@ from app.ui.helpers import (
     format_service_label,
     make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
     resolve_service_name,
     set_options_preserving,
@@ -166,7 +167,11 @@ async def inbound_numbers_page() -> None:
             )
             create_active = ui.checkbox("Active", value=True)
             create_self_managed = ui.checkbox("Self Managed")
-            create_auth_parameter = ui.input(label="Auth Parameter").props("clearable").classes("w-full")
+            create_auth_parameter = (
+                ui.input(label="Auth Parameter", password=True, password_toggle_button=True)
+                .props("clearable autocomplete=new-password")
+                .classes("w-full")
+            )
             create_url_endpoint = ui.input(label="URL Endpoint").props("clearable").classes("w-full")
             ui.label("URL Endpoint is required when Self Managed is checked").classes("text-xs text-gray-500")
             with ui.row().classes("gap-2"):
@@ -276,7 +281,13 @@ async def inbound_numbers_page() -> None:
             edit_service = ui.select({}, label="Service", with_input=True).classes("w-full")
             edit_active = ui.checkbox("Active")
             edit_self_managed = ui.checkbox("Self Managed")
-            edit_auth_parameter = ui.input(label="Auth Parameter").classes("w-full")
+            # Never prefilled: the stored value stays server-side. Blank = unchanged
+            # (both the API and update_inbound_number skip a None auth_parameter).
+            edit_auth_parameter = (
+                ui.input(label="New Auth Parameter (leave blank to keep current)", password=True)
+                .props("autocomplete=new-password")
+                .classes("w-full")
+            )
             edit_url_endpoint = ui.input(label="URL Endpoint").classes("w-full")
             ui.label("URL Endpoint is required when Self Managed is checked").classes("text-xs text-gray-500")
             ui.label(
@@ -317,7 +328,7 @@ async def inbound_numbers_page() -> None:
             edit_number.value = number_val
             edit_active.value = bool(num.get("active"))
             edit_self_managed.value = bool(num.get("self_managed"))
-            edit_auth_parameter.value = num.get("auth_parameter") or ""
+            edit_auth_parameter.value = ""
             edit_url_endpoint.value = num.get("url_endpoint") or ""
 
         async def handle_open_edit_dialog() -> None:  # pragma: no cover
@@ -466,9 +477,9 @@ async def inbound_numbers_page() -> None:
                 },
                 {"name": "service_id", "label": "Service", "field": "service_name"},
                 {
-                    "name": "auth_parameter",
-                    "label": "Auth Parameter",
-                    "field": "auth_parameter",
+                    "name": "auth_parameter_set",
+                    "label": "Auth Set",
+                    "field": "auth_parameter_set",
                 },
                 {
                     "name": "url_endpoint",
@@ -492,7 +503,8 @@ async def inbound_numbers_page() -> None:
                     # coalesces `_full_<field> || props.value`, so a null falls through
                     # to the rendered cell text.
                     "_full_service_name": full_service_name(n.service_id, service_name_map),
-                    "auth_parameter": n.auth_parameter,
+                    # Only presence is sent to the browser, never the value.
+                    "auth_parameter_set": bool(n.auth_parameter),
                     "url_endpoint": n.url_endpoint,
                 }
                 for n in numbers
@@ -526,9 +538,17 @@ async def inbound_numbers_page() -> None:
                     color="green",
                 )
                 ui.space()
-                # The "(unassigned)" literal reaching the CSV is deliberate: the export
-                # should match what is on screen.
-                add_export_button(table_rows, columns, "inbound_numbers.csv")
+                # Full-record export. auth_parameter is excluded by the export denylist.
+                add_export_button(
+                    table_rows,
+                    columns,
+                    "inbound_numbers.csv",
+                    export_rows=lambda: [
+                        model_to_export_dict(n, service_name=full_service_name(n.service_id, service_name_map))
+                        for n in numbers
+                    ],
+                    table_ref=lambda: table,
+                )
             table = ui.table(
                 columns=make_sortable(columns),
                 rows=table_rows,

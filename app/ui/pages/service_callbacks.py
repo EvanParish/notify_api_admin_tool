@@ -34,6 +34,7 @@ from app.ui.helpers import (
     format_service_label,
     make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
     resolve_service_name,
 )
@@ -635,7 +636,18 @@ async def service_callbacks_page() -> None:
                 ui.button("Delete Selected Callback", on_click=handle_delete_request, color="negative")
                 ui.button("Add Callback", on_click=handle_open_create_dialog, color="green")
                 ui.space()
-                add_export_button(table_rows, columns, "service_callbacks.csv")
+                add_export_button(
+                    table_rows,
+                    columns,
+                    "service_callbacks.csv",
+                    export_rows=lambda: [
+                        model_to_export_dict(
+                            cb, service_name=service_name_map.get(cb.service_id or "", cb.service_id or "")
+                        )
+                        for cb in callbacks
+                    ],
+                    table_ref=lambda: table,
+                )
 
             def handle_row_select(e) -> None:  # pragma: no cover
                 if e.selection:

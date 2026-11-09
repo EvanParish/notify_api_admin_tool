@@ -23,6 +23,7 @@ from app.ui.helpers import (
     format_environment,
     make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
 )
 from app.ui.http_errors import format_http_error
@@ -467,8 +468,7 @@ async def services_page() -> None:
                 live_permissions = validate_service_read(live, service_id)
             except ServiceReadError as exc:
                 ui.notify(
-                    f"Unusable response re-reading service {service_id}: {exc} "
-                    "Nothing was sent. Reopen and review.",
+                    f"Unusable response re-reading service {service_id}: {exc} Nothing was sent. Reopen and review.",
                     color="red",
                     timeout=0,
                     close_button=True,
@@ -551,7 +551,9 @@ async def services_page() -> None:
                     timeout=0,
                     close_button=True,
                 )
-                finalize_permission_audit(audit_path, diff, "error", None, f"unusable verification read: {exc}", context)
+                finalize_permission_audit(
+                    audit_path, diff, "error", None, f"unusable verification read: {exc}", context
+                )
                 return
             except Exception as exc:  # noqa: BLE001
                 ui.notify(
@@ -630,8 +632,7 @@ async def services_page() -> None:
                 )
             else:
                 ui.notify(
-                    f"The permission change failed before anything was sent: {exc}. "
-                    "Nothing was changed.",
+                    f"The permission change failed before anything was sent: {exc}. Nothing was changed.",
                     color="red",
                     timeout=0,
                     close_button=True,
@@ -783,7 +784,21 @@ async def services_table(
         if on_permissions_click:
             ui.button("Edit Permissions", on_click=on_permissions_click, color="warning")
         ui.space()
-        add_export_button(table_rows, columns, "services.csv")
+        add_export_button(
+            table_rows,
+            columns,
+            "services.csv",
+            export_rows=lambda: [
+                model_to_export_dict(
+                    row,
+                    active_keys=active_key_counts.get((row.id, row.environment), 0),
+                    templates=template_counts.get((row.id, row.environment), 0),
+                    sms_senders=sms_sender_counts.get((row.id, row.environment), 0),
+                )
+                for row in rows
+            ],
+            table_ref=lambda: table,
+        )
 
     if selected_service is not None:
 

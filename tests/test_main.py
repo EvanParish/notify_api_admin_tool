@@ -9,6 +9,7 @@ import asyncio
 import os
 import json
 import pytest
+from sqlalchemy import inspect as sa_inspect
 import httpx
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -1909,15 +1910,444 @@ class TestRowsToCsv:
         assert csv.strip().split("\r\n")[1] == "7"
 
 
+class TestFullRecordExport:
+    def test_model_to_export_dict_includes_all_columns_untruncated(self):
+        from app.models import Template
+
+        long_content = "x" * 500
+        t = Template(
+            id="t1",
+            environment="dev",
+            service_id="s1",
+            name="n" * 80,
+            template_type="email",
+            content=long_content,
+            created_at="2026-01-02T03:04:05.123456",
+            reply_to_email="a@b.com",
+        )
+        data = helpers.model_to_export_dict(t, service_name="Full Service Name")
+        expected = {c.key for c in sa_inspect(Template).column_attrs}
+        assert expected <= set(data)
+        assert data["content"] == long_content
+        assert data["name"] == "n" * 80
+        assert data["created_at"] == "2026-01-02T03:04:05.123456"
+        assert data["service_name"] == "Full Service Name"
+
+    @pytest.mark.parametrize(
+        "model_name,column",
+        [
+            ("LocalApiKey", "key_secret"),
+            ("User", "current_session_id"),
+            ("InboundNumber", "auth_parameter"),
+        ],
+    )
+    def test_known_secret_columns_are_denied(self, model_name, column):
+        """Pins the known secrets. If a model column is renamed, this fails rather
+        than the secret silently starting to export."""
+        import app.models as models
+
+        model = getattr(models, model_name)
+        assert column in {c.key for c in sa_inspect(model).column_attrs}
+        assert helpers.is_export_denied(column)
+
+    def test_local_key_secret_never_exported(self):
+        from app.models import LocalApiKey
+
+        k = LocalApiKey(id=1, service_id="s", key_name="k", key_secret="SUPERSECRET", key_type="normal")
+        data = helpers.model_to_export_dict(k, key_secret="bypass", api_token="tok")
+        assert "key_secret" not in data
+        assert "api_token" not in data
+        assert "SUPERSECRET" not in helpers.dicts_to_csv([data])
+
+    @pytest.mark.parametrize(
+        "column",
+        ["webhook_token", "client_secret", "password", "bearer_value", "private_key", "aws_credentials"],
+    )
+    def test_pattern_denies_unknown_secret_like_columns(self, column):
+        assert helpers.is_export_denied(column)
+
+    @pytest.mark.parametrize(
+        "column",
+        ["password_changed_at", "auth_type", "api_key_id", "sms_sender_specifics", "mobile_number", "email_address"],
+    )
+    def test_pattern_allows_non_secret_columns(self, column):
+        assert not helpers.is_export_denied(column)
+
+    def test_dicts_to_csv_json_none_and_formula_escape(self):
+        rows = [
+            {"id": "1", "specifics": {"b": 2, "a": 1}, "note": None, "_internal": "x"},
+            {"id": "2", "extra": "=cmd()"},
+        ]
+        lines = helpers.dicts_to_csv(rows).strip().split("\r\n")
+        assert lines[0] == "ID,Specifics,Note,Extra"
+        assert lines[1] == '1,"{""a"":1,""b"":2}",,'
+        assert lines[2] == "2,,,'=cmd()"
+
+    def test_export_button_prefers_export_rows(self):
+        captured = {}
+
+        def capture_button(label, icon, on_click):
+            captured["cb"] = on_click
+            btn = MagicMock()
+            btn.props = MagicMock(return_value=btn)
+            return btn
+
+        with (
+            patch("app.ui.helpers.ui.button", side_effect=capture_button),
+            patch("app.ui.helpers.download_csv") as mock_download,
+        ):
+            helpers.add_export_button(
+                [{"name": "trunc..."}],
+                [{"name": "name", "label": "Name", "field": "name"}],
+                "x.csv",
+                export_rows=lambda: [{"name": "full value"}],
+            )
+            captured["cb"]()
+            content = mock_download.call_args[0][0]
+            assert "full value" in content
+            assert "trunc..." not in content
+
+
+class TestCsvSingleLineEscaping:
+    MARKDOWN = "# Heading\r\n\r\nHello ((name)),\n\n* item one\n\t* nested\nLiteral \\n and C:\\path\rend"
+
+    def test_every_record_is_one_physical_line(self):
+        rows = [{"id": "1", "content": self.MARKDOWN}, {"id": "2", "content": "plain"}]
+        out = helpers.dicts_to_csv(rows)
+        assert out.count("\r\n") == 3 and "\n" not in out.replace("\r\n", "")
+        assert "\t" not in out
+
+    def test_round_trips_through_csv_reader_and_unescape(self):
+        import csv as _csv
+        import io as _io
+
+        out = helpers.dicts_to_csv([{"content": self.MARKDOWN}])
+        cell = list(_csv.reader(_io.StringIO(out)))[1][0]
+        normalized = self.MARKDOWN.replace("\r\n", "\n").replace("\r", "\n")
+        assert helpers.unescape_csv_text(cell) == normalized
+
+    UNICODE_BREAKS = "a\u2028b\u2029c\x85d\x0be\x0cf\x1cg\x1dh\x1ei literal \\u2028 j"
+
+    def test_unicode_line_breaks_are_escaped(self):
+        out = helpers.dicts_to_csv([{"content": self.UNICODE_BREAKS}])
+        for ch in "\u2028\u2029\x85\x0b\x0c\x1c\x1d\x1e":
+            assert ch not in out
+        assert len(out.splitlines()) == 2  # str.splitlines honours all of them
+
+    def test_unicode_line_breaks_round_trip(self):
+        import csv as _csv
+        import io as _io
+
+        out = helpers.dicts_to_csv([{"content": self.UNICODE_BREAKS}])
+        cell = list(_csv.reader(_io.StringIO(out)))[1][0]
+        assert helpers.unescape_csv_text(cell) == self.UNICODE_BREAKS
+
+    def test_literal_backslash_n_is_distinguishable(self):
+        assert helpers.escape_csv_text("a\\nb") == "a\\\\nb"
+        assert helpers.escape_csv_text("a\nb") == "a\\nb"
+
+    def test_display_export_path_also_escaped(self):
+        cols = [{"name": "c", "label": "C", "field": "c"}]
+        out = helpers.rows_to_csv([{"c": "line1\nline2"}], cols)
+        assert out == "C\r\nline1\\nline2\r\n"
+
+    def test_leading_newline_cannot_hide_formula(self):
+        assert helpers._escape_csv_cell("\n=cmd()") == "\\n=cmd()"
+        assert helpers._escape_csv_cell("=a\nb") == "'=a\\nb"
+
+
+# Every column of every exportable model, classified by a human. A new column fails
+# test_every_model_column_is_classified until it is added here as "export" or "deny",
+# which turns the name-based denylist into a fail-closed check at review time.
+EXPORT_COLUMN_REVIEW = {
+    "ApiKey": {
+        "export": {
+            "id",
+            "environment",
+            "service_id",
+            "name",
+            "key_type",
+            "expiry_date",
+            "created_by",
+            "created_at",
+            "last_used_at",
+            "revoked",
+            "version",
+        },
+        "deny": set(),
+    },
+    "CommunicationItem": {
+        "export": {"id", "environment", "name", "va_profile_item_id", "default_send_indicator"},
+        "deny": set(),
+    },
+    "InboundNumber": {
+        "export": {"id", "environment", "number", "provider", "active", "self_managed", "service_id", "url_endpoint"},
+        "deny": {"auth_parameter"},
+    },
+    "LocalApiKey": {
+        "export": {"id", "service_id", "environment", "key_name", "key_type", "api_key_id"},
+        "deny": {"key_secret"},
+    },
+    "ProviderDetail": {
+        "export": {
+            "id",
+            "environment",
+            "active",
+            "created_by_name",
+            "current_month_billable_sms",
+            "display_name",
+            "identifier",
+            "load_balancing_weight",
+            "notification_type",
+            "priority",
+            "supports_international",
+            "updated_at",
+        },
+        "deny": set(),
+    },
+    "Service": {
+        "export": {
+            "id",
+            "environment",
+            "name",
+            "active",
+            "restricted",
+            "message_limit",
+            "rate_limit",
+            "research_mode",
+            "count_as_live",
+            "prefix_sms",
+            "email_from",
+            "permissions",
+            "organisation_type",
+            "crown",
+            "go_live_at",
+            "created_by",
+        },
+        "deny": set(),
+    },
+    "ServiceCallback": {
+        "export": {
+            "id",
+            "environment",
+            "service_id",
+            "url",
+            "callback_type",
+            "callback_channel",
+            "created_at",
+            "updated_at",
+            "updated_by_id",
+            "notification_statuses",
+            "include_provider_payload",
+        },
+        "deny": set(),
+    },
+    "SmsSender": {
+        "export": {
+            "id",
+            "environment",
+            "service_id",
+            "sms_sender",
+            "is_default",
+            "archived",
+            "description",
+            "provider_id",
+            "provider_name",
+            "inbound_number_id",
+            "rate_limit",
+            "rate_limit_interval",
+            "sms_sender_specifics",
+            "created_at",
+            "updated_at",
+        },
+        "deny": set(),
+    },
+    "Template": {
+        "export": {
+            "id",
+            "environment",
+            "service_id",
+            "name",
+            "template_type",
+            "content",
+            "subject",
+            "version",
+            "archived",
+            "hidden",
+            "process_type",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "reply_to_email",
+            "communication_item_id",
+        },
+        "deny": set(),
+    },
+    "User": {
+        "export": {
+            "id",
+            "environment",
+            "email_address",
+            "name",
+            "state",
+            "platform_admin",
+            "blocked",
+            "auth_type",
+            "mobile_number",
+            "failed_login_count",
+            "logged_in_at",
+            "password_changed_at",
+            "identity_provider_user_id",
+            "additional_information",
+            "permissions",
+            "services",
+            "organisations",
+        },
+        "deny": {"current_session_id"},
+    },
+}
+NOT_EXPORTED_MODELS = {"Setting"}  # never passed to an export (holds the encryption salt)
+
+
+class TestExportColumnReview:
+    def test_every_model_column_is_classified(self):
+        from app.models import Base
+
+        for mapper in Base.registry.mappers:
+            name = mapper.class_.__name__
+            if name in NOT_EXPORTED_MODELS:
+                continue
+            assert name in EXPORT_COLUMN_REVIEW, f"New model {name}: classify its columns for CSV export"
+            review = EXPORT_COLUMN_REVIEW[name]
+            actual = {c.key for c in mapper.column_attrs}
+            assert actual == review["export"] | review["deny"], (
+                f"{name} columns changed; classify {actual ^ (review['export'] | review['deny'])} "
+                "in EXPORT_COLUMN_REVIEW (and EXPORT_DENYLIST_COLUMNS if secret)"
+            )
+
+    def test_classification_matches_runtime_denylist(self):
+        for name, review in EXPORT_COLUMN_REVIEW.items():
+            for col in review["deny"]:
+                assert helpers.is_export_denied(col), f"{name}.{col} reviewed as secret but would export"
+            for col in review["export"]:
+                assert not helpers.is_export_denied(col), f"{name}.{col} reviewed as exportable but is denied"
+
+
+class TestExportPolish:
+    def test_download_prepends_utf8_bom_as_raw_bytes(self):
+        with patch("app.ui.helpers.ui.download") as dl, patch("app.ui.helpers.safe_notify"):
+            helpers.download_csv("A\r\n\u2019\r\n", "x'y.csv")
+        data, filename, media_type = dl.call_args[0]
+        assert data == "\ufeffA\r\n\u2019\r\n".encode("utf-8")
+        assert filename == "x'y.csv"
+        assert media_type.startswith("text/csv")
+
+    def test_null_ties_are_consistent(self):
+        rows = [{"n": None}, {"n": "a"}, {"n": None}, {"n": None}]
+        cols = [{"name": "n", "field": "n"}]
+        assert helpers.table_sort_order(rows, cols, {"sortBy": "n"}) == [0, 2, 3, 1]
+        assert helpers.table_sort_order(rows, cols, {"sortBy": "n", "descending": True}) == [1, 0, 2, 3]
+
+    def test_length_mismatch_exports_unsorted(self):
+        captured, capture_button = self._capture()
+        table = MagicMock(pagination={"sortBy": "n", "descending": True})
+        with patch("app.ui.helpers.ui.button", side_effect=capture_button), patch("app.ui.helpers.download_csv") as dl:
+            helpers.add_export_button(
+                [{"n": "a"}],
+                [{"name": "n", "field": "n"}],
+                "x.csv",
+                export_rows=lambda: [{"v": "1"}, {"v": "2"}],
+                table_ref=lambda: table,
+            )
+            captured["buttons"][0][1]()
+        assert dl.call_args[0][0].split("\r\n")[1:3] == ["1", "2"]
+
+    def test_export_rows_built_lazily(self):
+        captured, capture_button = self._capture()
+        builder = MagicMock(return_value=[])
+        with patch("app.ui.helpers.ui.button", side_effect=capture_button), patch("app.ui.helpers.download_csv"):
+            helpers.add_export_button([], [], "x.csv", export_rows=builder)
+            builder.assert_not_called()
+            captured["buttons"][0][1]()
+            builder.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "key,label",
+        [
+            ("service_id", "Service ID"),
+            ("created_by_email", "Created By Email"),
+            ("url_endpoint", "URL Endpoint"),
+            ("sms_sender_specifics", "SMS Sender Specifics"),
+            ("va_profile_item_id", "VA Profile Item ID"),
+        ],
+    )
+    def test_humanize_column(self, key, label):
+        assert helpers.humanize_column(key) == label
+
+    def test_table_sort_order_mirrors_quasar(self):
+        rows = [{"n": "b"}, {"n": None}, {"n": "A"}, {"n": "c"}]
+        cols = [{"name": "name", "label": "N", "field": "n"}]
+        assert helpers.table_sort_order(rows, cols, None) == [0, 1, 2, 3]
+        assert helpers.table_sort_order(rows, cols, {"sortBy": "name", "descending": False}) == [1, 2, 0, 3]
+        assert helpers.table_sort_order(rows, cols, {"sortBy": "name", "descending": True}) == [3, 0, 2, 1]
+        nums = [{"v": 10}, {"v": 9}, {"v": 100}]
+        assert helpers.table_sort_order(nums, [{"name": "v", "field": "v"}], {"sortBy": "v"}) == [1, 0, 2]
+
+    def _capture(self):
+        captured = {}
+
+        def capture_button(label, icon=None, on_click=None, **kw):
+            captured.setdefault("buttons", []).append((label, on_click))
+            btn = MagicMock()
+            btn.props = MagicMock(return_value=btn)
+            return btn
+
+        return captured, capture_button
+
+    def test_export_follows_table_sort_by_display_field(self):
+        captured, capture_button = self._capture()
+        rows = [{"svc": "Zeta"}, {"svc": "alpha"}]
+        export_rows = [{"service_name": "Zeta Full"}, {"service_name": "alpha Full"}]
+        cols = [{"name": "service_id", "label": "Service", "field": "svc"}]
+        table = MagicMock(pagination={"sortBy": "service_id", "descending": False})
+        with patch("app.ui.helpers.ui.button", side_effect=capture_button), patch("app.ui.helpers.download_csv") as dl:
+            helpers.add_export_button(rows, cols, "x.csv", export_rows=lambda: export_rows, table_ref=lambda: table)
+            captured["buttons"][0][1]()
+        assert dl.call_args[0][0].split("\r\n")[1:3] == ["alpha Full", "Zeta Full"]
+
+    def test_sensitive_export_requires_confirmation(self):
+        captured, capture_button = self._capture()
+        dialog = MagicMock()
+        dialog.__enter__ = MagicMock(return_value=dialog)
+        dialog.__exit__ = MagicMock(return_value=False)
+        with (
+            patch("app.ui.helpers.ui.button", side_effect=capture_button),
+            patch("app.ui.helpers.ui.dialog", return_value=dialog),
+            patch("app.ui.helpers.ui.card", return_value=MagicMock()),
+            patch("app.ui.helpers.ui.label", return_value=MagicMock()),
+            patch("app.ui.helpers.ui.row", return_value=MagicMock()),
+            patch("app.ui.helpers.download_csv") as dl,
+        ):
+            helpers.add_export_button([], [], "u.csv", export_rows=lambda: [], sensitive_notice="PII")
+            captured["buttons"][0][1]()  # Export CSV
+            dl.assert_not_called()
+            dialog.open.assert_called_once()
+            labels = {label: cb for label, cb in captured["buttons"][1:]}
+            labels["Cancel"]()
+            dl.assert_not_called()
+            labels["Export"]()
+            dl.assert_called_once()
+
+
 class TestDownloadCsv:
     def test_triggers_download(self):
         with (
-            patch("app.ui.helpers.ui.run_javascript") as mock_js,
+            patch("app.ui.helpers.ui.download") as mock_js,
             patch("app.ui.helpers.safe_notify") as mock_notify,
         ):
             helpers.download_csv("a,b\n1,2", "test.csv")
             mock_js.assert_called_once()
-            assert "test.csv" in mock_js.call_args[0][0]
+            assert mock_js.call_args[0][1] == "test.csv"
             mock_notify.assert_called_once()
 
 
@@ -5105,3 +5535,339 @@ class TestBuildLocalKeyOptions:
         # the key is bad.
         options = helpers.build_local_key_options([self._local(1, "Key One", "remote-1")], {})
         assert options == {1: "Key One"}
+
+
+# ===================================================================
+# Page-level CSV export wiring: run each page, capture the export_rows builder
+# passed to add_export_button, invoke it, and check the resulting CSV.
+# ===================================================================
+
+
+def _export_models():
+    from app.models import (
+        ApiKey,
+        CommunicationItem,
+        InboundNumber,
+        ProviderDetail,
+        Service,
+        ServiceCallback,
+        SmsSender,
+        Template,
+        User,
+    )
+
+    svc = Service(id="svc-1", environment="development", name="Alpha Service", permissions='["email"]')
+    return {
+        "service": svc,
+        "api_key": ApiKey(
+            id="key-1", environment="development", service_id="svc-1", name="Key One", created_by="user-1"
+        ),
+        "user": User(
+            id="user-1",
+            environment="development",
+            name="Pat Example",
+            email_address="pat@example.com",
+            current_session_id="SESSION-SECRET",
+            permissions={"svc-1": ["manage_settings"]},
+        ),
+        "comm_item": CommunicationItem(id="ci-1", environment="development", name="Appointments", va_profile_item_id=5),
+        "inbound": InboundNumber(
+            id="in-1",
+            environment="development",
+            number="+15555550100",
+            service_id="svc-1",
+            auth_parameter="AUTH-SECRET",
+        ),
+        "provider": ProviderDetail(id="p-1", environment="development", display_name="Twilio", created_by_name="Ops"),
+        "callback": ServiceCallback(
+            id="cb-1",
+            environment="development",
+            service_id="svc-1",
+            url="https://cb.example",
+            notification_statuses=["delivered"],
+        ),
+        "sms_sender": SmsSender(
+            id="sms-1",
+            environment="development",
+            service_id="svc-1",
+            sms_sender="12345",
+            sms_sender_specifics={"k": "v"},
+        ),
+        "template": Template(
+            id="t-1",
+            environment="development",
+            service_id="svc-1",
+            name="Reminder",
+            template_type="email",
+            content="Line one\nLine two",
+            communication_item_id="ci-1",
+        ),
+    }
+
+
+async def _capture_page_export(mod_path, run_page, extra_patches=()):
+    """Run a page with mocked UI and return the kwargs given to add_export_button."""
+    from contextlib import ExitStack
+
+    captured: dict = {}
+
+    def capture(rows, columns, filename, **kwargs):
+        captured.update(rows=rows, columns=columns, filename=filename, **kwargs)
+
+    original = (_st.config, _st.state, _st.encryption)
+    _st.state = SharedTestState(environment="development")
+    try:
+        with ExitStack() as stack:
+            stack.enter_context(mock_page_ui(mod_path))
+            stack.enter_context(patch(f"{mod_path}.add_export_button", side_effect=capture))
+            for p in extra_patches:
+                stack.enter_context(p)
+            await run_page()
+    finally:
+        _st.config, _st.state, _st.encryption = original
+    return captured
+
+
+def _export_csv(captured):
+    rows = captured["export_rows"]()
+    assert len(rows) == len(captured["rows"]), "export_rows must stay parallel to table rows for sorting"
+    return helpers.dicts_to_csv(rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mod_path,page_attr,patches,expected,forbidden,sensitive",
+    [
+        (
+            "app.ui.pages.api_keys",
+            "api_keys_page",
+            {"list_api_keys": ["api_key"], "list_services": ["service"], "list_users": ["user"]},
+            ["Created By Email", "pat@example.com", "Service Name", "Alpha Service", "Key One"],
+            [],
+            True,
+        ),
+        (
+            "app.ui.pages.comm_items",
+            "communication_items_page",
+            {"list_communication_items": ["comm_item"]},
+            ["VA Profile Item ID", "Appointments"],
+            [],
+            False,
+        ),
+        (
+            "app.ui.pages.inbound_numbers",
+            "inbound_numbers_page",
+            {"list_inbound_numbers": ["inbound"], "list_services": ["service"]},
+            ["Service Name", "Alpha Service", "+15555550100"],
+            ["AUTH-SECRET", "Auth Parameter"],
+            False,
+        ),
+        (
+            "app.ui.pages.provider_details",
+            "provider_details_page",
+            {"list_provider_details": ["provider"]},
+            ["Created By Name", "Ops", "Twilio"],
+            [],
+            True,
+        ),
+        (
+            "app.ui.pages.service_callbacks",
+            "service_callbacks_page",
+            {"list_service_callbacks": ["callback"], "list_services": ["service"]},
+            ["Service Name", "Alpha Service", "https://cb.example", '"[""delivered""]"'],
+            [],
+            False,
+        ),
+        (
+            "app.ui.pages.sms_senders",
+            "sms_senders_page",
+            {"list_sms_senders": ["sms_sender"], "list_services": ["service"]},
+            ["Service Name", "Alpha Service", "SMS Sender Specifics", '"{""k"":""v""}"'],
+            [],
+            False,
+        ),
+        (
+            "app.ui.pages.templates",
+            "templates_page",
+            {"list_templates": ["template"], "list_services": ["service"], "list_communication_items": ["comm_item"]},
+            ["Service Name", "Alpha Service", "Communication Item Name", "Appointments", "Line one\\nLine two"],
+            [],
+            True,
+        ),
+        (
+            "app.ui.pages.users",
+            "users_page",
+            {"list_users": ["user"]},
+            ["Pat Example", "pat@example.com", "manage_settings"],
+            ["SESSION-SECRET", "Current Session ID"],
+            True,
+        ),
+    ],
+)
+async def test_page_full_record_export(
+    initialized_db, mock_config, mod_path, page_attr, patches, expected, forbidden, sensitive
+):
+    import importlib
+
+    module = importlib.import_module(mod_path)
+    models = _export_models()
+    extra = [
+        patch(f"{mod_path}.{fn}", new_callable=AsyncMock, return_value=[models[k] for k in keys])
+        for fn, keys in patches.items()
+        if hasattr(module, fn)
+    ]
+    _st.config = mock_config
+    captured = await _capture_page_export(mod_path, getattr(module, page_attr), extra)
+
+    assert captured["filename"].endswith(".csv")
+    assert callable(captured["table_ref"])
+    assert bool(captured.get("sensitive_notice")) is sensitive
+    out = _export_csv(captured)
+    assert len(out.strip().split("\r\n")) == 2
+    for text in expected:
+        assert text in out, f"{text!r} missing from {mod_path} export:\n{out}"
+    for text in forbidden:
+        assert text not in out, f"{text!r} leaked into {mod_path} export"
+
+
+@pytest.mark.asyncio
+async def test_services_table_full_record_export(initialized_db, mock_config):
+    models = _export_models()
+    captured: dict = {}
+
+    def capture(rows, columns, filename, **kwargs):
+        captured.update(rows=rows, filename=filename, **kwargs)
+
+    mock_obj = MagicMock()
+    mock_obj.__enter__ = Mock(return_value=mock_obj)
+    mock_obj.__exit__ = Mock(return_value=False)
+    mock_obj.classes = MagicMock(return_value=mock_obj)
+    mock_obj.props = MagicMock(return_value=mock_obj)
+    mock_obj.on = MagicMock(return_value=mock_obj)
+    key = ("svc-1", "development")
+    original = (_st.config, _st.state)
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    _st.service_search_query = ""
+    try:
+        with (
+            patch("app.ui.pages.services.list_services", new_callable=AsyncMock, return_value=[models["service"]]),
+            patch(
+                "app.ui.pages.services.count_active_api_keys_by_service", new_callable=AsyncMock, return_value={key: 2}
+            ),
+            patch("app.ui.pages.services.count_templates_by_service", new_callable=AsyncMock, return_value={key: 4}),
+            patch("app.ui.pages.services.count_sms_senders_by_service", new_callable=AsyncMock, return_value={key: 1}),
+            patch("app.ui.pages.services.ui.table", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.row", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.button", return_value=mock_obj),
+            patch("app.ui.pages.services.ui.space"),
+            patch("app.ui.pages.services.add_copyable_slots"),
+            patch("app.ui.pages.services.add_export_button", side_effect=capture),
+        ):
+            await page_services.services_table.func(lambda: None)
+    finally:
+        _st.config, _st.state = original
+
+    assert captured["filename"] == "services.csv"
+    assert captured["table_ref"]() is mock_obj
+    lines = _export_csv(captured).strip().split("\r\n")
+    header, row = lines[0].split(","), next(iter(__import__("csv").reader([lines[1]])))
+    record = dict(zip(header, row))
+    assert record["Name"] == "Alpha Service"
+    assert (record["Active Keys"], record["Templates"], record["SMS Senders"]) == ("2", "4", "1")
+
+
+@pytest.mark.asyncio
+async def test_render_local_keys_export_excludes_secret(initialized_db, mock_config):
+    from app.models import LocalApiKey
+
+    local = LocalApiKey(
+        id=7,
+        service_id="svc-1",
+        environment="development",
+        key_name="Local",
+        key_secret="KEY-SECRET",
+        key_type="normal",
+        api_key_id="key-1",
+    )
+    orphan = LocalApiKey(
+        id=8,
+        service_id="svc-1",
+        environment="development",
+        key_name="Orphan",
+        key_secret="KEY-SECRET-2",
+        key_type="test",
+        api_key_id="gone",
+    )
+    remote = SimpleNamespace(id="key-1", expiry_date="2030-01-01T00:00:00.000", revoked=False)
+    captured: dict = {}
+
+    def capture(rows, columns, filename, **kwargs):
+        captured.update(rows=rows, filename=filename, **kwargs)
+
+    table = MagicMock()
+    table.props = MagicMock(return_value=table)
+    row_ctx = MagicMock()
+    row_ctx.__enter__ = Mock(return_value=row_ctx)
+    row_ctx.__exit__ = Mock(return_value=False)
+    row_ctx.classes = MagicMock(return_value=row_ctx)
+    original = _st.config
+    _st.config = mock_config
+    try:
+        with (
+            patch("app.ui.pages.settings_page.list_local_keys", new_callable=AsyncMock, return_value=[local, orphan]),
+            patch("app.ui.pages.settings_page.list_api_keys", new_callable=AsyncMock, return_value=[remote]),
+            patch("app.ui.pages.settings_page.build_api_key_map", return_value={"key-1": remote}),
+            patch("app.ui.pages.settings_page.ui.table", return_value=table),
+            patch("app.ui.pages.settings_page.ui.row", return_value=row_ctx),
+            patch("app.ui.pages.settings_page.add_copyable_slots"),
+            patch("app.ui.pages.settings_page.add_export_button", side_effect=capture),
+        ):
+            await page_settings.render_local_keys.func()
+    finally:
+        _st.config = original
+
+    assert captured["filename"] == "local_api_keys.csv"
+    assert captured["table_ref"]() is table
+    assert captured["rows"][0]["expiry_date"] == "2030-01-01 00:00:00"
+    assert captured["rows"][1]["expiry_date"] is None
+    out = _export_csv(captured)
+    assert "KEY-SECRET" not in out and "Key Secret" not in out
+    assert "2030-01-01T00:00:00.000" in out and "Orphan" in out
+
+
+class TestExportHelperEdgeCases:
+    def test_model_to_export_dict_non_orm_object(self):
+        obj = SimpleNamespace(id="1", name="n", _private="x", api_token="tok")
+        assert helpers.model_to_export_dict(obj, extra="e") == {"id": "1", "name": "n", "extra": "e"}
+
+    def test_bool_columns_sort_false_first(self):
+        rows = [{"b": True}, {"b": False}, {"b": True}]
+        cols = [{"name": "b", "field": "b"}]
+        assert helpers.table_sort_order(rows, cols, {"sortBy": "b"}) == [1, 0, 2]
+
+    def test_unknown_sort_column_keeps_order(self):
+        rows = [{"n": "b"}, {"n": "a"}]
+        assert helpers.table_sort_order(rows, [{"name": "n", "field": "n"}], {"sortBy": "missing"}) == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_inbound_numbers_table_sends_only_auth_presence(initialized_db, mock_config):
+    """The auth_parameter value must never reach the browser; only whether one is set."""
+    from app.models import InboundNumber
+
+    numbers = [
+        InboundNumber(id="in-1", environment="development", number="+15555550100", auth_parameter="AUTH-SECRET"),
+        InboundNumber(id="in-2", environment="development", number="+15555550101", auth_parameter=None),
+    ]
+    _st.config = mock_config
+    mod = "app.ui.pages.inbound_numbers"
+    captured = await _capture_page_export(
+        mod,
+        page_inbound_numbers.inbound_numbers_page,
+        [patch(f"{mod}.list_inbound_numbers", new_callable=AsyncMock, return_value=numbers)],
+    )
+    assert [r["auth_parameter_set"] for r in captured["rows"]] == [True, False]
+    assert all("auth_parameter" not in r for r in captured["rows"])
+    assert "AUTH-SECRET" not in json.dumps(captured["rows"], default=str)
+    assert "auth_parameter" not in {c["field"] for c in captured["columns"]}

@@ -6,16 +6,17 @@ all needed data as parameters or access only NiceGUI/stdlib APIs.
 
 from __future__ import annotations
 
-import base64
 import csv
+import functools
 import inspect
 import io
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from nicegui import ui
+from sqlalchemy import inspect as sa_inspect
 
 from app.repository import _is_expired
 
@@ -62,8 +63,50 @@ def make_row_key(entity_id: Any, environment: Optional[str]) -> str:
 CSV_FORMULA_PREFIXES = ("=", "+", "-", "@")
 
 
+_CSV_CONTROL_ESCAPES = {"\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+# Everything else an editor, JS engine, or ``str.splitlines`` treats as a line break:
+# VT, FF, FS/GS/RS, NEL, LINE SEPARATOR, PARAGRAPH SEPARATOR. These arrive in template
+# content pasted from Word/web pages. ``csv.writer`` does not quote them, so left raw
+# they split a record in VSCode and in any splitlines()-based reader.
+# Encoded as ``\uXXXX`` so they still round-trip.
+_CSV_UNICODE_BREAKS = "\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"
+_CSV_CONTROL_RE = re.compile("[\\\\\n\r\t" + _CSV_UNICODE_BREAKS + "]")
+_CSV_UNESCAPE_RE = re.compile(r"\\(?:([\\nrt])|u([0-9a-fA-F]{4}))")
+_CSV_UNESCAPES = {"\\": "\\", "n": "\n", "r": "\r", "t": "\t"}
+
+
+def _escape_char(ch: str) -> str:
+    return _CSV_CONTROL_ESCAPES.get(ch) or f"\\u{ord(ch):04x}"
+
+
+def _unescape_match(m: "re.Match[str]") -> str:
+    return _CSV_UNESCAPES[m.group(1)] if m.group(1) else chr(int(m.group(2), 16))
+
+
+def escape_csv_text(value: str) -> str:
+    """Encode a string so it occupies one physical CSV line.
+
+    CRLF and lone CR are normalized to LF first, then ``\\`` -> ``\\\\``, LF -> ``\\n``,
+    tab -> ``\\t``, and other Unicode line breaks (LS, PS, NEL, VT, FF, FS/GS/RS) ->
+    ``\\uXXXX``. Backslash is escaped in the same pass, so content that already contains
+    a literal ``\\n`` or ``\\u2028`` round-trips exactly through ``unescape_csv_text``.
+    """
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    return _CSV_CONTROL_RE.sub(lambda m: _escape_char(m.group(0)), value)
+
+
+def unescape_csv_text(value: str) -> str:
+    """Inverse of ``escape_csv_text`` (for anyone re-importing an export)."""
+    return _CSV_UNESCAPE_RE.sub(_unescape_match, value)
+
+
 def _escape_csv_cell(value: Any) -> Any:
-    """Neutralize spreadsheet formula injection by prefixing a single quote.
+    """Make a string cell single-line, then neutralize formula injection.
+
+    Newline/tab escaping runs first, so a leading tab or CR (which some spreadsheets
+    also treat as a formula trigger) becomes literal ``\\t``/``\\n`` text.
+
+    Formula injection is neutralized by prefixing a single quote.
 
     Only ``str`` values are touched. The quote is what every spreadsheet reads as "the
     rest of this cell is literal text", and it is the standard mitigation; the cost is
@@ -71,7 +114,10 @@ def _escape_csv_cell(value: Any) -> Any:
     That trade is correct for this tool: no column here is numeric, and a mangled cell is
     recoverable while an executed formula is not.
     """
-    if isinstance(value, str) and value.startswith(CSV_FORMULA_PREFIXES):
+    if not isinstance(value, str):
+        return value
+    value = escape_csv_text(value)
+    if value.startswith(CSV_FORMULA_PREFIXES):
         return f"'{value}"
     return value
 
@@ -91,17 +137,131 @@ def rows_to_csv(rows: List[Dict[str, Any]], columns: List[Dict[str, Any]]) -> st
     return output.getvalue()
 
 
-def download_csv(csv_content: str, filename: str) -> None:
-    """Trigger a CSV file download in the browser."""
-    b64 = base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
-    ui.run_javascript(
-        f"""
-        const link = document.createElement('a');
-        link.href = 'data:text/csv;base64,{b64}';
-        link.download = '{filename}';
-        link.click();
-        """
+# Columns that must never leave the app in an export. Matching is by exact name OR by
+# substring pattern, so a new column such as ``webhook_token`` is caught without an edit
+# here. This is a denylist and therefore fails open for a secret column whose name gives
+# no hint; ``tests`` pin the known sensitive columns so a rename is noticed.
+EXPORT_DENYLIST_COLUMNS = frozenset(
+    {
+        "key_secret",  # local_api_keys: usable API secret (Fernet ciphertext at rest)
+        "current_session_id",  # users: live session identifier
+        "auth_parameter",  # inbound_numbers: provider auth credential reference
+    }
+)
+EXPORT_DENYLIST_PATTERN = re.compile(
+    r"(secret|token|password(?!_changed)|passwd|bearer|session_id|auth_param|private_key|credential)",
+    re.IGNORECASE,
+)
+
+
+def is_export_denied(column: str) -> bool:
+    return column in EXPORT_DENYLIST_COLUMNS or bool(EXPORT_DENYLIST_PATTERN.search(column))
+
+
+def _export_value(value: Any) -> Any:
+    """Normalize a raw DB value for CSV: JSON-encode containers, keep scalars as-is."""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, separators=(",", ":"), sort_keys=True, default=str)
+    if value is None:
+        return ""
+    return value
+
+
+def model_to_export_dict(obj: Any, **extra: Any) -> Dict[str, Any]:
+    """Return every mapped DB column of an ORM instance, minus denylisted columns.
+
+    ``extra`` adds resolved/derived fields (e.g. ``service_name``) after the raw columns.
+    Denylisted names are also stripped from ``extra`` so a caller cannot bypass the list.
+    """
+    data: Dict[str, Any] = {}
+    state = sa_inspect(obj, raiseerr=False)
+    if state is not None:
+        keys = [attr.key for attr in state.mapper.column_attrs]
+    else:  # non-ORM object (e.g. test doubles): use its public attributes
+        keys = [k for k in vars(obj) if not k.startswith("_")]
+    for key in keys:
+        if not is_export_denied(key):
+            data[key] = getattr(obj, key)
+    for key, value in extra.items():
+        if not is_export_denied(key):
+            data[key] = value
+    return data
+
+
+_HEADER_ACRONYMS = {"id": "ID", "url": "URL", "sms": "SMS", "api": "API", "va": "VA"}
+
+
+def humanize_column(key: str) -> str:
+    """``created_by_email`` -> ``Created By Email``; ``service_id`` -> ``Service ID``."""
+    return " ".join(_HEADER_ACRONYMS.get(part, part.capitalize()) for part in key.split("_") if part)
+
+
+def dicts_to_csv(rows: List[Dict[str, Any]]) -> str:
+    """Convert full export dicts to CSV. Header is the ordered union of all keys,
+    humanized (see ``unescape_csv_text`` for decoding cell values on re-import)."""
+    fields: List[str] = []
+    seen = set()
+    for row in rows:
+        for key in row:
+            if key not in seen and not key.startswith("_") and not is_export_denied(key):
+                seen.add(key)
+                fields.append(key)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([humanize_column(f) for f in fields])
+    for row in rows:
+        writer.writerow([_escape_csv_cell(_export_value(row.get(field))) for field in fields])
+    return output.getvalue()
+
+
+def _quasar_compare(a: Any, b: Any) -> int:
+    """Mirror Quasar QTable's default sortMethod (ascending)."""
+    if a is None and b is None:
+        return 0  # Quasar returns -1 here (inconsistent comparator); 0 keeps the sort stable
+    if a is None:
+        return -1
+    if b is None:
+        return 1
+    num = (int, float)
+    if isinstance(a, num) and isinstance(b, num) and not isinstance(a, bool) and not isinstance(b, bool):
+        return (a > b) - (a < b)
+    if isinstance(a, bool) and isinstance(b, bool):
+        return int(a) - int(b)
+    sa, sb = str(a).lower(), str(b).lower()
+    return (sa > sb) - (sa < sb)
+
+
+def table_sort_order(
+    rows: List[Dict[str, Any]], columns: List[Dict[str, Any]], pagination: Optional[Dict[str, Any]]
+) -> List[int]:
+    """Return row indices in the order the client table currently shows them."""
+    indices = list(range(len(rows)))
+    sort_by = (pagination or {}).get("sortBy")
+    if not sort_by:
+        return indices
+    col = next((c for c in columns if c.get("name") == sort_by), None)
+    if col is None:
+        return indices
+    field = col["field"]
+    direction = -1 if (pagination or {}).get("descending") else 1
+    return sorted(
+        indices,
+        key=functools.cmp_to_key(lambda i, j: direction * _quasar_compare(rows[i].get(field), rows[j].get(field))),
     )
+
+
+def download_csv(csv_content: str, filename: str) -> None:
+    """Trigger a CSV file download in the browser.
+
+    A UTF-8 BOM is prepended: without it Excel on Windows decodes the file in the
+    legacy ANSI code page and mangles smart quotes/em-dashes common in templates.
+    LibreOffice, Sheets, VSCode and ``pandas.read_csv(encoding="utf-8-sig")`` accept it.
+
+    Sent as raw bytes via ``ui.download`` (binary websocket frame): no base64 inflation,
+    no data URL length limits, and no JavaScript string interpolation.
+    """
+    ui.download(("\ufeff" + csv_content).encode("utf-8"), filename, "text/csv;charset=utf-8")
     safe_notify(f"Exported {filename}", color="green")
 
 
@@ -109,12 +269,58 @@ def add_export_button(
     rows: List[Dict[str, Any]],
     columns: List[Dict[str, Any]],
     filename: str,
+    export_rows: Optional[Callable[[], List[Dict[str, Any]]]] = None,
+    table_ref: Optional[Callable[[], Any]] = None,
+    sensitive_notice: Optional[str] = None,
 ) -> ui.button:
-    """Add an export CSV button that downloads the current table data."""
+    """Add an export CSV button.
 
-    def handle_export():
-        csv_content = rows_to_csv(rows, columns)
-        download_csv(csv_content, filename)
+    ``export_rows``: zero-arg callable returning full DB records (``model_to_export_dict``),
+    parallel to ``rows``. Called only on export, so full records and decrypted PII are not
+    built or held in memory for every page render.
+    The CSV then has every non-denylisted column untruncated; otherwise it falls back to
+    the displayed columns. ``export_rows`` stays server-side.
+
+    ``table_ref``: zero-arg callable returning the ``ui.table`` (late-bound, since the
+    table is usually created after the button). Its synced ``pagination`` sort is applied.
+
+    ``sensitive_notice``: if set, the user must confirm before plaintext PII is written.
+    """
+
+    def build_csv() -> str:
+        table = table_ref() if table_ref else None
+        pagination = getattr(table, "pagination", None) if table is not None else None
+        order = table_sort_order(rows, columns, pagination if isinstance(pagination, dict) else None)
+        if export_rows is not None:
+            full = export_rows()
+            if len(full) != len(rows):  # not parallel: cannot map the sort safely
+                logger.warning("export_rows/rows length mismatch for %s; exporting unsorted", filename)
+                return dicts_to_csv(full)
+            return dicts_to_csv([full[i] for i in order])
+        return rows_to_csv([rows[i] for i in order], columns)
+
+    def do_export() -> None:
+        download_csv(build_csv(), filename)
+
+    def handle_export() -> None:
+        if not sensitive_notice:
+            do_export()
+            return
+        with ui.dialog() as dialog, ui.card():
+            ui.label("This export contains sensitive data").classes("text-lg font-bold")
+            ui.label(sensitive_notice)
+            ui.label("The file is unencrypted. Store it only in approved locations and delete it when done.").classes(
+                "text-sm"
+            )
+            with ui.row():
+
+                def confirm() -> None:
+                    dialog.close()
+                    do_export()
+
+                ui.button("Export", on_click=confirm, color="warning")
+                ui.button("Cancel", on_click=dialog.close)
+        dialog.open()
 
     return ui.button("Export CSV", icon="download", on_click=handle_export).props("flat dense")
 

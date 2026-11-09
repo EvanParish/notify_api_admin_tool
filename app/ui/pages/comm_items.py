@@ -12,6 +12,7 @@ from app.ui.helpers import (
     format_environment,
     make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
@@ -195,7 +196,13 @@ async def communication_items_page() -> None:
                     color="primary",
                 )
                 ui.space()
-                add_export_button(table_rows, columns, "communication_items.csv")
+                add_export_button(
+                    table_rows,
+                    columns,
+                    "communication_items.csv",
+                    export_rows=lambda: [model_to_export_dict(i) for i in items],
+                    table_ref=lambda: table,
+                )
 
             def handle_row_select(e) -> None:  # pragma: no cover
                 if e.selection:

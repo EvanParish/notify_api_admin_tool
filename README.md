@@ -109,6 +109,30 @@ The key secret is used to sign JWT tokens (HS256) for `POST /v2/notifications/em
 
 When `USE_MOCK_API=true` (default), the app uses a mock API client with sample data. No credentials are needed — useful for exploring the UI or local development.
 
+## CSV Exports
+
+Each table's **Export CSV** button writes the full database record for every row matching the current filters, in the table's current sort order. Columns are named after the database columns, with resolved names (e.g. `Service Name`, `Created By Email`) alongside raw IDs.
+
+Format:
+
+* UTF-8 with a BOM (Excel-safe), RFC 4180 quoting, exactly one physical line per record.
+* Inside text cells: `\` → `\\`, line break → `\n`, tab → `\t`, other Unicode line breaks (LS, PS, NEL, VT, FF, FS/GS/RS) → `\uXXXX`. CRLF/CR are normalized to LF first.
+* Cells starting with `=`, `+`, `-` or `@` are prefixed with `'` to block spreadsheet formula injection.
+* JSON columns are compact, key-sorted JSON.
+* Secrets are never exported (`key_secret`, `current_session_id`, `auth_parameter`, and any column whose name matches the secret pattern in `app/ui/helpers.py`). `tests/test_main.py::EXPORT_COLUMN_REVIEW` must classify every model column, so a new column fails CI until reviewed.
+* Exports with personal data (users, API keys, templates, provider details) ask for confirmation first. The files are unencrypted. Store them only in approved locations and delete them when done.
+
+To restore the original text when re-importing:
+
+```python
+import pandas as pd
+from app.ui.helpers import unescape_csv_text
+
+df = pd.read_csv("templates.csv", encoding="utf-8-sig", dtype=str, keep_default_na=False)
+df["Content"] = df["Content"].map(unescape_csv_text)
+# Cells that were formula-escaped: strip the leading "'" if the value starts with '=, '+, '- or '@.
+```
+
 ## Development
 
 ### Testing

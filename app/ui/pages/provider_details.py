@@ -12,6 +12,7 @@ from app.ui.helpers import (
     format_environment,
     make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
 )
 from app.ui.shell import build_shell, ensure_theme_preference
@@ -215,7 +216,14 @@ async def provider_details_page() -> None:
                     color="primary",
                 )
                 ui.space()
-                add_export_button(table_rows, columns, "provider_details.csv")
+                add_export_button(
+                    table_rows,
+                    columns,
+                    "provider_details.csv",
+                    export_rows=lambda: [model_to_export_dict(p) for p in providers],
+                    table_ref=lambda: table,
+                    sensitive_notice="Includes creator names.",
+                )
 
             def handle_row_select(e) -> None:  # pragma: no cover
                 if e.selection:

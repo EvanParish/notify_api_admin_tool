@@ -22,6 +22,7 @@ from app.ui.helpers import (
     format_service_label,
     make_row_key,
     make_sortable,
+    model_to_export_dict,
     refresh_if_needed,
     resolve_service_name,
     set_options_preserving,
@@ -523,7 +524,16 @@ async def sms_senders_page() -> None:
                     color="green",
                 )
                 ui.space()
-                add_export_button(table_rows, columns, "sms_senders.csv")
+                add_export_button(
+                    table_rows,
+                    columns,
+                    "sms_senders.csv",
+                    export_rows=lambda: [
+                        model_to_export_dict(s, service_name=service_name_map.get(s.service_id, s.service_id))
+                        for s in senders
+                    ],
+                    table_ref=lambda: table,
+                )
 
             def handle_row_select(e) -> None:  # pragma: no cover
                 if e.selection:
