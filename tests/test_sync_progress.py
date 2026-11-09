@@ -187,10 +187,9 @@ async def test_locked_is_false_by_default():
 @pytest.mark.asyncio
 async def test_sync_all_declares_weighted_total(initialized_db):
     """Total is 4 fan-out phases x N services, plus 5 constant-time steps."""
-    from app.sync import SyncManager
-    from app.repository import list_service_ids
-
     import tests.testing_data as testing_data
+    from app.repository import list_service_ids
+    from app.sync import SyncManager
     from tests.test_sync import FakeAPI
 
     _, on_update = make_recorder()
@@ -220,8 +219,8 @@ async def test_sync_all_locks_progress_against_double_counting(initialized_db):
 
 @pytest.mark.asyncio
 async def test_standalone_fan_out_declares_its_own_total(initialized_db):
-    from app.models import Service
     from app.db import get_session
+    from app.models import Service
     from app.sync import SyncManager
     from tests.test_sync import FakeAPI
 
@@ -241,8 +240,8 @@ async def test_standalone_fan_out_declares_its_own_total(initialized_db):
 
 @pytest.mark.asyncio
 async def test_locked_fan_out_does_not_add_total(initialized_db):
-    from app.models import Service
     from app.db import get_session
+    from app.models import Service
     from app.sync import SyncManager
     from tests.test_sync import FakeAPI
 
@@ -263,10 +262,10 @@ async def test_locked_fan_out_does_not_add_total(initialized_db):
 
 @pytest.mark.asyncio
 async def test_failing_service_still_counts_one_unit(initialized_db):
-    from app.models import Service
-    from app.db import get_session
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
+    from app.db import get_session
+    from app.models import Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-boom", name="Boom", active=True))
@@ -290,10 +289,10 @@ async def test_failing_service_still_counts_one_unit(initialized_db):
 
 @pytest.mark.asyncio
 async def test_404_fast_path_still_counts_one_unit(initialized_db):
-    from app.models import Service
-    from app.db import get_session
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
+    from app.db import get_session
+    from app.models import Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-404", name="No Keys", active=True))
@@ -493,10 +492,10 @@ async def test_slow_fan_out_reports_its_own_phase_not_the_previous_one(initializ
     """A phase that hangs must be named while it hangs."""
     import asyncio
 
-    from app.models import Service
-    from app.db import get_session
-    from app.sync import PHASE_TEMPLATES, SyncManager
     from app.api_client import MockNotificationAPI
+    from app.db import get_session
+    from app.models import Service
+    from app.sync import PHASE_TEMPLATES, SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-slow", name="Slow", active=True))

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from nicegui import ui
 
@@ -75,9 +75,9 @@ async def bulk_send_page() -> None:
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
         progress_label = ui.label("Bulk send progress: idle").classes("text-sm")
         progress_bar = ui.linear_progress(value=0, show_value=False, color="green").classes("w-full")
-        personalisation_controls: Dict[str, Any] = {}
+        personalisation_controls: dict[str, Any] = {}
 
-        def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:  # pragma: no cover
+        def render_preview_text(content: str, personalisation: dict[str, str]) -> str:  # pragma: no cover
             if not content:
                 return ""
 
@@ -88,7 +88,7 @@ async def bulk_send_page() -> None:
 
             return placeholder_pattern.sub(replace, content)
 
-        def build_personalisation() -> Dict[str, str]:  # pragma: no cover
+        def build_personalisation() -> dict[str, str]:  # pragma: no cover
             return {key: control.value or "" for key, control in personalisation_controls.items()}
 
         async def load_keys() -> None:
@@ -222,7 +222,7 @@ async def bulk_send_page() -> None:
                             }
 
                 tasks = [asyncio.create_task(send_for_user(user, idx)) for idx, user in enumerate(active_users)]
-                results: List[Optional[Dict[str, Any]]] = [None] * len(tasks)
+                results: list[dict[str, Any] | None] = [None] * len(tasks)
                 for task in asyncio.as_completed(tasks):
                     index, result = await task
                     results[index] = result

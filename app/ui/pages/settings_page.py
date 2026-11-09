@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from nicegui import ui
 
@@ -67,7 +67,7 @@ async def settings_page() -> None:
             for env in _st.config.api_hosts:
                 current_url = await get_setting(f"base_url_{env}") or _st.config.api_hosts.get(env)
                 rows.append((env, current_url))
-            inputs: Dict[str, ui.input] = {}
+            inputs: dict[str, ui.input] = {}
             for env, url in rows:
                 inputs[env] = (
                     ui.input(label=f"{env.title()} Base URL", value=url).props("clearable").classes("w-full md:w-1/2")
@@ -83,7 +83,7 @@ async def settings_page() -> None:
 
         with ui.card().classes("p-6 w-full"):
             ui.label("Global Admin Auth (per environment)").classes("text-md font-semibold")
-            auth_inputs: Dict[str, Dict[str, ui.input]] = {}
+            auth_inputs: dict[str, dict[str, ui.input]] = {}
             for env in _st.config.api_hosts:
                 user_val = await get_secure_setting(f"basic_username_{env}", _st.encryption) or ""
                 pass_val = await get_secure_setting(f"basic_password_{env}", _st.encryption) or ""
@@ -160,7 +160,7 @@ async def settings_page() -> None:
                     confirm_clear_button = ui.button("Delete Data", color="negative")
                     ui.button("Cancel", on_click=confirm_clear_dialog.close, color="gray")
 
-            pending_clear: Dict[str, Any] = {}
+            pending_clear: dict[str, Any] = {}
 
             async def handle_clear_request() -> None:  # pragma: no cover
                 table_name = clear_table_select.value
@@ -203,14 +203,14 @@ async def settings_page() -> None:
             confirm_clear_button.on_click(handle_confirm_clear)
 
 
-async def save_base_urls(inputs: Dict[str, ui.input]) -> None:
+async def save_base_urls(inputs: dict[str, ui.input]) -> None:
     for env, control in inputs.items():
         if control.value:
             await set_setting(f"base_url_{env}", control.value)
     ui.notify("Base URLs saved", color="green")
 
 
-async def save_admin_auth(auth_inputs: Dict[str, Dict[str, ui.input]]) -> None:
+async def save_admin_auth(auth_inputs: dict[str, dict[str, ui.input]]) -> None:
     for env, pair in auth_inputs.items():
         user = pair["user"].value or ""
         password = pair["pass"].value or ""
@@ -221,8 +221,8 @@ async def save_admin_auth(auth_inputs: Dict[str, Dict[str, ui.input]]) -> None:
 
 
 async def save_local_key(
-    environment: Optional[str],
-    service_id: Optional[str],
+    environment: str | None,
+    service_id: str | None,
     name: str,
     secret: str,
     key_type: str,
@@ -251,7 +251,7 @@ async def render_local_keys() -> None:
         {"name": "expiry_date", "label": "Expires", "field": "expiry_date"},
         {"name": "status", "label": "Status", "field": "status"},
     ]
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for k in keys:
         remote = api_key_map.get(k.api_key_id)
         expiry = getattr(remote, "expiry_date", None) if remote is not None else None
@@ -269,7 +269,7 @@ async def render_local_keys() -> None:
             }
         )
 
-    def _local_key_export_rows() -> List[Dict[str, Any]]:
+    def _local_key_export_rows() -> list[dict[str, Any]]:
         # key_secret is stripped by the export denylist inside model_to_export_dict.
         out = []
         for k in keys:

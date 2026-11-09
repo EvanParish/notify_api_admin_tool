@@ -5,9 +5,7 @@ import binascii
 import json
 import logging
 import time
-from typing import Type
-
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, or_, select
 
@@ -37,8 +35,8 @@ def _is_expired(expiry_date: str | None) -> bool:
     try:
         parsed = datetime.fromisoformat(expiry_date)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed < datetime.now(timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed < datetime.now(UTC)
     except ValueError:
         return False
 
@@ -375,7 +373,7 @@ async def count_active_api_keys_by_service(
     environment: str | list[str] | None = None,
 ) -> dict[tuple[str, str], int]:
     """Count active (non-revoked, non-expired) API keys grouped by (service_id, environment)."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     async with get_session() as session:
         query = (
             select(ApiKey.service_id, ApiKey.environment, func.count(ApiKey.id))
@@ -443,7 +441,7 @@ async def mark_api_key_revoked(service_id: str, key_id: str, environment: str | 
             return False
         record.revoked = True
         if not _is_expired(record.expiry_date):
-            record.expiry_date = datetime.now(timezone.utc).isoformat()
+            record.expiry_date = datetime.now(UTC).isoformat()
         await session.commit()
         return True
 
@@ -458,7 +456,7 @@ async def mark_stale_api_keys_revoked(
     Keys that are already revoked are left unchanged.
     Returns the number of keys newly marked as revoked.
     """
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     async with get_session() as session:
         query = select(ApiKey).where(
             ApiKey.service_id == service_id,
@@ -815,7 +813,7 @@ async def update_inbound_number(
 
 
 # Map of table names to model classes for clearing data
-CLEARABLE_TABLES: dict[str, Type[Base]] = {
+CLEARABLE_TABLES: dict[str, type[Base]] = {
     "services": Service,
     "templates": Template,
     "api_keys": ApiKey,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from nicegui import ui
@@ -47,7 +47,7 @@ from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 logger = logging.getLogger(__name__)
 
 
-def _parse_filter_date(value: Optional[str]) -> Optional[date]:
+def _parse_filter_date(value: str | None) -> date | None:
     if not value:
         return None
     try:
@@ -56,7 +56,7 @@ def _parse_filter_date(value: Optional[str]) -> Optional[date]:
         return None
 
 
-def _matches_expiry_range(expiry_value: Optional[str], start_date: Optional[date], end_date: Optional[date]) -> bool:
+def _matches_expiry_range(expiry_value: str | None, start_date: date | None, end_date: date | None) -> bool:
     if not start_date and not end_date:
         return True
     expiry_date = _parse_filter_date(expiry_value)
@@ -118,7 +118,7 @@ async def _link_created_local_key(
         return False
 
 
-def _extract_api_key_secret(payload: Dict[str, Any]) -> str:
+def _extract_api_key_secret(payload: dict[str, Any]) -> str:
     if not isinstance(payload, dict):
         raise ValueError("Unexpected API response when creating API key")
     data = payload.get("data")
@@ -291,8 +291,8 @@ async def api_keys_page() -> None:
         create_env.on_value_change(handle_create_env_change)
         submit_button.on_click(handle_create_api_key)
 
-        selected_api_key: Dict[str, Any] = {}
-        pending_revoke: Dict[str, str] = {}
+        selected_api_key: dict[str, Any] = {}
+        pending_revoke: dict[str, str] = {}
 
         with ui.dialog() as manage_dialog, ui.card().classes("p-6 w-full max-w-lg"):
             ui.label("Manage API Key").classes("text-md font-semibold")
@@ -310,19 +310,19 @@ async def api_keys_page() -> None:
                 confirm_revoke_button = ui.button("Revoke Key", color="negative")
                 ui.button("Cancel", on_click=revoke_dialog.close, color="gray")
 
-        def resolve_selected_key() -> Optional[Dict[str, Any]]:  # pragma: no cover
+        def resolve_selected_key() -> dict[str, Any] | None:  # pragma: no cover
             return selected_api_key if selected_api_key.get("id") else None
 
         def resolve_selected_environment(
-            key: Dict[str, Any],
-        ) -> Optional[str]:  # pragma: no cover
+            key: dict[str, Any],
+        ) -> str | None:  # pragma: no cover
             env_value = key.get("environment_value") or key.get("environment")
             if not env_value or env_value == "unknown":
                 return None
             return env_value
 
         def update_manage_fields(
-            key: Optional[Dict[str, Any]],
+            key: dict[str, Any] | None,
         ) -> None:  # pragma: no cover
             if not key:
                 selected_key_label.text = "No API key selected."
@@ -518,7 +518,7 @@ async def api_keys_page() -> None:
                     resolve_user_email(key.created_by, user_email_map),
                 )
             ]
-            table_rows: List[Dict[str, Any]] = [
+            table_rows: list[dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(key.id, key.environment),
                     "id": key.id,

@@ -1,4 +1,5 @@
 import pytest
+
 from app.crypto import EncryptionManager
 from app.repository import DbSaltProvider
 

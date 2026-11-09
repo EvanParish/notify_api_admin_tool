@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.ui import state as _st
 
@@ -60,13 +60,13 @@ def _resolve_email_endpoints(env: str) -> tuple[str, str]:
     raise ValueError(f"No email endpoints configured for environment {env}")
 
 
-def _format_expiry_date(value: Optional[str]) -> str:
+def _format_expiry_date(value: str | None) -> str:
     if not value:
         return "unknown"
     return value.split("T", 1)[0]
 
 
-def _select_latest_key(keys: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
+def _select_latest_key(keys: list[dict[str, Any]], name: str) -> dict[str, Any]:
     matches = [key for key in keys if key.get("name") == name]
     if not matches:
         raise ValueError(f"No keys found with name: {name}")
@@ -77,7 +77,7 @@ def _select_latest_key(keys: List[Dict[str, Any]], name: str) -> Dict[str, Any]:
 
 def _build_key_email(
     key_secret: str,
-    created_key: Dict[str, Any],
+    created_key: dict[str, Any],
     env: str,
     service_name: str,
     service_id: str,
@@ -114,7 +114,7 @@ def _build_key_email(
 def _build_env_section(
     env: str,
     key_secret: str,
-    created_key: Dict[str, Any],
+    created_key: dict[str, Any],
     service_name: str,
     service_id: str,
     include_endpoints: bool = True,
@@ -157,7 +157,7 @@ def _build_env_section(
 
 
 def _build_multi_env_key_email(
-    env_keys: List[Dict[str, Any]],
+    env_keys: list[dict[str, Any]],
     service_name: str,
     template: EmailTemplate = EmailTemplate.KEY_ROTATION,
 ) -> str:

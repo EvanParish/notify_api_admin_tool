@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from nicegui import ui
 
@@ -55,7 +55,7 @@ async def users_page() -> None:
         async def render_table() -> None:  # pragma: no cover
             users = await list_users(get_view_environment(), encryption=_st.encryption)
 
-            def normalize_state(value: Optional[str]) -> str:
+            def normalize_state(value: str | None) -> str:
                 return (value or "").strip().lower()
 
             state_values = sorted({normalize_state(user.state) for user in users if normalize_state(user.state)})
@@ -110,7 +110,7 @@ async def users_page() -> None:
                     "field": "organisations_count",
                 },
             ]
-            table_rows: List[Dict[str, Any]] = [
+            table_rows: list[dict[str, Any]] = [
                 {
                     "_row_key": make_row_key(user.id, user.environment),
                     "id": user.id,

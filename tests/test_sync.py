@@ -1,15 +1,15 @@
-import pytest
-from sqlalchemy import select
 from unittest.mock import AsyncMock, patch
 
-from app.db import create_all, get_session, init_engine
+import pytest
+from sqlalchemy import select
+
+import tests.testing_data as testing_data
+from app.api_client import NotificationAPI
 from app.crypto import EncryptionManager
+from app.db import create_all, get_session, init_engine
 from app.models import Service, ServiceCallback, Template, User
 from app.repository import DbSaltProvider
 from app.sync import SyncManager, SyncProgress
-from app.api_client import NotificationAPI
-
-import tests.testing_data as testing_data
 
 
 class FakeAPI(NotificationAPI):
@@ -398,9 +398,9 @@ async def test_sync_templates_handles_different_field_names(setup_db):
 @pytest.mark.asyncio
 async def test_sync_services_with_empty_permissions_list(initialized_db):
     """Test that services with empty permissions list are handled correctly."""
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
     from app.repository import list_services
+    from app.sync import SyncManager
 
     # Create a mock API that returns a service with empty permissions list
     mock_api = MockNotificationAPI()
@@ -434,11 +434,12 @@ async def test_sync_services_with_empty_permissions_list(initialized_db):
 @pytest.mark.asyncio
 async def test_sync_api_keys_handles_404(initialized_db):
     """Test that sync handles 404 errors gracefully when service has no API keys."""
-    from app.sync import SyncManager
-    from app.api_client import MockNotificationAPI
-    from app.models import Service
-    from app.db import get_session
     import httpx
+
+    from app.api_client import MockNotificationAPI
+    from app.db import get_session
+    from app.models import Service
+    from app.sync import SyncManager
 
     # Create a service
     async with get_session() as session:
@@ -471,10 +472,10 @@ async def test_sync_api_keys_handles_404(initialized_db):
 
 @pytest.mark.asyncio
 async def test_sync_api_keys_handles_404_with_progress(initialized_db):
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
-    from app.models import Service
     from app.db import get_session
+    from app.models import Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-404", name="No Keys Service", active=True))
@@ -503,10 +504,10 @@ async def test_sync_api_keys_handles_404_with_progress(initialized_db):
 
 @pytest.mark.asyncio
 async def test_sync_api_keys_records_non_404_error(initialized_db):
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
-    from app.models import Service
     from app.db import get_session
+    from app.models import Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-err", name="Error Service", active=True))
@@ -529,10 +530,10 @@ async def test_sync_api_keys_records_non_404_error(initialized_db):
 @pytest.mark.asyncio
 async def test_sync_api_keys_with_service_ids_filter(initialized_db):
     """Test that sync_api_keys respects service_ids filter."""
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
-    from app.models import Service
     from app.db import get_session
+    from app.models import Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-a", name="Service A", active=True))
@@ -558,10 +559,10 @@ async def test_sync_api_keys_with_service_ids_filter(initialized_db):
 @pytest.mark.asyncio
 async def test_sync_api_keys_passes_include_revoked(initialized_db):
     """include_revoked is forwarded to the API client and revoked keys are persisted."""
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
-    from app.models import Service, ApiKey
     from app.db import get_session
+    from app.models import ApiKey, Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Service 1", active=True))
@@ -590,10 +591,10 @@ async def test_sync_api_keys_passes_include_revoked(initialized_db):
 @pytest.mark.asyncio
 async def test_sync_api_keys_defaults_include_revoked_false(initialized_db):
     """include_revoked defaults to False when not specified."""
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
-    from app.models import Service
     from app.db import get_session
+    from app.models import Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Service 1", active=True))
@@ -642,10 +643,10 @@ async def test_sync_api_keys_error_logs_service_id(initialized_db, caplog):
 @pytest.mark.asyncio
 async def test_sync_sms_senders_handles_404(initialized_db):
     """Test that sync handles 404 errors gracefully for SMS senders."""
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
-    from app.models import Service
     from app.db import get_session
+    from app.models import Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-no-sms", name="No SMS Service", active=True))
@@ -675,11 +676,12 @@ async def test_sync_sms_senders_handles_404(initialized_db):
 @pytest.mark.asyncio
 async def test_sync_sms_senders_records_non_404_error(initialized_db):
     """Test that sync records non-404 errors for SMS senders."""
-    from app.sync import SyncManager
-    from app.api_client import MockNotificationAPI
-    from app.models import Service
-    from app.db import get_session
     import httpx
+
+    from app.api_client import MockNotificationAPI
+    from app.db import get_session
+    from app.models import Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-err-sms", name="Error SMS Service", active=True))
@@ -730,9 +732,10 @@ async def test_sync_result_string_representation(initialized_db):
 @pytest.mark.asyncio
 async def test_sync_extracts_error_message_from_json_response(initialized_db):
     """Test that error message is extracted from JSON response body."""
-    from app.sync import SyncManager
-    from app.api_client import MockNotificationAPI
     import httpx
+
+    from app.api_client import MockNotificationAPI
+    from app.sync import SyncManager
 
     mock_api = MockNotificationAPI()
 
@@ -757,10 +760,10 @@ async def test_sync_extracts_error_message_from_json_response(initialized_db):
 @pytest.mark.asyncio
 async def test_sync_api_keys_marks_stale_keys_revoked(initialized_db):
     """Keys in local storage but not returned by the API are marked revoked."""
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
-    from app.models import Service, ApiKey
     from app.db import get_session
+    from app.models import ApiKey, Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Service 1", active=True))
@@ -791,10 +794,10 @@ async def test_sync_api_keys_marks_stale_keys_revoked(initialized_db):
 @pytest.mark.asyncio
 async def test_sync_api_keys_404_does_not_revoke(initialized_db):
     """404 errors should not trigger revocation of local keys."""
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
-    from app.models import Service, ApiKey
     from app.db import get_session
+    from app.models import ApiKey, Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Service 1", active=True))
@@ -820,10 +823,10 @@ async def test_sync_api_keys_404_does_not_revoke(initialized_db):
 @pytest.mark.asyncio
 async def test_sync_api_keys_upserts_returned_keys_normally(initialized_db):
     """Keys returned by the API are upserted normally and not marked revoked."""
-    from app.sync import SyncManager
     from app.api_client import MockNotificationAPI
-    from app.models import Service, ApiKey
     from app.db import get_session
+    from app.models import ApiKey, Service
+    from app.sync import SyncManager
 
     async with get_session() as session:
         session.add(Service(id="svc-1", name="Service 1", active=True))

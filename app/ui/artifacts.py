@@ -11,8 +11,8 @@ import json
 import logging
 import os
 import tempfile
-from datetime import datetime, timezone
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -65,7 +65,7 @@ def write_json_artifact(prefix: str, payload: dict[str, Any], directory: str) ->
 
     Returns the path of the written file.
     """
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
     os.makedirs(directory, mode=ARTIFACT_DIR_MODE, exist_ok=True)
     # Best-effort, not fatal. chmod raises PermissionError when the directory already
     # exists and is owned by a different user -- the common case being a directory created

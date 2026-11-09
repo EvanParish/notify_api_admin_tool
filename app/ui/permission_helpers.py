@@ -15,7 +15,7 @@ import json
 import re
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import IntEnum
 from typing import Any
 
@@ -578,7 +578,7 @@ def build_audit_payload(
     ``service_id``/``service_name`` would misattribute the record a rollback depends on.
     """
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "environment": environment,
         "base_url": base_url,
         "protected": protected,

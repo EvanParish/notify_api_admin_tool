@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Enum,
@@ -9,10 +9,9 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    JSON,
     and_,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship, foreign
+from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship
 
 from .db import Base
 
@@ -27,17 +26,17 @@ class Service(Base):
     restricted: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Additional fields from API
-    message_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    rate_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    message_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     research_mode: Mapped[bool] = mapped_column(Boolean, default=False)
     count_as_live: Mapped[bool] = mapped_column(Boolean, default=True)
     prefix_sms: Mapped[bool] = mapped_column(Boolean, default=False)
-    email_from: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    permissions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array as text
-    organisation_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    crown: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    go_live_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    email_from: Mapped[str | None] = mapped_column(String, nullable=True)
+    permissions: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array as text
+    organisation_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    crown: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    go_live_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
 
     templates: Mapped[list["Template"]] = relationship(
         back_populates="service",
@@ -57,18 +56,18 @@ class Template(Base):
     name: Mapped[str] = mapped_column(String)
     template_type: Mapped[str] = mapped_column(Enum("email", "sms", name="template_type"))
     content: Mapped[str] = mapped_column(Text)
-    subject: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    subject: Mapped[str | None] = mapped_column(String, nullable=True)
+    version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Additional fields from API
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     hidden: Mapped[bool] = mapped_column(Boolean, default=False)
-    process_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    reply_to_email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    communication_item_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    process_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    reply_to_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    communication_item_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     service: Mapped[Service] = relationship(
         back_populates="templates",
@@ -83,36 +82,36 @@ class ApiKey(Base):
     __tablename__ = "api_keys"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
-    service_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    environment: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    service_id: Mapped[str | None] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String)
-    key_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    expiry_date: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    last_used_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    key_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    expiry_date: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_used_at: Mapped[str | None] = mapped_column(String, nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
-    version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SmsSender(Base):
     __tablename__ = "sms_senders"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    environment: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     service_id: Mapped[str] = mapped_column(ForeignKey("services.id"))
     sms_sender: Mapped[str] = mapped_column(String)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
-    description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    provider_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    provider_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    inbound_number_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    rate_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    rate_limit_interval: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    sms_sender_specifics: Mapped[Optional[str]] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    provider_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    provider_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    inbound_number_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    rate_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_limit_interval: Mapped[str | None] = mapped_column(String, nullable=True)
+    sms_sender_specifics: Mapped[str | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class User(Base):
@@ -120,22 +119,22 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
-    email_address: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    state: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    email_address: Mapped[str | None] = mapped_column(String, nullable=True)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    state: Mapped[str | None] = mapped_column(String, nullable=True)
     platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     blocked: Mapped[bool] = mapped_column(Boolean, default=False)
-    auth_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    mobile_number: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    failed_login_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    logged_in_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    password_changed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    current_session_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    identity_provider_user_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    additional_information: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    permissions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    services: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
-    organisations: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    auth_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    mobile_number: Mapped[str | None] = mapped_column(String, nullable=True)
+    failed_login_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    logged_in_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    password_changed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    current_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    identity_provider_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    additional_information: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    permissions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    services: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    organisations: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class ProviderDetail(Base):
@@ -144,15 +143,15 @@ class ProviderDetail(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_by_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    current_month_billable_sms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    display_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    identifier: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    load_balancing_weight: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    notification_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    supports_international: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_by_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    current_month_billable_sms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    identifier: Mapped[str | None] = mapped_column(String, nullable=True)
+    load_balancing_weight: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    notification_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    priority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    supports_international: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    updated_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class CommunicationItem(Base):
@@ -161,7 +160,7 @@ class CommunicationItem(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
     name: Mapped[str] = mapped_column(String)
-    va_profile_item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    va_profile_item_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     default_send_indicator: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
@@ -171,12 +170,12 @@ class InboundNumber(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
     number: Mapped[str] = mapped_column(String)
-    provider: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     self_managed: Mapped[bool] = mapped_column(Boolean, default=False)
-    service_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    auth_parameter: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    url_endpoint: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    service_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    auth_parameter: Mapped[str | None] = mapped_column(String, nullable=True)
+    url_endpoint: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class ServiceCallback(Base):
@@ -185,13 +184,13 @@ class ServiceCallback(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     environment: Mapped[str] = mapped_column(String, primary_key=True, default="unknown", index=True)
     service_id: Mapped[str] = mapped_column(String, index=True)
-    url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    callback_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    callback_channel: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    updated_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    updated_by_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    notification_statuses: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    url: Mapped[str | None] = mapped_column(String, nullable=True)
+    callback_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    callback_channel: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_by_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    notification_statuses: Mapped[list | None] = mapped_column(JSON, nullable=True)
     include_provider_payload: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
@@ -200,7 +199,7 @@ class LocalApiKey(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     service_id: Mapped[str] = mapped_column(String)
-    environment: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    environment: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     key_name: Mapped[str] = mapped_column(String)
     key_secret: Mapped[str] = mapped_column(Text)
     key_type: Mapped[str] = mapped_column(Enum("normal", "team", "test", name="key_type"))
@@ -208,7 +207,7 @@ class LocalApiKey(Base):
     # form and every row predating this column have no way to know it.  Expiry and
     # revoked state are read from the api_keys row rather than copied here, so they
     # cannot drift.
-    api_key_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
+    api_key_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
 
 class Setting(Base):
@@ -218,6 +217,6 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )

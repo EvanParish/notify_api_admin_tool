@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from nicegui import ui
 
@@ -78,9 +78,9 @@ async def send_page() -> None:
         )
         personalisation_area = ui.column().classes("w-full md:w-1/2")
         response_log = ui.code("", language="json").classes("w-full bg-gray-50 dark:bg-slate-900")
-        personalisation_controls: Dict[str, Any] = {}
+        personalisation_controls: dict[str, Any] = {}
 
-        def render_preview_text(content: str, personalisation: Dict[str, str]) -> str:  # pragma: no cover
+        def render_preview_text(content: str, personalisation: dict[str, str]) -> str:  # pragma: no cover
             if not content:
                 return ""
 
@@ -91,7 +91,7 @@ async def send_page() -> None:
 
             return placeholder_pattern.sub(replace, content)
 
-        def build_personalisation() -> Dict[str, str]:  # pragma: no cover
+        def build_personalisation() -> dict[str, str]:  # pragma: no cover
             return {key: control.value or "" for key, control in personalisation_controls.items()}
 
         async def load_keys() -> None:
@@ -225,7 +225,7 @@ async def send_page() -> None:
                 tasks = [
                     asyncio.create_task(send_to_recipient(recipient, idx)) for idx, recipient in enumerate(recipients)
                 ]
-                results: List[Optional[Dict[str, Any]]] = [None] * len(tasks)
+                results: list[dict[str, Any] | None] = [None] * len(tasks)
                 sent_count = 0
                 error_count = 0
                 for task in asyncio.as_completed(tasks):
@@ -236,12 +236,12 @@ async def send_page() -> None:
                     elif result.get("status") == "error":
                         error_count += 1
                 final_results = [r for r in results if r is not None]
-                summary: Dict[str, Any] = {
+                summary: dict[str, Any] = {
                     "total": len(recipients),
                     "sent": sent_count,
                     "errors": error_count,
                 }
-                file_path: Optional[str] = None
+                file_path: str | None = None
                 if len(recipients) > 1:
                     file_path = write_send_results(
                         "send_responses",

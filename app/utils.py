@@ -1,15 +1,13 @@
 import re
-from typing import List
-
 
 _PLACEHOLDER_PATTERN = re.compile(r"\(\((.*?)\)\)")
 
 
-def extract_placeholders(content: str) -> List[str]:
+def extract_placeholders(content: str) -> list[str]:
     found = _PLACEHOLDER_PATTERN.findall(content or "")
     # Preserve order while removing duplicates
     seen = set()
-    ordered: List[str] = []
+    ordered: list[str] = []
     for item in found:
         key = item.strip()
         if key and key not in seen:

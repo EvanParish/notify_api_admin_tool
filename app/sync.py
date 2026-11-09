@@ -4,9 +4,9 @@ import asyncio
 import logging
 import time
 from collections import Counter
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, Optional
 
 import httpx
 
@@ -62,7 +62,7 @@ class SyncProgress:
     _last_message: str = field(default="", repr=False)
 
     @classmethod
-    def from_callable(cls, fn: TextCallback) -> "SyncProgress":
+    def from_callable(cls, fn: TextCallback) -> SyncProgress:
         """Adapt a text-only sink that ignores counts."""
 
         async def on_update(done: int, total: int, msg: str) -> None:
@@ -71,7 +71,7 @@ class SyncProgress:
         return cls(on_update)
 
     @classmethod
-    def coerce(cls, progress: "SyncProgress | TextCallback | None") -> "SyncProgress | None":
+    def coerce(cls, progress: SyncProgress | TextCallback | None) -> SyncProgress | None:
         """Normalize a caller-supplied progress argument."""
         if progress is None or isinstance(progress, cls):
             return progress
@@ -135,7 +135,7 @@ class SyncProgress:
         await self.on_update(self.done, self.total, label)
 
 
-ProgressCallback = Optional[SyncProgress]
+ProgressCallback = SyncProgress | None
 
 #: Human-readable phase names shown next to the progress counter. Deliberately
 #: coarse: per-service messages are meaningless under concurrent fan-out.
@@ -204,7 +204,7 @@ class SyncResult:
     def add_success(self) -> None:
         self.success_count += 1
 
-    def merge(self, other: "SyncResult") -> None:
+    def merge(self, other: SyncResult) -> None:
         self.success_count += other.success_count
         self.error_count += other.error_count
         self.errors.extend(other.errors)
@@ -215,7 +215,7 @@ class SyncManager:
         self,
         api: NotificationAPI,
         max_concurrency: int = 25,
-        environment: Optional[str] = None,
+        environment: str | None = None,
         encryption: EncryptionManager | None = None,
     ) -> None:
         self.api = api
@@ -277,7 +277,7 @@ class SyncManager:
 
     @staticmethod
     @asynccontextmanager
-    async def _phase(progress: "SyncProgress | None", phase: str, units: int = 1):
+    async def _phase(progress: SyncProgress | None, phase: str, units: int = 1):
         """Declare work units (unless sync_all already did) and hold the phase.
 
         Holding the phase for the duration of the work is what keeps the label

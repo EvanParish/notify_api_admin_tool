@@ -1,66 +1,67 @@
-from datetime import datetime
 import json
 import logging
+from datetime import datetime
 
 import pytest
 from sqlalchemy import select
+
 from app import repository
+from app.crypto import EncryptionManager
+from app.db import get_session
+from app.models import (
+    ApiKey,
+    CommunicationItem,
+    InboundNumber,
+    LocalApiKey,
+    ProviderDetail,
+    Service,
+    ServiceCallback,
+    Setting,
+    SmsSender,
+    Template,
+    User,
+)
 from app.repository import (
-    get_setting,
-    set_setting,
-    get_secure_setting,
-    set_secure_setting,
-    list_services,
-    list_templates,
-    list_local_keys,
-    add_local_key,
-    resolve_local_key,
-    list_api_keys,
-    list_inbound_numbers,
     UNASSIGNED_SERVICE_FILTER,
-    list_service_callbacks,
-    list_sms_senders,
-    list_provider_details,
-    list_communication_items,
-    list_users,
-    update_api_key_expiry,
-    mark_api_key_revoked,
-    mark_stale_api_keys_revoked,
-    update_provider_detail,
-    update_service,
-    update_sms_sender,
-    update_inbound_number,
-    update_communication_item,
+    DbSaltProvider,
+    _is_expired,
+    add_local_key,
+    backfill_local_key_api_ids,
     clear_table_data,
     count_active_api_keys_by_service,
     count_sms_senders_by_service,
     count_templates_by_service,
-    _is_expired,
-    upsert_service_callbacks,
     delete_service_callback,
-    prune_service_callbacks,
-    upsert_api_keys,
-    upsert_users,
-    migrate_plaintext_users_to_encrypted,
+    get_secure_setting,
+    get_setting,
     link_local_key,
-    backfill_local_key_api_ids,
+    list_api_keys,
+    list_communication_items,
+    list_inbound_numbers,
+    list_local_keys,
+    list_provider_details,
+    list_service_callbacks,
+    list_services,
+    list_sms_senders,
+    list_templates,
+    list_users,
+    mark_api_key_revoked,
+    mark_stale_api_keys_revoked,
+    migrate_plaintext_users_to_encrypted,
+    prune_service_callbacks,
+    resolve_local_key,
+    set_secure_setting,
+    set_setting,
+    update_api_key_expiry,
+    update_communication_item,
+    update_inbound_number,
+    update_provider_detail,
+    update_service,
+    update_sms_sender,
+    upsert_api_keys,
+    upsert_service_callbacks,
+    upsert_users,
 )
-from app.crypto import EncryptionManager
-from app.repository import DbSaltProvider
-from app.models import (
-    Service,
-    Template,
-    LocalApiKey,
-    ApiKey,
-    InboundNumber,
-    ServiceCallback,
-    Setting,
-    SmsSender,
-    ProviderDetail,
-    CommunicationItem,
-    User,
-)
-from app.db import get_session
 
 
 @pytest.mark.asyncio

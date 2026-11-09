@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.db import init_engine, create_all  # noqa: E402
+from app.db import create_all, init_engine  # noqa: E402
 
 
 @pytest.fixture(scope="function", autouse=True)

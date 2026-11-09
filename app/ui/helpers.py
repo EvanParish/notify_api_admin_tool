@@ -13,13 +13,13 @@ import io
 import json
 import logging
 import re
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from nicegui import ui
 from sqlalchemy import inspect as sa_inspect
 
 from app.repository import _is_expired
-
 from app.ui.artifacts import SEND_RESULTS_DIR, write_json_artifact  # noqa: F401
 from app.ui.state import safe_notify
 
@@ -44,11 +44,11 @@ async def refresh_if_needed(refreshable) -> None:
         await result
 
 
-def make_sortable(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def make_sortable(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{**column, "sortable": True} for column in columns]
 
 
-def make_row_key(entity_id: Any, environment: Optional[str]) -> str:
+def make_row_key(entity_id: Any, environment: str | None) -> str:
     """Create a unique row key combining id and environment for Quasar tables."""
     return f"{entity_id or ''}:{environment or ''}"
 
@@ -79,7 +79,7 @@ def _escape_char(ch: str) -> str:
     return _CSV_CONTROL_ESCAPES.get(ch) or f"\\u{ord(ch):04x}"
 
 
-def _unescape_match(m: "re.Match[str]") -> str:
+def _unescape_match(m: re.Match[str]) -> str:
     return _CSV_UNESCAPES[m.group(1)] if m.group(1) else chr(int(m.group(2), 16))
 
 
@@ -122,7 +122,7 @@ def _escape_csv_cell(value: Any) -> Any:
     return value
 
 
-def rows_to_csv(rows: List[Dict[str, Any]], columns: List[Dict[str, Any]]) -> str:
+def rows_to_csv(rows: list[dict[str, Any]], columns: list[dict[str, Any]]) -> str:
     """Convert table rows to CSV string using column definitions."""
     output = io.StringIO()
     # Get field names from columns, excluding internal fields like _row_key
@@ -167,13 +167,13 @@ def _export_value(value: Any) -> Any:
     return value
 
 
-def model_to_export_dict(obj: Any, **extra: Any) -> Dict[str, Any]:
+def model_to_export_dict(obj: Any, **extra: Any) -> dict[str, Any]:
     """Return every mapped DB column of an ORM instance, minus denylisted columns.
 
     ``extra`` adds resolved/derived fields (e.g. ``service_name``) after the raw columns.
     Denylisted names are also stripped from ``extra`` so a caller cannot bypass the list.
     """
-    data: Dict[str, Any] = {}
+    data: dict[str, Any] = {}
     state = sa_inspect(obj, raiseerr=False)
     if state is not None:
         keys = [attr.key for attr in state.mapper.column_attrs]
@@ -196,10 +196,10 @@ def humanize_column(key: str) -> str:
     return " ".join(_HEADER_ACRONYMS.get(part, part.capitalize()) for part in key.split("_") if part)
 
 
-def dicts_to_csv(rows: List[Dict[str, Any]]) -> str:
+def dicts_to_csv(rows: list[dict[str, Any]]) -> str:
     """Convert full export dicts to CSV. Header is the ordered union of all keys,
     humanized (see ``unescape_csv_text`` for decoding cell values on re-import)."""
-    fields: List[str] = []
+    fields: list[str] = []
     seen = set()
     for row in rows:
         for key in row:
@@ -233,8 +233,8 @@ def _quasar_compare(a: Any, b: Any) -> int:
 
 
 def table_sort_order(
-    rows: List[Dict[str, Any]], columns: List[Dict[str, Any]], pagination: Optional[Dict[str, Any]]
-) -> List[int]:
+    rows: list[dict[str, Any]], columns: list[dict[str, Any]], pagination: dict[str, Any] | None
+) -> list[int]:
     """Return row indices in the order the client table currently shows them."""
     indices = list(range(len(rows)))
     sort_by = (pagination or {}).get("sortBy")
@@ -266,12 +266,12 @@ def download_csv(csv_content: str, filename: str) -> None:
 
 
 def add_export_button(
-    rows: List[Dict[str, Any]],
-    columns: List[Dict[str, Any]],
+    rows: list[dict[str, Any]],
+    columns: list[dict[str, Any]],
     filename: str,
-    export_rows: Optional[Callable[[], List[Dict[str, Any]]]] = None,
-    table_ref: Optional[Callable[[], Any]] = None,
-    sensitive_notice: Optional[str] = None,
+    export_rows: Callable[[], list[dict[str, Any]]] | None = None,
+    table_ref: Callable[[], Any] | None = None,
+    sensitive_notice: str | None = None,
 ) -> ui.button:
     """Add an export CSV button.
 
@@ -366,13 +366,13 @@ def copy_to_clipboard(text: Any) -> None:
     safe_notify(f'Copied "{value}" to clipboard!', color="green")
 
 
-def get_copyable_fields(rows: List[Dict[str, Any]]) -> List[str]:
+def get_copyable_fields(rows: list[dict[str, Any]]) -> list[str]:
     if not rows:
         return []
     return [field for field in COPYABLE_FIELDS if field in rows[0]]
 
 
-def add_copyable_slots(table, rows: List[Dict[str, Any]]) -> None:
+def add_copyable_slots(table, rows: list[dict[str, Any]]) -> None:
     copyable_fields = get_copyable_fields(rows)
     for field in copyable_fields:
         table.add_slot(f"body-cell-{field}", COPYABLE_CELL_SLOT)
@@ -466,7 +466,7 @@ def add_comm_item_context_menu(table, *, column_name: str) -> None:
 # ---------------------------------------------------------------------------
 # Formatting helpers
 # ---------------------------------------------------------------------------
-def format_environment(value: Optional[str]) -> str:
+def format_environment(value: str | None) -> str:
     return value or "unknown"
 
 
@@ -474,24 +474,24 @@ def format_service_label(service) -> str:
     return f"{service.name} ({format_environment(service.environment)})"
 
 
-def build_service_name_map(services) -> Dict[str, str]:
+def build_service_name_map(services) -> dict[str, str]:
     """Build a {service_id: service_name} lookup from a list of Service objects."""
     return {svc.id: svc.name for svc in services}
 
 
-def build_user_email_map(users) -> Dict[str, str]:
+def build_user_email_map(users) -> dict[str, str]:
     """Build a {user_id: email_address} lookup from a list of User objects."""
     return {user.id: user.email_address for user in users if user.email_address}
 
 
-def resolve_user_email(user_id: str | None, email_map: Dict[str, str]) -> str:
+def resolve_user_email(user_id: str | None, email_map: dict[str, str]) -> str:
     """Look up a user email by ID.  Falls back to *user_id* when unknown."""
     if not user_id:
         return ""
     return email_map.get(user_id) or user_id
 
 
-def build_api_key_map(keys) -> Dict[str, Any]:
+def build_api_key_map(keys) -> dict[str, Any]:
     """Build a {api_key_id: ApiKey} lookup from a list of ApiKey objects."""
     return {key.id: key for key in keys}
 
@@ -520,7 +520,7 @@ def format_local_key_label(key_name: str, status: str) -> str:
     return key_name
 
 
-def build_local_key_options(local_keys, api_key_map: Dict[str, Any]) -> Dict[int, str]:
+def build_local_key_options(local_keys, api_key_map: dict[str, Any]) -> dict[int, str]:
     """Build the {local_row_id: label} option map for a stored-key selector.
 
     Keys whose remote counterpart is revoked or expired stay selectable but are
@@ -541,7 +541,7 @@ def truncate_service_name(name: str | None, limit: int = 21) -> str:
 
 def resolve_service_name(
     service_id: str | None,
-    name_map: Dict[str, str],
+    name_map: dict[str, str],
     limit: int = 21,
 ) -> str:
     """Look up a service name by ID and truncate.  Falls back to *service_id*."""
@@ -554,10 +554,10 @@ def resolve_service_name(
 
 
 def with_option(
-    options: Dict[str, str],
+    options: dict[str, str],
     value: str | None,
     label: str | None = None,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Return *options* guaranteed to contain *value* as a key.
 
     NiceGUI's ``ui.select`` silently discards an assigned value that is absent from
@@ -588,7 +588,7 @@ def set_options_preserving(select, options, value, label=None) -> None:
     select.set_options(with_option(options, value, label), value=value or None)
 
 
-def sms_provider_identifier_options(providers) -> Dict[str, str]:
+def sms_provider_identifier_options(providers) -> dict[str, str]:
     """Build select options for fields storing a provider *identifier* string.
 
     ``InboundNumber.provider`` is a plain string column upstream with no foreign key,
@@ -606,7 +606,7 @@ def sms_provider_identifier_options(providers) -> Dict[str, str]:
     }
 
 
-def truncate_text(value: Optional[str], limit: int = 50) -> Optional[str]:
+def truncate_text(value: str | None, limit: int = 50) -> str | None:
     if not value:
         return value
     return value[:limit] + "..." if len(value) > limit else value
@@ -615,14 +615,14 @@ def truncate_text(value: Optional[str], limit: int = 50) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Personalisation / recipient helpers
 # ---------------------------------------------------------------------------
-def find_missing_personalisation(personalisation: Dict[str, Any]) -> Optional[str]:
+def find_missing_personalisation(personalisation: dict[str, Any]) -> str | None:
     for key, value in personalisation.items():
         if value is None or str(value).strip() == "":
             return key
     return None
 
 
-def parse_recipients(value: str) -> List[str]:
+def parse_recipients(value: str) -> list[str]:
     if not value:
         return []
     parts = re.split(r"[;,]", value)
@@ -636,7 +636,7 @@ def parse_recipients(value: str) -> List[str]:
 # without a cycle through this module.
 
 
-def write_send_results(prefix: str, payload: Dict[str, Any], directory: str = SEND_RESULTS_DIR) -> str:
+def write_send_results(prefix: str, payload: dict[str, Any], directory: str = SEND_RESULTS_DIR) -> str:
     """Write a send/bulk-send result payload to a timestamped JSON file.
 
     Returns the path of the written file.

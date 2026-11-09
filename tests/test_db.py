@@ -1,7 +1,8 @@
 import pytest
 from sqlalchemy import text
-from app.db import init_engine, create_all, get_session
-from app.models import Service, Template, ApiKey, LocalApiKey, Setting
+
+from app.db import create_all, get_session, init_engine
+from app.models import ApiKey, LocalApiKey, Service, Setting, Template
 
 
 @pytest.mark.asyncio
@@ -215,8 +216,8 @@ async def test_create_all_without_engine():
 
 @pytest.mark.asyncio
 async def test_dispose_engine(initialized_db):
-    from app.db import dispose_engine
     from app import db
+    from app.db import dispose_engine
 
     assert db.engine is not None
     await dispose_engine()
@@ -224,8 +225,8 @@ async def test_dispose_engine(initialized_db):
 
 @pytest.mark.asyncio
 async def test_dispose_engine_when_none():
-    from app.db import dispose_engine
     from app import db
+    from app.db import dispose_engine
 
     original_engine = db.engine
     db.engine = None

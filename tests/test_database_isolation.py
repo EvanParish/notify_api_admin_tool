@@ -2,9 +2,10 @@
 Test to verify database isolation between tests and main application.
 """
 
-import pytest
 import os
 from pathlib import Path
+
+import pytest
 
 
 def test_database_isolation_check(isolate_database):
@@ -43,10 +44,11 @@ def test_app_database_not_created_by_tests():
 @pytest.mark.asyncio
 async def test_multiple_tests_use_different_databases(initialized_db):
     """Verify each test gets its own database."""
-    from app import db
-    from app.models import Service
-    from app.db import get_session
     from sqlalchemy import select
+
+    from app import db
+    from app.db import get_session
+    from app.models import Service
 
     # Add a service
     async with get_session() as session:
@@ -67,9 +69,10 @@ async def test_multiple_tests_use_different_databases(initialized_db):
 @pytest.mark.asyncio
 async def test_second_test_has_clean_database(initialized_db):
     """Verify that this test doesn't see data from the previous test."""
-    from app.models import Service
-    from app.db import get_session
     from sqlalchemy import select
+
+    from app.db import get_session
+    from app.models import Service
 
     # Should have a clean database with no services
     async with get_session() as session:

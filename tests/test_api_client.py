@@ -1,9 +1,11 @@
-import pytest
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
 import tenacity
-from app.api_client import NotificationAPI, HttpNotificationAPI, MockNotificationAPI
+
+from app.api_client import HttpNotificationAPI, MockNotificationAPI, NotificationAPI
 from app.ui.callback_helpers import COMPLETED_NOTIFICATION_STATUSES
 
 

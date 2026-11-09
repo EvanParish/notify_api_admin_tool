@@ -50,7 +50,7 @@ pytest is configured in `pyproject.toml` (`[tool.pytest.ini_options]`) with `asy
 
 ## Linting
 
-Linting is configured with Ruff in `pyproject.toml` (`[tool.ruff]`: line length 120; rules `E4`, `E7`, `E9`, `F`; target version inferred from `requires-python`). Run the following commands to check for linting errors and automatically fix them:
+Linting is configured with Ruff in `pyproject.toml` (`[tool.ruff]`: line length 120; rules `E4`, `E7`, `E9`, `F`, plus `I` for import sorting and `UP` for modern syntax; target version inferred from `requires-python`). Run the following commands to check for linting errors and automatically fix them:
 
 ```bash
 uv run ruff check .
@@ -59,7 +59,7 @@ uv run ruff format .
 
 ## Python Version & Style
 
-This repo requires Python 3.13 (`requires-python = ">=3.13,<3.14"`). Use modern syntax: `list[str] | None` and `str | None` rather than `Optional[List[str]]` / `Optional[str]`.
+This repo requires Python 3.13 (`requires-python = ">=3.13,<3.14"`). Use modern syntax: `list[str] | None` and `str | None` rather than `Optional[List[str]]` / `Optional[str]`. Ruff's `UP` rules enforce this, and `ruff check --fix` rewrites old-style annotations.
 
 ## Architecture
 

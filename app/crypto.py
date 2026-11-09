@@ -1,6 +1,6 @@
 import base64
 import os
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 class SaltProvider(Protocol):
     """Async interface for retrieving/storing the encryption salt."""
 
-    async def get_salt(self) -> Optional[bytes]: ...
+    async def get_salt(self) -> bytes | None: ...
     async def store_salt(self, salt: bytes) -> None: ...
 
 
@@ -20,12 +20,12 @@ class EncryptionManager:
         self,
         master_key: str,
         iterations: int = 390000,
-        salt_provider: Optional[SaltProvider] = None,
+        salt_provider: SaltProvider | None = None,
     ) -> None:
         self.master_key = master_key.encode()
         self.iterations = iterations
         self._salt_provider = salt_provider
-        self._fernet: Optional[Fernet] = None
+        self._fernet: Fernet | None = None
 
     async def _get_or_create_salt(self) -> bytes:
         if self._salt_provider is None:

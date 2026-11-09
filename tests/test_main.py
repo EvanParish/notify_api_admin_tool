@@ -6,43 +6,66 @@ These tests focus on the business logic functions that can be tested in isolatio
 """
 
 import asyncio
-import os
 import json
+import os
+from contextlib import contextmanager
+from dataclasses import dataclass
+from types import SimpleNamespace
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
+
+import httpx
 import pytest
 from sqlalchemy import inspect as sa_inspect
-import httpx
-from contextlib import contextmanager
-from types import SimpleNamespace
-from unittest.mock import ANY, AsyncMock, MagicMock, patch, Mock
-from dataclasses import dataclass
-
-from app.api_client import MockNotificationAPI, HttpNotificationAPI
-from app.config import DEFAULT_NON_PRODUCTION_ENVIRONMENTS, AppConfig
-from app.crypto import EncryptionManager
-from app.repository import DbSaltProvider, UNASSIGNED_SERVICE_FILTER
-from app.ui import state as _st
-from app.ui import helpers
-from app.ui import email_helpers
-from app.ui import shell
-from app.ui import sync_handlers
-from app.ui.pages import (
-    api_key_service as page_api_key_service,
-    api_keys as page_api_keys,
-    bulk_send as page_bulk_send,
-    comm_items as page_comm_items,
-    dashboard as page_dashboard,
-    inbound_numbers as page_inbound_numbers,
-    provider_details as page_provider_details,
-    send as page_send,
-    service_callbacks as page_service_callbacks,
-    services as page_services,
-    settings_page as page_settings,
-    sms_senders as page_sms_senders,
-    templates as page_templates,
-    users as page_users,
-)
 
 import main  # noqa: E402, F401 — triggers sys.modules['main'] registration
+from app.api_client import HttpNotificationAPI, MockNotificationAPI
+from app.config import DEFAULT_NON_PRODUCTION_ENVIRONMENTS, AppConfig
+from app.crypto import EncryptionManager
+from app.repository import UNASSIGNED_SERVICE_FILTER, DbSaltProvider
+from app.ui import email_helpers, helpers, shell, sync_handlers
+from app.ui import state as _st
+from app.ui.pages import (
+    api_key_service as page_api_key_service,
+)
+from app.ui.pages import (
+    api_keys as page_api_keys,
+)
+from app.ui.pages import (
+    bulk_send as page_bulk_send,
+)
+from app.ui.pages import (
+    comm_items as page_comm_items,
+)
+from app.ui.pages import (
+    dashboard as page_dashboard,
+)
+from app.ui.pages import (
+    inbound_numbers as page_inbound_numbers,
+)
+from app.ui.pages import (
+    provider_details as page_provider_details,
+)
+from app.ui.pages import (
+    send as page_send,
+)
+from app.ui.pages import (
+    service_callbacks as page_service_callbacks,
+)
+from app.ui.pages import (
+    services as page_services,
+)
+from app.ui.pages import (
+    settings_page as page_settings,
+)
+from app.ui.pages import (
+    sms_senders as page_sms_senders,
+)
+from app.ui.pages import (
+    templates as page_templates,
+)
+from app.ui.pages import (
+    users as page_users,
+)
 
 
 @pytest.mark.asyncio
@@ -57,8 +80,9 @@ async def test_ensure_default_hosts(initialized_db, mock_config):
     try:
         # Clear any existing settings first
         from sqlalchemy import delete
-        from app.models import Setting
+
         from app.db import get_session
+        from app.models import Setting
 
         async with get_session() as session:
             await session.execute(delete(Setting))
@@ -119,7 +143,7 @@ async def test_build_api_client_mock(initialized_db, mock_config):
 @pytest.mark.asyncio
 async def test_build_api_client_http(initialized_db, mock_config, mock_encryption):
     """Test building an HTTP API client."""
-    from app.repository import set_setting, set_secure_setting
+    from app.repository import set_secure_setting, set_setting
 
     original_config = _st.config
     original_encryption = _st.encryption

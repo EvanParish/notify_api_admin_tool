@@ -5,7 +5,7 @@ import inspect
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 import jwt
@@ -88,7 +88,7 @@ http_retry_connect_only = retry(
 
 
 class NotificationAPI:
-    async def get_services(self) -> List[Dict[str, Any]]:
+    async def get_services(self) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     async def update_service(
@@ -96,19 +96,19 @@ class NotificationAPI:
         service_id: str,
         message_limit: int | None = None,
         rate_limit: int | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def get_service(self, service_id: str) -> Dict[str, Any]:
+    async def get_service(self, service_id: str) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def update_service_permissions(self, service_id: str, permissions: List[str]) -> Dict[str, Any]:
+    async def update_service_permissions(self, service_id: str, permissions: list[str]) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_templates(self, service_id: str) -> list[dict[str, Any]]:
         raise NotImplementedError
 
-    async def get_api_keys(self, service_id: str, include_revoked: bool = False) -> List[Dict[str, Any]]:
+    async def get_api_keys(self, service_id: str, include_revoked: bool = False) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     async def create_api_key(
@@ -116,17 +116,17 @@ class NotificationAPI:
         service_id: str,
         name: str,
         key_type: str,
-        secret_type: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        secret_type: str | None = None,
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def update_api_key_expiry(self, service_id: str, key_id: str, expiry_date: str) -> Dict[str, Any]:
+    async def update_api_key_expiry(self, service_id: str, key_id: str, expiry_date: str) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def revoke_api_key(self, service_id: str, key_id: str) -> Dict[str, Any]:
+    async def revoke_api_key(self, service_id: str, key_id: str) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_sms_senders(self, service_id: str) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     async def create_sms_sender(
@@ -140,7 +140,7 @@ class NotificationAPI:
         rate_limit: int | None = None,
         rate_limit_interval: int | None = None,
         sms_sender_specifics: dict | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
     async def update_sms_sender(
@@ -155,13 +155,13 @@ class NotificationAPI:
         rate_limit: int | None = None,
         rate_limit_interval: int | None = None,
         sms_sender_specifics: dict | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def get_users(self) -> List[Dict[str, Any]]:
+    async def get_users(self) -> list[dict[str, Any]]:
         raise NotImplementedError
 
-    async def get_provider_details(self) -> List[Dict[str, Any]]:
+    async def get_provider_details(self) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     async def update_provider_detail(
@@ -170,10 +170,10 @@ class NotificationAPI:
         priority: int | None = None,
         active: bool | None = None,
         load_balancing_weight: int | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def get_communication_items(self) -> List[Dict[str, Any]]:
+    async def get_communication_items(self) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     async def update_communication_item(
@@ -182,24 +182,24 @@ class NotificationAPI:
         name: str | None = None,
         default_send_indicator: bool | None = None,
         va_profile_item_id: int | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
-    async def get_service_callbacks(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_service_callbacks(self, service_id: str) -> list[dict[str, Any]]:
         raise NotImplementedError
 
-    async def create_service_callback(self, service_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_service_callback(self, service_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
 
     async def update_service_callback(
-        self, service_id: str, callback_id: str, payload: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, service_id: str, callback_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
     async def delete_service_callback(self, service_id: str, callback_id: str) -> None:
         raise NotImplementedError
 
-    async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
+    async def get_inbound_numbers(self) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     async def create_inbound_number(
@@ -211,7 +211,7 @@ class NotificationAPI:
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
         service_id: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
     async def update_inbound_number(
@@ -224,19 +224,19 @@ class NotificationAPI:
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
         service_id: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
     async def send_notification(
         self,
         template_id: str,
         recipient: str,
-        personalisation: Dict[str, Any],
+        personalisation: dict[str, Any],
         api_key: str,
         service_id: str,
         template_type: str,
         sms_sender_id: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
     async def healthcheck(self) -> bool:
@@ -250,18 +250,18 @@ class HttpNotificationAPI(NotificationAPI):
     def __init__(
         self,
         base_url: str,
-        basic_username: Optional[str] = None,
-        basic_password: Optional[str] = None,
+        basic_username: str | None = None,
+        basic_password: str | None = None,
         timeout: float = DEFAULT_REQUEST_TIMEOUT,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.client = httpx.AsyncClient(timeout=timeout)
-        self._basic_auth: Optional[httpx.Auth] = None
+        self._basic_auth: httpx.Auth | None = None
         if basic_username and basic_password:
             self._basic_auth = httpx.BasicAuth(basic_username, basic_password)
 
     @http_retry
-    async def get_services(self) -> List[Dict[str, Any]]:
+    async def get_services(self) -> list[dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/service", auth=self._basic_auth)
         resp.raise_for_status()
         return resp.json().get("data", [])
@@ -272,8 +272,8 @@ class HttpNotificationAPI(NotificationAPI):
         service_id: str,
         message_limit: int | None = None,
         rate_limit: int | None = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
         if message_limit is not None:
             payload["message_limit"] = message_limit
         if rate_limit is not None:
@@ -287,7 +287,7 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json()
 
     @http_retry
-    async def get_service(self, service_id: str) -> Dict[str, Any]:
+    async def get_service(self, service_id: str) -> dict[str, Any]:
         """Read a single service. The permission editor must never build its proposed
         array from the local cache, which is a possibly-stale sync snapshot."""
         resp = await self.client.get(f"{self.base_url}/service/{service_id}", auth=self._basic_auth)
@@ -296,7 +296,7 @@ class HttpNotificationAPI(NotificationAPI):
         return result.get("data", {}) if isinstance(result, dict) else {}
 
     @http_retry_connect_only
-    async def update_service_permissions(self, service_id: str, permissions: List[str]) -> Dict[str, Any]:
+    async def update_service_permissions(self, service_id: str, permissions: list[str]) -> dict[str, Any]:
         """Replace the service's ENTIRE permission set.
 
         This endpoint is not additive. Any permission omitted from *permissions* is removed
@@ -319,13 +319,13 @@ class HttpNotificationAPI(NotificationAPI):
         return result.get("data", {}) if isinstance(result, dict) else {}
 
     @http_retry
-    async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_templates(self, service_id: str) -> list[dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/service/{service_id}/template", auth=self._basic_auth)
         resp.raise_for_status()
         return resp.json().get("data", [])
 
     @http_retry
-    async def get_api_keys(self, service_id: str, include_revoked: bool = False) -> List[Dict[str, Any]]:
+    async def get_api_keys(self, service_id: str, include_revoked: bool = False) -> list[dict[str, Any]]:
         params = {"include_revoked": "true"} if include_revoked else {}
         resp = await self.client.get(
             f"{self.base_url}/service/{service_id}/api-keys",
@@ -341,14 +341,14 @@ class HttpNotificationAPI(NotificationAPI):
         service_id: str,
         name: str,
         key_type: str,
-        secret_type: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        secret_type: str | None = None,
+    ) -> dict[str, Any]:
         """Create an API key.
 
         Uses ``@http_retry_connect_only``: creating a key is not idempotent, so a
         ``ReadError``/``ReadTimeout`` retry could mint a second key server-side.
         """
-        payload: Dict[str, Any] = {"name": name, "key_type": key_type}
+        payload: dict[str, Any] = {"name": name, "key_type": key_type}
         if secret_type:
             payload["secret_type"] = secret_type
         resp = await self.client.post(
@@ -360,7 +360,7 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json()
 
     @http_retry
-    async def update_api_key_expiry(self, service_id: str, key_id: str, expiry_date: str) -> Dict[str, Any]:
+    async def update_api_key_expiry(self, service_id: str, key_id: str, expiry_date: str) -> dict[str, Any]:
         payload = {"expiry_date": expiry_date}
         resp = await self.client.post(
             f"{self.base_url}/service/{service_id}/api-key/{key_id}",
@@ -371,7 +371,7 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json()
 
     @http_retry
-    async def revoke_api_key(self, service_id: str, key_id: str) -> Dict[str, Any]:
+    async def revoke_api_key(self, service_id: str, key_id: str) -> dict[str, Any]:
         resp = await self.client.post(
             f"{self.base_url}/service/{service_id}/api-key/revoke/{key_id}",
             auth=self._basic_auth,
@@ -380,7 +380,7 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json()
 
     @http_retry
-    async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_sms_senders(self, service_id: str) -> list[dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/service/{service_id}/sms-sender", auth=self._basic_auth)
         resp.raise_for_status()
         payload = resp.json()
@@ -400,8 +400,8 @@ class HttpNotificationAPI(NotificationAPI):
         rate_limit: int | None = None,
         rate_limit_interval: int | None = None,
         sms_sender_specifics: dict | None = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "sms_sender": sms_sender,
             "description": description,
             "provider_id": provider_id,
@@ -436,8 +436,8 @@ class HttpNotificationAPI(NotificationAPI):
         rate_limit: int | None = None,
         rate_limit_interval: int | None = None,
         sms_sender_specifics: dict | None = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
         if sms_sender is not None:
             payload["sms_sender"] = sms_sender
         if description is not None:
@@ -463,7 +463,7 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json()
 
     @http_retry
-    async def get_users(self) -> List[Dict[str, Any]]:
+    async def get_users(self) -> list[dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/user", auth=self._basic_auth)
         resp.raise_for_status()
         payload = resp.json()
@@ -472,7 +472,7 @@ class HttpNotificationAPI(NotificationAPI):
         return payload.get("data") or []
 
     @http_retry
-    async def get_provider_details(self) -> List[Dict[str, Any]]:
+    async def get_provider_details(self) -> list[dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/provider-details", auth=self._basic_auth)
         resp.raise_for_status()
         payload = resp.json()
@@ -487,8 +487,8 @@ class HttpNotificationAPI(NotificationAPI):
         priority: int | None = None,
         active: bool | None = None,
         load_balancing_weight: int | None = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
         if priority is not None:
             payload["priority"] = priority
         if active is not None:
@@ -504,7 +504,7 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json()
 
     @http_retry
-    async def get_communication_items(self) -> List[Dict[str, Any]]:
+    async def get_communication_items(self) -> list[dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/communication-item", auth=self._basic_auth)
         resp.raise_for_status()
         payload = resp.json()
@@ -519,8 +519,8 @@ class HttpNotificationAPI(NotificationAPI):
         name: str | None = None,
         default_send_indicator: bool | None = None,
         va_profile_item_id: int | None = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
         if default_send_indicator is not None:
@@ -536,13 +536,13 @@ class HttpNotificationAPI(NotificationAPI):
         return resp.json()
 
     @http_retry
-    async def get_service_callbacks(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_service_callbacks(self, service_id: str) -> list[dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/service/{service_id}/callback", auth=self._basic_auth)
         resp.raise_for_status()
         return resp.json().get("data", [])
 
     @http_retry_connect_only
-    async def create_service_callback(self, service_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_service_callback(self, service_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Create a service callback.
 
         Decorated with ``@http_retry_connect_only`` rather than ``@http_retry``. Creates are
@@ -563,8 +563,8 @@ class HttpNotificationAPI(NotificationAPI):
 
     @http_retry
     async def update_service_callback(
-        self, service_id: str, callback_id: str, payload: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, service_id: str, callback_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         """Update a service callback. The API uses POST here, not PUT or PATCH."""
         resp = await self.client.post(
             f"{self.base_url}/service/{service_id}/callback/{callback_id}",
@@ -585,7 +585,7 @@ class HttpNotificationAPI(NotificationAPI):
         resp.raise_for_status()
 
     @http_retry
-    async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
+    async def get_inbound_numbers(self) -> list[dict[str, Any]]:
         resp = await self.client.get(f"{self.base_url}/inbound-number", auth=self._basic_auth)
         resp.raise_for_status()
         payload = resp.json()
@@ -603,8 +603,8 @@ class HttpNotificationAPI(NotificationAPI):
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
         service_id: str | None = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "number": number,
             "provider": provider,
         }
@@ -638,8 +638,8 @@ class HttpNotificationAPI(NotificationAPI):
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
         service_id: str | None = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
         if number is not None:
             payload["number"] = number
         if provider is not None:
@@ -668,15 +668,15 @@ class HttpNotificationAPI(NotificationAPI):
         self,
         template_id: str,
         recipient: str,
-        personalisation: Dict[str, Any],
+        personalisation: dict[str, Any],
         api_key: str,
         service_id: str,
         template_type: str,
         sms_sender_id: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         token = self._make_jwt(service_id, api_key)
         headers = {"Authorization": f"Bearer {token}"}
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "template_id": template_id,
             "personalisation": personalisation,
         }
@@ -736,7 +736,7 @@ class MockNotificationAPI(NotificationAPI):
     # and the permission flow spans several calls (read, re-read, update, verify). Instance
     # state would make mock mode report a verification mismatch on every change.
     # tests/conftest.py resets this between tests.
-    _PERMISSION_STORE: Dict[str, List[str]] = {}
+    _PERMISSION_STORE: dict[str, list[str]] = {}
 
     @classmethod
     def reset_permission_store(cls) -> None:
@@ -745,7 +745,7 @@ class MockNotificationAPI(NotificationAPI):
     def __init__(self) -> None:
         self._sleep = 0.1
 
-    async def get_services(self) -> List[Dict[str, Any]]:
+    async def get_services(self) -> list[dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
             {
@@ -764,7 +764,7 @@ class MockNotificationAPI(NotificationAPI):
         service_id: str,
         message_limit: int | None = None,
         rate_limit: int | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "data": {
@@ -774,7 +774,7 @@ class MockNotificationAPI(NotificationAPI):
             }
         }
 
-    async def get_service(self, service_id: str) -> Dict[str, Any]:
+    async def get_service(self, service_id: str) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "id": service_id,
@@ -784,7 +784,7 @@ class MockNotificationAPI(NotificationAPI):
             "permissions": list(self._PERMISSION_STORE.get(service_id, self._DEFAULT_SERVICE_PERMISSIONS)),
         }
 
-    async def update_service_permissions(self, service_id: str, permissions: List[str]) -> Dict[str, Any]:
+    async def update_service_permissions(self, service_id: str, permissions: list[str]) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         type(self)._PERMISSION_STORE[service_id] = list(permissions)
         return {
@@ -793,7 +793,7 @@ class MockNotificationAPI(NotificationAPI):
             "permissions": list(permissions),
         }
 
-    async def get_templates(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_templates(self, service_id: str) -> list[dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
             {
@@ -818,7 +818,7 @@ class MockNotificationAPI(NotificationAPI):
             },
         ]
 
-    async def get_api_keys(self, service_id: str, include_revoked: bool = False) -> List[Dict[str, Any]]:
+    async def get_api_keys(self, service_id: str, include_revoked: bool = False) -> list[dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         keys = [
             {
@@ -847,12 +847,12 @@ class MockNotificationAPI(NotificationAPI):
         service_id: str,
         name: str,
         key_type: str,
-        secret_type: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        secret_type: str | None = None,
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {"data": "secret_api_key_1234567890abcdef"}
 
-    async def update_api_key_expiry(self, service_id: str, key_id: str, expiry_date: str) -> Dict[str, Any]:
+    async def update_api_key_expiry(self, service_id: str, key_id: str, expiry_date: str) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "id": key_id,
@@ -860,11 +860,11 @@ class MockNotificationAPI(NotificationAPI):
             "expiry_date": expiry_date,
         }
 
-    async def revoke_api_key(self, service_id: str, key_id: str) -> Dict[str, Any]:
+    async def revoke_api_key(self, service_id: str, key_id: str) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {"id": key_id, "service_id": service_id, "revoked": True}
 
-    async def get_sms_senders(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_sms_senders(self, service_id: str) -> list[dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
             {
@@ -890,7 +890,7 @@ class MockNotificationAPI(NotificationAPI):
         rate_limit: int | None = None,
         rate_limit_interval: int | None = None,
         sms_sender_specifics: dict | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "id": "sms-new-123",
@@ -918,7 +918,7 @@ class MockNotificationAPI(NotificationAPI):
         rate_limit: int | None = None,
         rate_limit_interval: int | None = None,
         sms_sender_specifics: dict | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "id": sms_sender_id,
@@ -930,7 +930,7 @@ class MockNotificationAPI(NotificationAPI):
             "archived": False,
         }
 
-    async def get_users(self) -> List[Dict[str, Any]]:
+    async def get_users(self) -> list[dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
             {
@@ -954,7 +954,7 @@ class MockNotificationAPI(NotificationAPI):
             }
         ]
 
-    async def get_provider_details(self) -> List[Dict[str, Any]]:
+    async def get_provider_details(self) -> list[dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
             {
@@ -991,7 +991,7 @@ class MockNotificationAPI(NotificationAPI):
         priority: int | None = None,
         active: bool | None = None,
         load_balancing_weight: int | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "id": provider_id,
@@ -1000,7 +1000,7 @@ class MockNotificationAPI(NotificationAPI):
             "load_balancing_weight": load_balancing_weight,
         }
 
-    async def get_communication_items(self) -> List[Dict[str, Any]]:
+    async def get_communication_items(self) -> list[dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
             {
@@ -1023,7 +1023,7 @@ class MockNotificationAPI(NotificationAPI):
         name: str | None = None,
         default_send_indicator: bool | None = None,
         va_profile_item_id: int | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "id": item_id,
@@ -1032,7 +1032,7 @@ class MockNotificationAPI(NotificationAPI):
             "va_profile_item_id": va_profile_item_id,
         }
 
-    async def get_service_callbacks(self, service_id: str) -> List[Dict[str, Any]]:
+    async def get_service_callbacks(self, service_id: str) -> list[dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
             {
@@ -1061,7 +1061,7 @@ class MockNotificationAPI(NotificationAPI):
             },
         ]
 
-    async def create_service_callback(self, service_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_service_callback(self, service_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return self._mock_callback_row(
             callback_id=f"cb-{uuid.uuid4().hex[:8]}",
@@ -1071,8 +1071,8 @@ class MockNotificationAPI(NotificationAPI):
         )
 
     async def update_service_callback(
-        self, service_id: str, callback_id: str, payload: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, service_id: str, callback_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return self._mock_callback_row(
             callback_id=callback_id,
@@ -1086,9 +1086,9 @@ class MockNotificationAPI(NotificationAPI):
         *,
         callback_id: str,
         service_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         updated_at: str | None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build a complete service callback row the way the real API returns one.
 
         The real endpoints serialize the persisted row, so every field comes back
@@ -1121,7 +1121,7 @@ class MockNotificationAPI(NotificationAPI):
     async def delete_service_callback(self, service_id: str, callback_id: str) -> None:
         await asyncio.sleep(self._sleep)
 
-    async def get_inbound_numbers(self) -> List[Dict[str, Any]]:
+    async def get_inbound_numbers(self) -> list[dict[str, Any]]:
         await asyncio.sleep(self._sleep)
         return [
             {
@@ -1158,7 +1158,7 @@ class MockNotificationAPI(NotificationAPI):
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
         service_id: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "id": "inbound-new-123",
@@ -1181,7 +1181,7 @@ class MockNotificationAPI(NotificationAPI):
         self_managed: bool | None = None,
         url_endpoint: str | None = None,
         service_id: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
         return {
             "id": inbound_number_id,
@@ -1198,14 +1198,14 @@ class MockNotificationAPI(NotificationAPI):
         self,
         template_id: str,
         recipient: str,
-        personalisation: Dict[str, Any],
+        personalisation: dict[str, Any],
         api_key: str,
         service_id: str,
         template_type: str,
         sms_sender_id: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         await asyncio.sleep(self._sleep)
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "id": "mock-notification-123",
             "template_id": template_id,
             "recipient": recipient,

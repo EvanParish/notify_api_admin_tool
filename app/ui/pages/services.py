@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from nicegui import ui
@@ -63,7 +63,7 @@ from app.ui.sync_handlers import handle_entity_sync, handle_full_sync
 logger = logging.getLogger(__name__)
 
 
-async def handle_service_search(value: Optional[str]) -> None:
+async def handle_service_search(value: str | None) -> None:
     _st.service_search_query = (value or "").strip().lower()
     await refresh_if_needed(services_table)
 
@@ -757,7 +757,7 @@ async def services_table(
         {"name": "count_as_live", "label": "Live", "field": "count_as_live"},
         {"name": "permissions", "label": "Permissions", "field": "permissions"},
     ]
-    table_rows: List[Dict[str, Any]] = [
+    table_rows: list[dict[str, Any]] = [
         {
             "_row_key": make_row_key(row.id, row.environment),
             "id": row.id,

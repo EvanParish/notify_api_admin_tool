@@ -6,7 +6,7 @@ import gzip
 import inspect
 import logging
 import sys
-from typing import Dict, List, NamedTuple, Tuple
+from typing import NamedTuple
 
 from nicegui import app, context, ui
 from nicegui.client import Client
@@ -26,7 +26,7 @@ class NavItem(NamedTuple):
 
 # Single source of truth for sidebar navigation. Drives both the rendered
 # nav links and the per-page browser tab titles (see PAGE_TITLES below).
-NAV_SECTIONS: List[Tuple[str, List[NavItem]]] = [
+NAV_SECTIONS: list[tuple[str, list[NavItem]]] = [
     ("Overview", [NavItem("dashboard", "Dashboard", "/")]),
     (
         "Notifications",
@@ -54,7 +54,7 @@ NAV_SECTIONS: List[Tuple[str, List[NavItem]]] = [
 ]
 
 # Derived from NAV_SECTIONS: maps each page route to its browser tab label.
-PAGE_TITLES: Dict[str, str] = {item.href: item.label for _, items in NAV_SECTIONS for item in items}
+PAGE_TITLES: dict[str, str] = {item.href: item.label for _, items in NAV_SECTIONS for item in items}
 
 
 def _apply_page_title() -> None:
@@ -211,7 +211,7 @@ def build_shell(on_view_env_change=None) -> tuple:
 
             with ui.dropdown_button("Sync Settings", auto_close=False).props("flat"):
                 ui.label("Allowed sync environments").classes("text-sm mb-2")
-                env_checkboxes: Dict[str, ui.checkbox] = {}
+                env_checkboxes: dict[str, ui.checkbox] = {}
                 for env in _st.config.api_hosts:
                     is_enabled = env in _st.state.enabled_sync_environments
                     checkbox = ui.checkbox(env.title(), value=is_enabled)

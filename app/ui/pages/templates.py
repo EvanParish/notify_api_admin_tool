@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 from nicegui import ui
 
@@ -125,7 +125,7 @@ async def templates_page() -> None:
                     return ci.va_profile_item_id, ci.id, ci.name, ci.va_profile_item_id
                 return None, row.communication_item_id, None, None
 
-            def _template_export_row(row) -> Dict[str, Any]:
+            def _template_export_row(row) -> dict[str, Any]:
                 _, _, ci_name, ci_num = _resolve_comm_item(row)
                 return model_to_export_dict(
                     row,
@@ -134,7 +134,7 @@ async def templates_page() -> None:
                     communication_item_va_profile_item_id=ci_num,
                 )
 
-            table_rows: List[Dict[str, Any]] = []
+            table_rows: list[dict[str, Any]] = []
             for row in rows:
                 com_display, ci_id, ci_name, ci_num = _resolve_comm_item(row)
                 table_rows.append(

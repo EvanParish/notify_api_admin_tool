@@ -17,7 +17,6 @@ FAVICON_PATH = Path(__file__).parent / "app" / "assets" / "SpicyLlamas.webp"
 
 import app.ui.pages  # noqa: F401, E402 — triggers @ui.page registration
 
-
 if __name__ in {"__main__", "__mp_main__"}:  # pragma: no cover
     ui.run(
         title="VA Notify Admin",

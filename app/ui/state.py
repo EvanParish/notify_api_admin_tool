@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 from nicegui import Client, app, context, ui
 
@@ -43,7 +42,7 @@ PAGE_RESPONSE_TIMEOUT: float = 10.0
 @dataclass
 class AppState:
     environment: str
-    view_environments: List[str] = field(default_factory=list)
+    view_environments: list[str] = field(default_factory=list)
     api_status: str = "unknown"
     sync_message: str = ""
     dev_only_mode: bool = True
@@ -285,7 +284,7 @@ async def refresh_status_badge(badge) -> None:
     badge.props(f"color={'green' if ok else 'red'}")
 
 
-def get_view_environments() -> Optional[List[str]]:
+def get_view_environments() -> list[str] | None:
     """Return selected environments for filtering, or None if all selected."""
     if not state.view_environments:
         return None  # empty list means "all"
@@ -293,7 +292,7 @@ def get_view_environments() -> Optional[List[str]]:
 
 
 # Backwards compatibility alias
-def get_view_environment() -> Optional[List[str]]:
+def get_view_environment() -> list[str] | None:
     return get_view_environments()
 
 

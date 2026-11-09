@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from app.sync import SyncResult
 from app.ui import state as _st
 from app.ui.sync_handlers import handle_entity_sync
-from app.sync import SyncResult
 
 
 @dataclass
@@ -358,7 +358,7 @@ async def test_handle_entity_sync_explicit_environments(initialized_db, mock_con
 @pytest.mark.asyncio
 async def test_handle_entity_sync_displays_errors_with_status_codes(initialized_db, mock_config):
     """Errors are displayed via notifications with HTTP status codes."""
-    from app.sync import SyncResult, SyncError
+    from app.sync import SyncError, SyncResult
 
     original_config, original_state = _st.config, _st.state
     _st.config = mock_config
@@ -409,7 +409,7 @@ async def test_handle_entity_sync_displays_errors_with_status_codes(initialized_
 @pytest.mark.asyncio
 async def test_handle_entity_sync_limits_error_notifications(initialized_db, mock_config):
     """Only first 3 errors are shown as notifications, plus a summary."""
-    from app.sync import SyncResult, SyncError
+    from app.sync import SyncError, SyncResult
 
     original_config, original_state = _st.config, _st.state
     _st.config = mock_config

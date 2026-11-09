@@ -1,6 +1,5 @@
 import json
 import os
-from typing import Dict, Set
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
@@ -26,7 +25,7 @@ def _parse_bool(value: str | None, default: bool) -> bool:
 
 
 class AppConfig(BaseModel):
-    api_hosts: Dict[str, str] = Field(default_factory=dict)
+    api_hosts: dict[str, str] = Field(default_factory=dict)
     master_key: str
     use_mock_api: bool = True
     database_path: str = "data/app.db"
@@ -34,7 +33,7 @@ class AppConfig(BaseModel):
     request_timeout: float = 30.0
     port: int = 8080
     container_host: str | None = None
-    non_production_environments: Set[str] = Field(default_factory=lambda: set(DEFAULT_NON_PRODUCTION_ENVIRONMENTS))
+    non_production_environments: set[str] = Field(default_factory=lambda: set(DEFAULT_NON_PRODUCTION_ENVIRONMENTS))
 
     @field_validator("non_production_environments", mode="before")
     @classmethod
@@ -66,7 +65,7 @@ class AppConfig(BaseModel):
             try:
                 return json.loads(value)
             except json.JSONDecodeError:
-                hosts: Dict[str, str] = {}
+                hosts: dict[str, str] = {}
                 for part in value.split(","):
                     if "=" in part:
                         env, url = part.split("=", 1)
