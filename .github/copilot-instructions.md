@@ -46,11 +46,11 @@ uv run python -m pytest tests/ -k "encryption" -v
 uv run python -m pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=100
 ```
 
-pytest is configured with `asyncio_mode = auto` — async test functions are collected automatically without needing `@pytest.mark.asyncio`.
+pytest is configured in `pyproject.toml` (`[tool.pytest.ini_options]`) with `asyncio_mode = auto` — async test functions are collected automatically without needing `@pytest.mark.asyncio`.
 
 ## Linting
 
-Linting is configured with Ruff via `ruff.toml` (line length 120; rules `E4`, `E7`, `E9`, `F`). Run the following commands to check for linting errors and automatically fix them:
+Linting is configured with Ruff in `pyproject.toml` (`[tool.ruff]`: line length 120; rules `E4`, `E7`, `E9`, `F`; target version inferred from `requires-python`). Run the following commands to check for linting errors and automatically fix them:
 
 ```bash
 uv run ruff check .
