@@ -1,5 +1,13 @@
 # Copilot Instructions
 
+## Git & Version Control
+
+**Do not commit changes.** Only the user can commit. After making changes, present a summary of what was modified so the user can review and commit themselves.
+
+## Security
+
+`.env`, `data/` (SQLite cache and `data/send_response/` artifacts with plaintext recipients), `.nicegui/`, and `htmlcov/` are gitignored. Never print, log, or commit secrets (`MASTER_KEY`, API secrets, credentials) or the contents of `data/`.
+
 ## Build & Run
 
 ```bash
@@ -7,7 +15,7 @@
 uv sync  # exact versions from uv.lock (add --no-dev to skip test tools)
 
 # Run the app (NiceGUI web UI on port 8080)
-python main.py
+uv run python main.py
 
 # Run with Docker
 docker compose up --build
@@ -19,37 +27,39 @@ Testing must be run before and after making changes to ensure everything is work
 Add tests for new features and bug fixes, and run the full test suite to catch any regressions.
 After each change, ensure test coverage is at 100% to maintain confidence in the codebase.
 
+Commands assume `uv run` (or an activated `.venv`).
+
 ```bash
 # Run all tests
-python -m pytest tests/
+uv run python -m pytest tests/
 
 # Run a single test file
-python -m pytest tests/test_utils.py -v
+uv run python -m pytest tests/test_utils.py -v
 
 # Run a single test function
-python -m pytest tests/test_utils.py::test_extract_placeholders_empty -v
+uv run python -m pytest tests/test_utils.py::test_extract_placeholders_empty -v
 
 # Run tests matching a pattern
-python -m pytest tests/ -k "encryption" -v
+uv run python -m pytest tests/ -k "encryption" -v
 
 # Run with coverage
-python -m pytest tests/ --cov=app --cov-report=term-missing
+uv run python -m pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=100
 ```
 
 pytest is configured with `asyncio_mode = auto` — async test functions are collected automatically without needing `@pytest.mark.asyncio`.
 
 ## Linting
 
-Linting is configured with Ruff, using the default settings. Run the following commands to check for linting errors and automatically fix them:
+Linting is configured with Ruff via `ruff.toml` (line length 120; rules `E4`, `E7`, `E9`, `F`). Run the following commands to check for linting errors and automatically fix them:
 
 ```bash
-ruff check .
-ruff format .
+uv run ruff check .
+uv run ruff format .
 ```
 
-This repo uses python 3.13+ features, so ensure your environment is set up with Python 3.13 or higher to avoid syntax errors and take advantage of the latest language features.
+## Python Version & Style
 
-Python 3.13+ is used,so instead of use the old style of `Optional[List[str]], or Optional[str]`, we can use the new syntax: `list[str] | None` and `str | None`. This keeps the code cleaner and more concise.
+This repo requires Python 3.13 (`requires-python = ">=3.13,<3.14"`). Use modern syntax: `list[str] | None` and `str | None` rather than `Optional[List[str]]` / `Optional[str]`.
 
 ## Architecture
 
@@ -57,7 +67,7 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 
 ### Core layers
 
-- **`main.py`** (~83 lines) — Application entry point: CSS/JS head HTML, imports `app.ui.pages` to register routes, and calls `ui.run()`.
+- **`main.py`** — Application entry point: CSS/JS head HTML, imports `app.ui.pages` to register routes, and calls `ui.run()`.
 - **`app/ui/pages/`** — All page modules. Each file contains one `@ui.page` route:
   - `dashboard.py` — Dashboard with metrics (`/`)
   - `services.py` — Services page with search filter (`/services`)
@@ -80,7 +90,8 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 - **`app/ui/callback_helpers.py`** — Pure helpers for service callback validation, payload building, and status-control state. Imports no NiceGUI, so it is directly unit-testable. Mirrors notification-api's callback type, channel, and completed-notification-status constants. Re-exports `extract_error_message`/`format_http_error` from `http_errors.py` for back-compat with existing callers.
 - **`app/ui/http_errors.py`** — Normalization of notification-api HTTP error bodies into readable strings: `extract_error_message()` and `format_http_error()`. Imports no NiceGUI, so it is directly unit-testable and usable from other pure helper modules. Collapses the API's four distinct error body shapes (jsonschema, marshmallow, conflict, generic) into one message, and redacts any message mentioning a name in `SENSITIVE_ERROR_FIELDS` (`bearer_token`, `api_key`, `secret`, `password`, `token`, `authorization`, `auth_parameter`) so a rejected credential echoed back by a validation error never reaches `ui.notify` or the log file. Over-redaction is deliberate; the tuple is ordered most-specific-first so `bearer_token` is not reported as the vaguer `token`.
 - **`app/ui/artifacts.py`** — Timestamped JSON artifact persistence: `write_json_artifact()` and `rewrite_json_artifact()`. Imports no NiceGUI, so it is directly unit-testable and usable from other pure helper modules. `helpers.write_send_results()` delegates here. `rewrite_json_artifact()` replaces a record atomically (temp file in the same directory, then `os.replace`) so audit records written before a risky API call survive a failure mid-rewrite. Both writers produce 0600 files in a 0700 directory — `data/send_response/` holds plaintext recipient addresses and personalisation payloads. The directory is `chmod`ed explicitly because `makedirs(exist_ok=True)` will not tighten a pre-existing 0755 one, and the file is created `O_EXCL` so a same-microsecond collision raises instead of truncating an audit record.
-- **`app/ui/permission_helpers.py`** — Pure helpers for service permission editing: environment risk classification, diffing, confirmation tiers, and audit records. Imports no NiceGUI, so it is directly unit-testable; it uses `artifacts.py` for persistence for the same reason. Everything follows from one fact: `POST /service/{id}` REPLACES a service's entire permission set, so `build_permission_options()` returns the UNION of `KNOWN_PERMISSION_LABELS` and the live read — an unrecognized value renders enabled and flagged rather than hidden, so it can never be silently dropped. `is_protected_environment(env_name, non_production_environments)` treats any environment NOT on the configured non-production allowlist (`AppConfig.non_production_environments`, from `NON_PRODUCTION_ENVIRONMENTS`) as production — including a blank or unknown name — so tunnels and newly added environments fail closed. Production-ness is DECLARED, never inferred from a URL: engineers reach GovCloud production through SSH/`kubectl port-forward`/SSM tunnels, so the production API answers on `localhost` and no hostname check can tell it apart from local dev. Matching is exact after trimming and lowercasing. `normalize_permissions(values, *, strict=False)` raises on a non-string element when `strict=True`; read paths (`build_permission_options`, `permissions_equal`) use it, because a silently filtered value is deleted by the replace-everything POST with no diff entry and no acknowledgement. Tier matrix and full rule ordering: `docs/superpowers/specs/2026-09-10-service-permissions-update-design.md`.
+- **`app/ui/permission_helpers.py`** — Pure helpers for service permission editing: environment risk classification, diffing, confirmation tiers, and audit records. Imports no NiceGUI, so it is directly unit-testable; it uses `artifacts.py` for persistence for the same reason. Everything follows from one fact: `POST /service/{id}` REPLACES a service's entire permission set, so `build_permission_options()` returns the UNION of `KNOWN_PERMISSION_LABELS` and the live read — an unrecognized value renders enabled and flagged rather than hidden, so it can never be silently dropped. `is_protected_environment(env_name, non_production_environments)` treats any environment NOT on the configured non-production allowlist (`AppConfig.non_production_environments`, from `NON_PRODUCTION_ENVIRONMENTS`) as production — including a blank or unknown name — so tunnels and newly added environments fail closed. Production-ness is DECLARED, never inferred from a URL: engineers reach GovCloud production through SSH/`kubectl port-forward`/SSM tunnels, so the production API answers on `localhost` and no hostname check can tell it apart from local dev. Matching is exact after trimming and lowercasing. `normalize_permissions(values, *, strict=False)` raises on a non-string element when `strict=True`; read paths (`build_permission_options`, `permissions_equal`) use it, because a silently filtered value is deleted by the replace-everything POST with no diff entry and no acknowledgement.
+- **`app/utils.py`** — General-purpose utility functions.
 - **`app/ui/shell.py`** — Monkey-patches for NiceGUI edge cases, theme helpers, and `build_shell()` sidebar/header builder.
 - **`app/ui/sync_handlers.py`** — Generic `handle_entity_sync()` and `handle_full_sync()` that consolidate all sync dispatch.
 - **`app/api_client.py`** — `NotificationAPI` base class with `HttpNotificationAPI` (real) and `MockNotificationAPI` (dev/test) implementations. HTTP client uses `httpx`. Notification sending uses JWT auth (HS256, signed with service API secret).
@@ -103,10 +114,6 @@ Two auth layers exist:
 
 User identity fields (`users.name`, `users.email_address`) are also Fernet-encrypted at rest and decrypted at runtime for display/search/export.
 
-## Git & Version Control
-
-**Do not commit changes.** Only the user can commit. After making changes, present a summary of what was modified so the user can review and commit themselves.
-
 ## Key Conventions
 
 - **Async everywhere**: All database and API operations are async. Tests use `asyncio_mode = auto`.
@@ -114,3 +121,4 @@ User identity fields (`users.name`, `users.email_address`) are also Fernet-encry
 - **Environment variables**: Configured via `.env` file (see `.env.example`). `MASTER_KEY` is required. `USE_MOCK_API=true` enables the mock client for development without a live API.
 - **`API_PUBLIC_HOSTS`**: JSON dict mapping environment names to base URLs (e.g., `{"dev": "http://localhost:6011", "staging": "https://staging-api.va.gov/vanotify"}`).
 - **Keep docs in sync**: When adding, removing, or renaming pages, repository functions, or models, update this file's Architecture section to reflect the change.
+- **Further docs**: `docs/architecture.md` (system design) and `docs/database_migrations.md` (schema migrations).
