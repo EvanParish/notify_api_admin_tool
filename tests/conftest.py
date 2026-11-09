@@ -1,4 +1,6 @@
+import asyncio
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -12,7 +14,53 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from sqlalchemy import event  # noqa: E402
+from sqlalchemy.engine import Engine  # noqa: E402
+from tenacity import wait_none  # noqa: E402
+
+from app.api_client import HttpNotificationAPI, MockNotificationAPI  # noqa: E402
 from app.db import create_all, init_engine  # noqa: E402
+
+
+@event.listens_for(Engine, "connect")
+def _fast_test_sqlite(dbapi_connection, _record):
+    """Skip fsync for throwaway test databases.
+
+    Every test gets a fresh SQLite file, and without this each commit (including the
+    DDL in ``create_all``) waits on a disk flush. That was most of the suite's runtime.
+    Durability is irrelevant here; transactions and rollback still behave normally.
+    """
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA synchronous=OFF")
+    cursor.execute("PRAGMA journal_mode=MEMORY")
+    cursor.close()
+
+
+@pytest.fixture(autouse=True)
+def no_retry_backoff(monkeypatch):
+    """Retry tests check *that* a call is retried, not how long the backoff lasts.
+
+    Tenacity copies the decorator's settings on every call, so swapping ``wait`` on the
+    shared retry object removes the real 1s/2s sleeps while keeping the attempt count
+    and retry predicate under test.
+    """
+    for attr in vars(HttpNotificationAPI).values():
+        retrying = getattr(attr, "retry", None)
+        if retrying is not None and hasattr(retrying, "wait"):
+            monkeypatch.setattr(retrying, "wait", wait_none())
+
+
+@pytest.fixture(autouse=True)
+def no_mock_api_latency(monkeypatch):
+    """``MockNotificationAPI`` sleeps 0.1s per call to feel realistic in the UI; tests
+    don't need it. Tests that set ``_sleep`` themselves still can."""
+    original_init = MockNotificationAPI.__init__
+
+    def fast_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self._sleep = 0
+
+    monkeypatch.setattr(MockNotificationAPI, "__init__", fast_init)
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -53,10 +101,38 @@ def temp_db(isolate_database):
     return isolate_database
 
 
+@pytest.fixture(scope="session")
+def schema_template(tmp_path_factory):
+    """Build the schema once per session with the real ``create_all``.
+
+    ``initialized_db`` copies this file instead of re-running DDL for every test.
+    Tests that exercise ``create_all`` or migrations themselves call them directly.
+    """
+    from app import db
+
+    path = tmp_path_factory.mktemp("schema") / "template.db"
+    saved = (db.engine, db.SessionLocal)
+
+    async def build():
+        init_engine(str(path))
+        try:
+            await create_all()
+        finally:
+            await db.engine.dispose()
+
+    asyncio.run(build())
+    db.engine, db.SessionLocal = saved
+    return path
+
+
 @pytest.fixture(scope="function")
-async def initialized_db(temp_db):
-    """Create and initialize a temporary database with tables."""
-    await create_all()
+def initialized_db(temp_db, schema_template):
+    """A temporary database with every table created.
+
+    ``isolate_database`` has created the engine but not connected yet, so the template
+    is copied into place before SQLite first opens the file.
+    """
+    shutil.copyfile(schema_template, temp_db)
     return temp_db
 
 
