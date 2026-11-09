@@ -6127,27 +6127,3 @@ async def test_check_api_online_returns_healthcheck_result(healthy):
             assert await _st.check_api_online("development") is healthy
     finally:
         _st.config.use_mock_api = original
-
-
-@pytest.mark.asyncio
-async def test_handle_entity_sync_counts_boolean_results(mock_config):
-    """A per-environment sync that reports a bare bool is counted as one success or failure."""
-    label = MagicMock()
-    original = (_st.config, _st.state)
-    _st.config = mock_config
-    _st.state = SharedTestState(environment="development")
-    try:
-        with (
-            patch.object(_st, "check_environments_credentials", new_callable=AsyncMock, return_value={}),
-            patch.object(sync_handlers, "_sync_for_environment", new_callable=AsyncMock, side_effect=[True, False]),
-            patch.object(_st, "hide_progress"),
-            patch.object(_st, "set_progress_text"),
-            patch.object(_st, "safe_notify"),
-            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
-        ):
-            await sync_handlers.handle_entity_sync(
-                ["sync_users"], MagicMock(), label, "users", environments=["development", "staging"]
-            )
-    finally:
-        _st.config, _st.state = original
-    assert "1 ok, 1 failed" in label.text

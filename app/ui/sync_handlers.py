@@ -134,11 +134,6 @@ async def handle_entity_sync(
             total_errors += result.error_count
             for err in result.errors:
                 all_errors.append((env, f"[{env}] {err}"))
-        else:
-            if result is True:
-                total_success += 1
-            else:
-                total_errors += 1
 
     if all_errors:
         for env, error_msg in all_errors[:3]:
