@@ -282,9 +282,7 @@ async def test_http_api_get_api_keys():
     with patch.object(api.client, "get", return_value=mock_response) as mock_get:
         keys = await api.get_api_keys("svc-1")
 
-        mock_get.assert_called_once_with(
-            "https://api.example.com/service/svc-1/api-keys", auth=None, params={}
-        )
+        mock_get.assert_called_once_with("https://api.example.com/service/svc-1/api-keys", auth=None, params={})
         assert len(keys) == 1
 
 

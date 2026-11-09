@@ -400,9 +400,7 @@ class SyncManager:
                     # A 404 means the service has no API keys, not a failure.
                     result.add_success()
                 else:
-                    self._record_error(
-                        result, "api_keys", exc, status_code=status_code, service_id=service_id
-                    )
+                    self._record_error(result, "api_keys", exc, status_code=status_code, service_id=service_id)
             if progress:
                 await progress.step()
         return result
@@ -432,9 +430,7 @@ class SyncManager:
                     # A 404 means the service has no SMS senders, not a failure.
                     result.add_success()
                 else:
-                    self._record_error(
-                        result, "sms_senders", exc, status_code=status_code, service_id=service_id
-                    )
+                    self._record_error(result, "sms_senders", exc, status_code=status_code, service_id=service_id)
             if progress:
                 await progress.step()
         return result
@@ -447,9 +443,7 @@ class SyncManager:
                 self._record_error(result, "users", message="EncryptionManager is required for sync_users")
             else:
                 try:
-                    await migrate_plaintext_users_to_encrypted(
-                        encryption=self.encryption, environment=self.environment
-                    )
+                    await migrate_plaintext_users_to_encrypted(encryption=self.encryption, environment=self.environment)
                     users = await self.api.get_users()
                     await upsert_users(users, self.environment, encryption=self.encryption)
                     result.add_success()
@@ -538,9 +532,7 @@ class SyncManager:
                     # A 404 means the service is missing or inaccessible.
                     result.add_success()
                 else:
-                    self._record_error(
-                        result, "service_callbacks", exc, status_code=status_code, service_id=service_id
-                    )
+                    self._record_error(result, "service_callbacks", exc, status_code=status_code, service_id=service_id)
             if progress:
                 await progress.step()
         return result

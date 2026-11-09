@@ -518,30 +518,40 @@ class TestBuildConfirmButtonLabel:
 class TestBuildConfirmationText:
     def test_empty_diff(self):
         diff = ph.diff_permissions(["email"], ["email"])
-        text = ph.build_confirmation_text(diff, "VEText", "production", ph.ConfirmationTier.NONE, base_url="https://production-notify.va.gov")
+        text = ph.build_confirmation_text(
+            diff, "VEText", "production", ph.ConfirmationTier.NONE, base_url="https://production-notify.va.gov"
+        )
         assert text == "No permission changes selected."
 
     def test_names_service_and_environment(self):
         diff = ph.diff_permissions(["email"], ["email", "sms"])
-        text = ph.build_confirmation_text(diff, "VEText", "development", ph.ConfirmationTier.STANDARD, base_url="https://development-notify.va.gov")
+        text = ph.build_confirmation_text(
+            diff, "VEText", "development", ph.ConfirmationTier.STANDARD, base_url="https://development-notify.va.gov"
+        )
         assert "VEText" in text
         assert "development" in text
 
     def test_lists_removals_and_additions(self):
         diff = ph.diff_permissions(["email", "sms"], ["email", "push"])
-        text = ph.build_confirmation_text(diff, "VEText", "staging", ph.ConfirmationTier.ELEVATED, base_url="https://staging-notify.va.gov")
+        text = ph.build_confirmation_text(
+            diff, "VEText", "staging", ph.ConfirmationTier.ELEVATED, base_url="https://staging-notify.va.gov"
+        )
         assert "Removing: sms" in text
         assert "Adding: push" in text
         assert "Resulting set: email, push" in text
 
     def test_critical_tier_is_announced(self):
         diff = ph.diff_permissions(["email", "sms"], ["email"])
-        text = ph.build_confirmation_text(diff, "VEText", "production", ph.ConfirmationTier.CRITICAL, base_url="https://production-notify.va.gov")
+        text = ph.build_confirmation_text(
+            diff, "VEText", "production", ph.ConfirmationTier.CRITICAL, base_url="https://production-notify.va.gov"
+        )
         assert "PRODUCTION PERMISSION REMOVAL" in text
 
     def test_lower_tiers_are_not_announced_as_critical(self):
         diff = ph.diff_permissions(["email", "sms"], ["email"])
-        text = ph.build_confirmation_text(diff, "VEText", "staging", ph.ConfirmationTier.ELEVATED, base_url="https://staging-notify.va.gov")
+        text = ph.build_confirmation_text(
+            diff, "VEText", "staging", ph.ConfirmationTier.ELEVATED, base_url="https://staging-notify.va.gov"
+        )
         assert "PRODUCTION PERMISSION REMOVAL" not in text
 
     def test_shows_the_resolved_base_url(self):
@@ -568,7 +578,9 @@ class TestBuildConfirmationText:
 
     def test_clearing_everything_is_spelled_out(self):
         diff = ph.diff_permissions(["email"], [])
-        text = ph.build_confirmation_text(diff, "VEText", "production", ph.ConfirmationTier.CRITICAL, base_url="https://production-notify.va.gov")
+        text = ph.build_confirmation_text(
+            diff, "VEText", "production", ph.ConfirmationTier.CRITICAL, base_url="https://production-notify.va.gov"
+        )
         assert "all permissions removed" in text
 
 

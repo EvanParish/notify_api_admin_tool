@@ -130,21 +130,17 @@ def normalize_permissions(values: Sequence[Any] | None, *, strict: bool = False)
         if not isinstance(value, str):
             if strict:
                 raise TypeError(
-                    f"permission value {value!r} is {type(value).__name__}, not str; "
-                    "refusing to drop it silently"
+                    f"permission value {value!r} is {type(value).__name__}, not str; refusing to drop it silently"
                 )
             continue
         text = value.strip()
         if not text:
             if strict:
-                raise TypeError(
-                    f"permission value {value!r} is empty or whitespace; refusing to drop it silently"
-                )
+                raise TypeError(f"permission value {value!r} is empty or whitespace; refusing to drop it silently")
             continue
         if strict and text != value:
             raise TypeError(
-                f"permission value {value!r} has surrounding whitespace; refusing to rewrite it "
-                f"to {text!r} silently"
+                f"permission value {value!r} has surrounding whitespace; refusing to rewrite it to {text!r} silently"
             )
         if text in seen:
             continue
