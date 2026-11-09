@@ -205,7 +205,8 @@ async def api_key_emails_page() -> None:
         conflicts = []
         key_names = build_key_names()
         service_name = service_select.value
-        if not service_name or not key_names:
+        # Defensive: both callers already require a service and a prefix.
+        if not service_name or not key_names:  # pragma: no cover
             return conflicts
 
         for env, key_name in key_names.items():

@@ -3055,3 +3055,36 @@ class TestLocalKeyLinking:
 
         assert await backfill_local_key_api_ids() == 1
         assert await backfill_local_key_api_ids() == 0
+
+
+@pytest.mark.asyncio
+async def test_update_sms_sender_provider_and_rate_interval(initialized_db):
+    async with get_session() as session:
+        session.add(SmsSender(id="sms-2", environment="dev", service_id="svc-1", sms_sender="+15550000000"))
+        await session.commit()
+
+    assert await update_sms_sender(
+        sms_sender_id="sms-2", provider_id="prov-2", rate_limit_interval="60", environment="dev"
+    )
+
+    async with get_session() as session:
+        record = (await session.execute(select(SmsSender).where(SmsSender.id == "sms-2"))).scalar_one()
+        assert record.provider_id == "prov-2"
+        assert record.rate_limit_interval == "60"
+        assert record.sms_sender == "+15550000000"
+
+
+@pytest.mark.asyncio
+async def test_update_inbound_number_provider_auth_and_self_managed(initialized_db):
+    async with get_session() as session:
+        session.add(InboundNumber(id="n9", environment="dev", number="+15551230000", provider="pinpoint"))
+        await session.commit()
+
+    assert await update_inbound_number(
+        inbound_number_id="n9", provider="twilio", auth_parameter="new-ref", self_managed=True, environment="dev"
+    )
+
+    async with get_session() as session:
+        record = (await session.execute(select(InboundNumber).where(InboundNumber.id == "n9"))).scalar_one()
+        assert (record.provider, record.auth_parameter, record.self_managed) == ("twilio", "new-ref", True)
+        assert record.number == "+15551230000"

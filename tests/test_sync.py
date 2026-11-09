@@ -1051,3 +1051,54 @@ async def test_sync_service_callbacks_records_prune_failure_as_error(setup_db, m
     assert result.success_count == 0
     assert result.error_count == 1
     assert result.errors[0].entity == "service_callbacks"
+
+
+@pytest.mark.asyncio
+async def test_sync_extracts_error_key_from_json_response(initialized_db):
+    """A body with ``error`` but no ``message`` reports the ``error`` value."""
+    import httpx
+
+    from app.api_client import MockNotificationAPI
+
+    class MockResponse:
+        status_code = 400
+
+        def json(self):
+            return {"error": "Bad provider"}
+
+    mock_api = MockNotificationAPI()
+
+    async def raise_with_error_key():
+        raise httpx.HTTPStatusError("Bad Request", request=None, response=MockResponse())
+
+    mock_api.get_services = raise_with_error_key
+    result = await SyncManager(mock_api, max_concurrency=5).sync_services()
+    assert "Bad provider" in str(result.errors[0])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method,api_attr,entity",
+    [
+        ("sync_users", "get_users", "users"),
+        ("sync_provider_details", "get_provider_details", "provider_details"),
+        ("sync_communication_items", "get_communication_items", "communication_items"),
+        ("sync_inbound_numbers", "get_inbound_numbers", "inbound_numbers"),
+    ],
+)
+async def test_sync_records_fetch_errors(initialized_db, method, api_attr, entity):
+    """A failing fetch is recorded as one error for the entity, not raised."""
+    from app.api_client import MockNotificationAPI
+
+    mock_api = MockNotificationAPI()
+    setattr(mock_api, api_attr, AsyncMock(side_effect=RuntimeError("upstream down")))
+    encryption = EncryptionManager("test-master-key", salt_provider=DbSaltProvider())
+    manager = SyncManager(mock_api, max_concurrency=5, environment="dev", encryption=encryption)
+
+    result = await getattr(manager, method)()
+
+    assert result.error_count == 1
+    assert result.success_count == 0
+    assert result.errors[0].entity == entity
+    assert "upstream down" in str(result.errors[0])
+    assert manager.last_result is result

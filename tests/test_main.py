@@ -5871,3 +5871,283 @@ async def test_inbound_numbers_table_sends_only_auth_presence(initialized_db, mo
     assert all("auth_parameter" not in r for r in captured["rows"])
     assert "AUTH-SECRET" not in json.dumps(captured["rows"], default=str)
     assert "auth_parameter" not in {c["field"] for c in captured["columns"]}
+
+
+# ===================================================================
+# Page closure tests: record every widget a page creates so its event
+# handlers can be driven directly.
+# ===================================================================
+
+
+class _WidgetRecorder:
+    """Stands in for NiceGUI widget factories; keeps every widget it creates."""
+
+    def __init__(self):
+        self.created: list[tuple[tuple, dict, MagicMock]] = []
+
+    def __call__(self, *args, **kwargs):
+        w = MagicMock()
+        w.__enter__ = Mock(return_value=w)
+        w.__exit__ = Mock(return_value=False)
+        for method in ("classes", "props", "style", "on_click", "set_options", "on", "add_slot"):
+            setattr(w, method, MagicMock(return_value=w))
+        w.handlers = []
+        w.on_value_change = MagicMock(side_effect=lambda h: w.handlers.append(h) or w)
+        w.value = kwargs.get("value")
+        w.text = args[0] if args and isinstance(args[0], str) else ""
+        w.visible = True
+        w.label_kw = kwargs.get("label")
+        self.created.append((args, kwargs, w))
+        return w
+
+    def by_label(self, label):
+        return next(w for _, _, w in self.created if w.label_kw == label)
+
+    def by_text(self, text):
+        return [w for args, _, w in self.created if args and args[0] == text]
+
+
+@contextmanager
+def _record_page(mod_path, extra=()):
+    from contextlib import ExitStack
+
+    rec = _WidgetRecorder()
+    with ExitStack() as stack:
+        for p in _ui_patches(mod_path, rec):
+            stack.enter_context(p)
+        for p in extra:
+            stack.enter_context(p)
+        yield rec
+
+
+class TestApiKeyServicePageHandlers:
+    MOD = "app.ui.pages.api_key_service"
+
+    @pytest.fixture(autouse=True)
+    def _state(self, mock_config):
+        original = (_st.config, _st.state)
+        _st.config = mock_config
+        _st.state = SharedTestState(environment="development")
+        yield
+        _st.config, _st.state = original
+
+    def _svc(self, sid, name, env="development"):
+        return SimpleNamespace(id=sid, name=name, environment=env)
+
+    async def _run(self, services, envs_for_name=(), service_by_env=None, api_keys=(), local_keys=()):
+        service_by_env = service_by_env or {}
+        extra = [
+            patch(f"{self.MOD}.list_services", new_callable=AsyncMock, return_value=services),
+            patch(
+                f"{self.MOD}.list_environments_for_service_name",
+                new_callable=AsyncMock,
+                return_value=list(envs_for_name),
+            ),
+            patch(
+                f"{self.MOD}.get_service_by_name",
+                new_callable=AsyncMock,
+                side_effect=lambda name, env: service_by_env.get(env),
+            ),
+            patch(f"{self.MOD}.list_api_keys", new_callable=AsyncMock, return_value=list(api_keys)),
+            patch(f"{self.MOD}.list_local_keys", new_callable=AsyncMock, return_value=list(local_keys)),
+        ]
+        ctx = _record_page(self.MOD, extra)
+        rec = ctx.__enter__()
+        self._ctx = ctx
+        await page_api_key_service.api_key_emails_page()
+        return rec
+
+    def teardown_method(self):
+        if getattr(self, "_ctx", None):
+            self._ctx.__exit__(None, None, None)
+
+    async def test_service_options_deduplicated_by_name_and_sorted(self):
+        rec = await self._run([self._svc("a", "Zeta"), self._svc("b", "Alpha"), self._svc("c", "Zeta", "staging")])
+        select = rec.by_label("Service (by name)")
+        select.set_options.assert_called_once_with({"Alpha": "Alpha", "Zeta": "Zeta"})
+        assert select.value is None
+
+    async def test_no_service_selected_prompts_for_one(self):
+        rec = await self._run([])
+        select = rec.by_label("Service (by name)")
+        await select.handlers[0]()
+        status = rec.by_text("Select a service to see available environments")[0]
+        assert status.text == "Select a service to see available environments"
+        assert status.visible is True
+
+    async def test_service_without_environments(self):
+        rec = await self._run([self._svc("a", "Alpha")], envs_for_name=[])
+        select = rec.by_label("Service (by name)")
+        select.value = "Alpha"
+        await select.handlers[0]()
+        status = rec.by_text("Select a service to see available environments")[0]
+        assert status.text == "No environments found for this service"
+
+    async def test_env_checkboxes_reflect_availability(self):
+        rec = await self._run([self._svc("a", "Alpha")], envs_for_name=["development"])
+        select = rec.by_label("Service (by name)")
+        select.value = "Alpha"
+        await select.handlers[0]()
+        dev = rec.by_text("Development")[0]
+        staging = rec.by_text("Staging")[0]
+        assert dev.value is True  # available and the current environment
+        assert staging.value is False
+        staging.props.assert_any_call("disable")
+        staging.classes.assert_any_call("opacity-50")
+        assert len(dev.handlers) == 1 and staging.handlers == []
+
+    async def test_key_name_preview_and_conflicts(self):
+        dev_svc = self._svc("svc-dev", "Alpha")
+        stg_svc = self._svc("svc-stg", "Alpha", "staging")
+        dev_name = page_api_key_service._build_key_name_for_env("development", "myapp", False, False)
+        rec = await self._run(
+            [dev_svc],
+            envs_for_name=["development", "staging"],
+            service_by_env={"development": dev_svc, "staging": stg_svc},
+            api_keys=[SimpleNamespace(name=dev_name, revoked=False)],
+        )
+        select = rec.by_label("Service (by name)")
+        rec.by_label("Key Name Prefix").value = "  MyApp "
+        select.value = "Alpha"
+        await select.handlers[0]()
+        rec.by_text("Staging")[0].value = True
+
+        await rec.by_text("Development")[0].handlers[0](None)
+
+        preview = rec.by_text("Generated key names will appear here.")[0]
+        assert dev_name in preview.text and "Staging:" in preview.text
+        conflict = rec.by_text("")[0]
+        assert conflict.visible is True
+        assert "Development: " + dev_name in conflict.text
+        assert "Staging" not in conflict.text  # staging's key name differs, so no clash
+
+    async def test_revoked_and_local_keys_and_missing_service(self):
+        dev_svc = self._svc("svc-dev", "Alpha")
+        dev_name = page_api_key_service._build_key_name_for_env("development", "app", True, True)
+        rec = await self._run(
+            [dev_svc],
+            envs_for_name=["development", "staging"],
+            service_by_env={"development": dev_svc},  # staging service missing -> skipped
+            api_keys=[SimpleNamespace(name=dev_name, revoked=True)],
+            local_keys=[SimpleNamespace(key_name="something-else")],
+        )
+        select = rec.by_label("Service (by name)")
+        rec.by_label("Key Name Prefix").value = "app"
+        rec.by_text("Vets-api (UUID) key")[0].value = True
+        rec.by_text("Test key (non-sending)")[0].value = True
+        select.value = "Alpha"
+        await select.handlers[0]()
+        rec.by_text("Staging")[0].value = True
+        await rec.by_text("Development")[0].handlers[0](None)
+        assert rec.by_text("")[0].visible is False  # revoked key is not a conflict
+
+    async def test_local_key_conflict(self):
+        dev_svc = self._svc("svc-dev", "Alpha")
+        dev_name = page_api_key_service._build_key_name_for_env("development", "app", False, False)
+        rec = await self._run(
+            [dev_svc],
+            envs_for_name=["development"],
+            service_by_env={"development": dev_svc},
+            local_keys=[SimpleNamespace(key_name=dev_name)],
+        )
+        select = rec.by_label("Service (by name)")
+        rec.by_label("Key Name Prefix").value = "app"
+        select.value = "Alpha"
+        await select.handlers[0]()
+        assert rec.by_text("")[0].visible is True
+
+    async def test_blank_prefix_clears_preview(self):
+        rec = await self._run([self._svc("a", "Alpha")], envs_for_name=["development"])
+        select = rec.by_label("Service (by name)")
+        select.value = "Alpha"
+        await select.handlers[0]()
+        preview = rec.by_text("Generated key names will appear here.")[0]
+        assert preview.text == "Generated key names will appear here."
+        assert rec.by_text("")[0].visible is False
+
+
+@pytest.mark.asyncio
+async def test_send_page_loads_sms_senders_for_sms_templates(initialized_db, mock_config):
+    mod = "app.ui.pages.send"
+    senders = [
+        SimpleNamespace(id="s1", sms_sender="12345", is_default=True),
+        SimpleNamespace(id="s2", sms_sender="67890", is_default=False),
+    ]
+    mock_senders = AsyncMock(return_value=senders)
+    original = (_st.config, _st.state)
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    try:
+        with _record_page(
+            mod,
+            [
+                patch(f"{mod}.list_services", new_callable=AsyncMock, return_value=[]),
+                patch(f"{mod}.list_local_keys", new_callable=AsyncMock, return_value=[]),
+                patch(f"{mod}.list_api_keys", new_callable=AsyncMock, return_value=[]),
+                patch(f"{mod}.list_templates", new_callable=AsyncMock, return_value=[]),
+                patch(f"{mod}.list_sms_senders", mock_senders),
+            ],
+        ) as rec:
+            await page_send.send_page()
+            rec.by_label("Service").value = "svc-1"
+            type_toggle = next(w for args, _, w in rec.created if args and args[0] == {"email": "Email", "sms": "SMS"})
+            type_toggle.value = "sms"
+            sender_select = rec.by_label("SMS Sender (optional)")
+            await rec.by_label("Service").handlers[0]()
+    finally:
+        _st.config, _st.state = original
+
+    mock_senders.assert_awaited_once_with("svc-1", environment="development")
+    sender_select.set_options.assert_called_with({"s1": "12345 (default)", "s2": "67890"})
+    sender_select.set_visibility.assert_called_with(True)
+
+
+@pytest.mark.asyncio
+async def test_ensure_admin_auth_names_missing_fields():
+    label = MagicMock()
+    with (
+        patch.object(_st, "has_admin_auth", new_callable=AsyncMock, return_value=False),
+        patch.object(_st, "get_missing_credentials", new_callable=AsyncMock, return_value=["username", "password"]),
+        patch("app.ui.state.safe_notify") as mock_notify,
+    ):
+        assert await _st.ensure_admin_auth("staging", label) is False
+    assert label.text.startswith("Missing username and password for staging.")
+    mock_notify.assert_called_once_with(label.text, color="warning")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("healthy", [True, False])
+async def test_check_api_online_returns_healthcheck_result(healthy):
+    api = MagicMock()
+    api.healthcheck = AsyncMock(return_value=healthy)
+    original = _st.config.use_mock_api
+    _st.config.use_mock_api = False
+    try:
+        with patch.object(_st, "build_api_client", new_callable=AsyncMock, return_value=api):
+            assert await _st.check_api_online("development") is healthy
+    finally:
+        _st.config.use_mock_api = original
+
+
+@pytest.mark.asyncio
+async def test_handle_entity_sync_counts_boolean_results(mock_config):
+    """A per-environment sync that reports a bare bool is counted as one success or failure."""
+    label = MagicMock()
+    original = (_st.config, _st.state)
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    try:
+        with (
+            patch.object(_st, "check_environments_credentials", new_callable=AsyncMock, return_value={}),
+            patch.object(sync_handlers, "_sync_for_environment", new_callable=AsyncMock, side_effect=[True, False]),
+            patch.object(_st, "hide_progress"),
+            patch.object(_st, "set_progress_text"),
+            patch.object(_st, "safe_notify"),
+            patch.object(_st, "refresh_status_badge", new_callable=AsyncMock),
+        ):
+            await sync_handlers.handle_entity_sync(
+                ["sync_users"], MagicMock(), label, "users", environments=["development", "staging"]
+            )
+    finally:
+        _st.config, _st.state = original
+    assert "1 ok, 1 failed" in label.text

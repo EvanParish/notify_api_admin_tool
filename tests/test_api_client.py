@@ -2007,3 +2007,121 @@ async def test_http_api_update_service_permissions_retries_connect_errors():
             await api.update_service_permissions("svc-1", ["email"])
 
     assert mock_post.call_count == 3  # stop_after_attempt(3)
+
+
+# --- retry logging helpers ---
+
+
+def test_service_id_from_retry_without_fn():
+    from types import SimpleNamespace
+
+    from app.api_client import _service_id_from_retry
+
+    assert _service_id_from_retry(SimpleNamespace(fn=None, args=(), kwargs={})) is None
+
+
+def test_service_id_from_retry_unbindable_args():
+    from types import SimpleNamespace
+
+    from app.api_client import _service_id_from_retry
+
+    def fn(self, service_id):
+        return None
+
+    # More positional args than the signature accepts: bind_partial raises TypeError.
+    state = SimpleNamespace(fn=fn, args=(1, 2, 3), kwargs={})
+    assert _service_id_from_retry(state) is None
+
+
+def test_log_before_retry_includes_service_and_url(caplog):
+    from types import SimpleNamespace
+
+    from app.api_client import _log_before_retry
+
+    async def get_api_keys(self, service_id):
+        return None
+
+    exc = httpx.ConnectTimeout("slow", request=httpx.Request("GET", "https://api.example.com/x"))
+    outcome = MagicMock()
+    outcome.exception.return_value = exc
+    state = SimpleNamespace(fn=get_api_keys, args=(None, "svc-9"), kwargs={}, outcome=outcome, attempt_number=2)
+    with caplog.at_level("WARNING", logger="app.api_client"):
+        _log_before_retry(state)
+    msg = caplog.records[-1].getMessage()
+    assert msg == (
+        "Retrying get_api_keys (attempt 2) after ConnectTimeout for service svc-9 [https://api.example.com/x]"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method,args",
+    [
+        ("update_service", ("svc-1",)),
+        ("update_provider_detail", ("prov-1",)),
+        ("update_communication_item", ("item-1",)),
+    ],
+)
+async def test_base_api_update_methods_raise(method, args):
+    with pytest.raises(NotImplementedError):
+        await getattr(NotificationAPI(), method)(*args)
+
+
+# --- optional payload fields not covered above ---
+
+
+def _ok_post_response(body):
+    resp = MagicMock()
+    resp.json.return_value = body
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_sms_sender_with_inbound_number():
+    api = HttpNotificationAPI("https://api.example.com")
+    with patch.object(api.client, "post", return_value=_ok_post_response({"id": "s"})) as mock_post:
+        await api.create_sms_sender("svc-1", "+15559876543", "d", "prov-1", inbound_number_id="in-1")
+    assert mock_post.call_args[1]["json"]["inbound_number_id"] == "in-1"
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_sms_sender_all_optional_fields():
+    api = HttpNotificationAPI("https://api.example.com")
+    with patch.object(api.client, "post", return_value=_ok_post_response({"id": "s"})) as mock_post:
+        await api.update_sms_sender(
+            "svc-1", "sms-1", provider_id="prov-2", inbound_number_id="in-2", rate_limit=5, rate_limit_interval=60
+        )
+    assert mock_post.call_args[1]["json"] == {
+        "provider_id": "prov-2",
+        "inbound_number_id": "in-2",
+        "rate_limit": 5,
+        "rate_limit_interval": 60,
+    }
+
+
+@pytest.mark.asyncio
+async def test_http_api_create_inbound_number_with_auth_and_endpoint():
+    api = HttpNotificationAPI("https://api.example.com")
+    with patch.object(api.client, "post", return_value=_ok_post_response({"data": {"id": "n"}})) as mock_post:
+        await api.create_inbound_number(
+            "+12025551212", "pinpoint", auth_parameter="secret-ref", url_endpoint="https://cb.example"
+        )
+    payload = mock_post.call_args[1]["json"]
+    assert payload["auth_parameter"] == "secret-ref"
+    assert payload["url_endpoint"] == "https://cb.example"
+
+
+@pytest.mark.asyncio
+async def test_http_api_update_inbound_number_all_optional_fields():
+    api = HttpNotificationAPI("https://api.example.com")
+    with patch.object(api.client, "post", return_value=_ok_post_response({"data": {"id": "n"}})) as mock_post:
+        await api.update_inbound_number(
+            "in-1", provider="twilio", auth_parameter="ref", self_managed=True, url_endpoint="https://cb.example"
+        )
+    assert mock_post.call_args[1]["json"] == {
+        "provider": "twilio",
+        "auth_parameter": "ref",
+        "self_managed": True,
+        "url_endpoint": "https://cb.example",
+    }
