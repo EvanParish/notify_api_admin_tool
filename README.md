@@ -8,7 +8,7 @@ Built with Python 3.13, [NiceGUI](https://nicegui.io/), SQLite, and SQLAlchemy.
 
 ## Prerequisites
 
-- **Python 3.13+**
+- **Python 3.13** and [**uv**](https://docs.astral.sh/uv/)
 - **Docker** (optional, for containerised setup)
 
 ## Quick Start
@@ -29,6 +29,12 @@ MASTER_KEY=your-secure-random-string-here
 
 > `MASTER_KEY` is **required** — it derives the encryption key used to protect stored credentials.
 
+`.env.example` sets `USE_MOCK_API=false`, which connects to the real API and needs the credentials described in [First-Run Configuration](#first-run-configuration). To explore the UI first with sample data and no credentials, set:
+
+```env
+USE_MOCK_API=true
+```
+
 ### 2. Run the app
 
 **Direct:**
@@ -46,29 +52,38 @@ docker compose up --build
 # Open http://localhost:8080
 ```
 
-The SQLite database persists in `data/app.db` (mounted as a volume in Docker).
+The SQLite database persists in `data/app.db` (mounted as a volume in Docker). Docker runs the app as your host user (see `APP_UID`/`APP_GID` below), so files under `data/` stay readable from the host.
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `MASTER_KEY` | **Yes** | — | Encryption key for stored secrets (use a long random string) |
-| `USE_MOCK_API` | No | `true` | Set to `false` to connect to the real VA Notify API |
-| `API_PUBLIC_HOSTS` | No | See below | JSON dict mapping environment names to API base URLs |
+| `USE_MOCK_API` | No | `true` (`.env.example` sets `false`) | `true` uses built-in sample data; `false` connects to the real VA Notify API |
+| `API_PUBLIC_HOSTS` | No | See below | JSON object mapping environment names to API base URLs |
+| `NON_PRODUCTION_ENVIRONMENTS` | No | `dev,development,local,test,perf,sandbox,staging,stage` | Comma-separated environment names that are **not** production. See [Production safety](#production-safety) |
 | `DATABASE_PATH` | No | `data/app.db` | Path to the SQLite database file |
 | `PORT` | No | `8080` | Port the web UI listens on |
-| `CONTAINER_HOST` | No | — | Automatically set by `docker-compose.yml` for Docker networking |
+| `REQUEST_TIMEOUT` | No | `30` | Seconds before an API request times out (clamped to 1–300). Raise it if syncs hit read timeouts |
+| `MAX_CONCURRENCY` | No | `25` | Maximum concurrent API calls during sync (clamped to 1–100) |
+| `CONTAINER_HOST` | No | — | Set by `docker-compose.yml`; remaps `localhost` URLs so the container can reach the host |
+| `APP_UID` / `APP_GID` | No | `1000` | Docker only: the user/group the app runs as and that owns `data/`. Set them if `id -u` / `id -g` differ |
+| `NICEGUI_STORAGE_PATH` | No | `.nicegui` | Where the theme preference is stored. `docker-compose.yml` points it into `data/` |
 
 Default `API_PUBLIC_HOSTS`:
 
 ```json
 {
-  "development": "https://dev-notify.va.gov",
+  "development": "https://dev-api.va.gov/vanotify",
   "perf": "https://sandbox-api.va.gov/vanotify",
-  "staging": "https://staging-notify.va.gov",
-  "production": "https://api.notifications.va.gov"
+  "staging": "https://staging-api.va.gov/vanotify",
+  "production": "https://api.va.gov/vanotify"
 }
 ```
+
+### Production safety
+
+Destructive changes, such as editing a service's permissions, ask for more confirmation in production. **Any environment whose name is not in `NON_PRODUCTION_ENVIRONMENTS` is treated as production.** This includes `localhost` and other tunnelled URLs, because an SSH or `kubectl port-forward` tunnel to production also answers on `localhost`, so the app never guesses from the URL. Names are matched exactly, ignoring case and surrounding spaces, so `development-2` counts as production until you add it to the list.
 
 ## First-Run Configuration
 
@@ -93,7 +108,7 @@ These credentials are used for HTTP Basic Auth on all admin API calls (listing s
 
 ### 2. Sync Data
 
-Once credentials are configured, use the **Sync** buttons on resource pages (Services, Templates, etc.) or the **Full Sync** button on the Dashboard to pull data from the API into the local cache.
+Once credentials are configured, use the **Sync** buttons on resource pages (Services, Templates, etc.) or **Refresh All Data** in the header to pull data from the API into the local cache. The **View Envs** selector in the header picks which environments the tables show.
 
 ### 3. Add API Keys (for Sending Notifications)
 
@@ -135,27 +150,31 @@ df["Content"] = df["Content"].map(unescape_csv_text)
 
 ## Development
 
+Ruff and pytest are configured in `pyproject.toml`.
+
 ### Testing
 
 ```bash
-# Run all tests
-python -m pytest tests/
+# Run all tests (about 15 seconds)
+uv run pytest tests/
 
-# Run with coverage
-python -m pytest tests/ --cov=app --cov-report=term-missing
+# Run with coverage; the suite must stay at 100%
+uv run pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=100
 
 # Run a specific test file
-python -m pytest tests/test_utils.py -v
+uv run pytest tests/test_utils.py -v
 ```
 
-Tests use `asyncio_mode = auto` — async test functions are collected automatically. Each test gets an isolated temporary SQLite database via the `isolate_database` fixture.
+Add tests with every change. Tests use `asyncio_mode = auto`, so async test functions are collected automatically. Each test gets its own temporary SQLite database and never touches `data/app.db`. See [`tests/README.md`](tests/README.md) for fixtures and conventions.
 
 ### Linting
 
 ```bash
-ruff check .
-ruff format .
+uv run ruff check .    # includes import sorting (I) and modern-syntax (UP) rules
+uv run ruff format .
 ```
+
+`uv run ruff check --fix .` fixes most findings automatically.
 
 ## Architecture
 

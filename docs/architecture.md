@@ -262,7 +262,11 @@ docker compose up --build
 | `MASTER_KEY` | Yes | — | Encryption key for Fernet-encrypted secrets |
 | `USE_MOCK_API` | No | `true` | Use mock API client (no live API needed) |
 | `API_PUBLIC_HOSTS` | No | See below | JSON dict of environment → API URL |
+| `NON_PRODUCTION_ENVIRONMENTS` | No | `dev,development,local,test,perf,sandbox,staging,stage` | Allowlist of non-production names; everything else gets the production confirmation tier |
 | `DATABASE_PATH` | No | `data/app.db` | SQLite database file path |
+| `PORT` | No | `8080` | Web UI port |
+| `REQUEST_TIMEOUT` | No | `30` | API request timeout in seconds (clamped 1–300) |
+| `MAX_CONCURRENCY` | No | `25` | Max concurrent API calls during sync (clamped 1–100) |
 | `CONTAINER_HOST` | No | — | Set by docker-compose for host networking |
 | `APP_UID` / `APP_GID` | No | `1000` | uid:gid `docker-entrypoint.sh` chowns `data/` to and drops privileges to |
 | `NICEGUI_STORAGE_PATH` | No | `.nicegui` | Where NiceGUI persists `app.storage.user`; compose points it into `data/` |

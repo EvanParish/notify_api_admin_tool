@@ -121,4 +121,4 @@ User identity fields (`users.name`, `users.email_address`) are also Fernet-encry
 - **Environment variables**: Configured via `.env` file (see `.env.example`). `MASTER_KEY` is required. `USE_MOCK_API=true` enables the mock client for development without a live API.
 - **`API_PUBLIC_HOSTS`**: JSON dict mapping environment names to base URLs (e.g., `{"dev": "http://localhost:6011", "staging": "https://staging-api.va.gov/vanotify"}`).
 - **Keep docs in sync**: When adding, removing, or renaming pages, repository functions, or models, update this file's Architecture section to reflect the change.
-- **Further docs**: `docs/architecture.md` (system design) and `docs/database_migrations.md` (schema migrations).
+- **Further docs**: `docs/architecture.md` (system design), `docs/database_migrations.md` (schema migrations), and `tests/README.md` (test fixtures and UI page test helpers).
