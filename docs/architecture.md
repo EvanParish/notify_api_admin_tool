@@ -270,9 +270,9 @@ docker compose up --build
 Default `API_PUBLIC_HOSTS`:
 ```json
 {
-  "development": "https://dev-notify.va.gov",
+  "development": "https://dev-api.va.gov/vanotify",
   "perf": "https://sandbox-api.va.gov/vanotify",
-  "staging": "https://staging-notify.va.gov",
-  "production": "https://api.notifications.va.gov"
+  "staging": "https://staging-api.va.gov/vanotify",
+  "production": "https://api.va.gov/vanotify"
 }
 ```

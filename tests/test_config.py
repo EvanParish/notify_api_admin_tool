@@ -107,12 +107,8 @@ def test_load_config_request_timeout_from_env():
 
 
 def test_load_config_missing_master_key():
-    # Skip test if .env file exists that provides MASTER_KEY
-    env_file = os.path.join(os.getcwd(), ".env")
-    if os.path.exists(env_file):
-        pytest.skip(".env file exists, cannot test missing MASTER_KEY")
-
-    with patch.dict(os.environ, {}, clear=True):
+    # load_dotenv is patched so a developer's .env cannot supply MASTER_KEY.
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, {}, clear=True):
         with pytest.raises(RuntimeError, match="MASTER_KEY is required"):
             load_config()
 
@@ -278,9 +274,9 @@ def test_load_config_default_port():
 # tests pin.
 # ---------------------------------------------------------------------------
 def test_default_non_production_environments_covers_both_naming_conventions():
-    # load_config()'s built-in API_PUBLIC_HOSTS defaults use development/production while
-    # .env.example uses dev/prod. Both spellings must be non-production or a stock install
-    # gets maximum friction on its dev environment.
+    # load_config()'s defaults and .env.example use development/production, but older .env
+    # files and custom configs use dev/prod. Both spellings must be non-production or an
+    # install gets maximum friction on its dev environment.
     assert DEFAULT_NON_PRODUCTION_ENVIRONMENTS == frozenset(
         {"dev", "development", "local", "test", "perf", "sandbox", "staging", "stage"}
     )
@@ -348,3 +344,15 @@ def test_non_production_environments_accepts_a_collection():
 def test_non_production_environments_falls_back_on_an_unusable_type():
     config = AppConfig(master_key="test-key", non_production_environments=17)
     assert config.non_production_environments == set(DEFAULT_NON_PRODUCTION_ENVIRONMENTS)
+
+
+def test_load_config_default_api_hosts():
+    """Pins the built-in public endpoints (the same ones the API key emails give out)."""
+    with patch("app.config.load_dotenv"), patch.dict(os.environ, {"MASTER_KEY": "k"}, clear=True):
+        config = load_config()
+    assert config.api_hosts == {
+        "development": "https://dev-api.va.gov/vanotify",
+        "perf": "https://sandbox-api.va.gov/vanotify",
+        "staging": "https://staging-api.va.gov/vanotify",
+        "production": "https://api.va.gov/vanotify",
+    }
