@@ -1,91 +1,77 @@
 # VA Notify Admin Dashboard
 
-An admin dashboard for the [VA Notification API](https://github.com/department-of-veterans-affairs/notification-api). Provides a web UI for managing services, templates, API keys, users, providers, and sending test notifications across multiple VA environments (dev, perf, staging, prod).
+A web UI for the [VA Notification API](https://github.com/department-of-veterans-affairs/notification-api): manage services, templates, API keys, users, and providers, and send test notifications across dev, perf, staging, and prod.
 
 Built with Python 3.13, [NiceGUI](https://nicegui.io/), SQLite, and SQLAlchemy.
 
 <img width="1238" height="819" alt="_admin_dashboard_vanotify" src="https://github.com/user-attachments/assets/2e741d4e-e0c6-446d-abdd-d58dcbb7216f" />
 
-## Prerequisites
+## Run the Latest Release
 
-- **Python 3.13** and [**uv**](https://docs.astral.sh/uv/)
-- **Docker** (optional, for containerised setup)
+Needs only [Docker](https://docs.docker.com/get-docker/). The image is public and built for amd64 and arm64 (Apple Silicon).
 
-## Quick Start
+1. Download the compose file and env template:
 
-### 1. Configure environment
+   ```bash
+   mkdir notify-admin && cd notify-admin
+   curl -fsSLO https://raw.githubusercontent.com/EvanParish/notify_api_admin_tool/main/docker-compose.ghcr.yml
+   curl -fsSL -o .env https://raw.githubusercontent.com/EvanParish/notify_api_admin_tool/main/.env.example
+   ```
 
-Copy the example env file and set your master key:
+2. In `.env`, set `MASTER_KEY` to a long random string. Don't change it later; it decrypts your stored credentials. Add `USE_MOCK_API=true` to try sample data.
 
-```bash
-cp .env.example .env
-```
+3. Start it, then open http://localhost:8080 and do the [First-Run Configuration](#first-run-configuration):
 
-Edit `.env` and set a secure random string for `MASTER_KEY`:
+   ```bash
+   docker compose -f docker-compose.ghcr.yml up -d
+   ```
 
-```env
-MASTER_KEY=your-secure-random-string-here
-```
+- **Upgrade:** `docker compose -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.ghcr.yml up -d`
+- **Pin a version:** `APP_VERSION=1.0.0` in `.env` (default `latest`).
+- **Data** lives in `./data`. Back it up with `.env`.
 
-> `MASTER_KEY` is **required** — it derives the encryption key used to protect stored credentials.
+## Run from Source
 
-`.env.example` sets `USE_MOCK_API=false`, which connects to the real API and needs the credentials described in [First-Run Configuration](#first-run-configuration). To explore the UI first with sample data and no credentials, set:
-
-```env
-USE_MOCK_API=true
-```
-
-### 2. Run the app
-
-**Direct:**
+Needs Python 3.13 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync  # exact versions from uv.lock (add --no-dev to skip test tools)
-uv run python main.py
-# Open http://localhost:8080
+cp .env.example .env    # set MASTER_KEY; USE_MOCK_API=true for sample data
+uv sync
+uv run python main.py   # http://localhost:8080
 ```
 
-**Docker (published image, no checkout needed):**
+Or with Docker: `docker compose up --build`. It bind-mounts `app/` and `main.py`, so code changes apply without a rebuild, and runs as your host user so `data/` stays readable.
 
-Each release publishes an image to GHCR for `linux/amd64` and `linux/arm64` (Apple Silicon). Download the compose file and env template, set `MASTER_KEY` in `.env`, and start it:
+## What's New
 
-```bash
-curl -fsSLO https://raw.githubusercontent.com/EvanParish/notify_api_admin_tool/main/docker-compose.ghcr.yml
-curl -fsSL -o .env https://raw.githubusercontent.com/EvanParish/notify_api_admin_tool/main/.env.example
-docker compose -f docker-compose.ghcr.yml up -d
-# Open http://localhost:8080
-```
+The header shows the running version. Click it, or **What's New** in the sidebar, for the [changelog](CHANGELOG.md). All versions are on the [Releases page](https://github.com/EvanParish/notify_api_admin_tool/releases).
 
-This runs the newest release. To pin one, set `APP_VERSION=1.2.3` in `.env`. To upgrade, run `docker compose -f docker-compose.ghcr.yml pull` and then `up -d` again. Your data stays in `./data`.
+## First-Run Configuration
 
-**Docker (build from source):**
+Skip this in mock mode.
 
-```bash
-docker compose up --build
-# Open http://localhost:8080
-```
+1. **Settings → Global Admin Auth:** for each environment you use, enter your platform admin user ID (a UUID) and password, then **Save Admin Auth**.
+2. **Sync:** click **Refresh All Data** in the header, or **Sync** on a page. **View Envs** picks which environments the tables show.
+3. **To send notifications:** create or select a service key on **API Keys** or **Create API Key**.
 
-The SQLite database persists in `data/app.db` (mounted as a volume in Docker). Docker runs the app as your host user (see `APP_UID`/`APP_GID` below), so files under `data/` stay readable from the host.
-
-## Versions and What's New
-
-The running version appears next to the title in the header. Click it, or **What's New** in the sidebar, to see the release notes from [`CHANGELOG.md`](CHANGELOG.md). Every release is also listed on the [GitHub Releases page](https://github.com/EvanParish/notify_api_admin_tool/releases).
+Credentials, key secrets, and synced user names and emails are encrypted at rest with `MASTER_KEY`.
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `MASTER_KEY` | **Yes** | — | Encryption key for stored secrets (use a long random string) |
-| `USE_MOCK_API` | No | `true` (`.env.example` sets `false`) | `true` uses built-in sample data; `false` connects to the real VA Notify API |
-| `API_PUBLIC_HOSTS` | No | See below | JSON object mapping environment names to API base URLs |
-| `NON_PRODUCTION_ENVIRONMENTS` | No | `dev,development,local,test,perf,sandbox,staging,stage` | Comma-separated environment names that are **not** production. See [Production safety](#production-safety) |
-| `DATABASE_PATH` | No | `data/app.db` | Path to the SQLite database file |
-| `PORT` | No | `8080` | Port the web UI listens on |
-| `REQUEST_TIMEOUT` | No | `30` | Seconds before an API request times out (clamped to 1–300). Raise it if syncs hit read timeouts |
-| `MAX_CONCURRENCY` | No | `25` | Maximum concurrent API calls during sync (clamped to 1–100) |
-| `CONTAINER_HOST` | No | — | Set by `docker-compose.yml`; remaps `localhost` URLs so the container can reach the host |
-| `APP_UID` / `APP_GID` | No | `1000` | Docker only: the user/group the app runs as and that owns `data/`. Set them if `id -u` / `id -g` differ |
-| `NICEGUI_STORAGE_PATH` | No | `.nicegui` | Where the theme preference is stored. `docker-compose.yml` points it into `data/` |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MASTER_KEY` | **required** | Encryption key for stored secrets |
+| `USE_MOCK_API` | `true` (`.env.example`: `false`) | `true` uses built-in sample data instead of the real API |
+| `API_PUBLIC_HOSTS` | see below | JSON map of environment name to API base URL |
+| `NON_PRODUCTION_ENVIRONMENTS` | `dev,development,local,test,perf,sandbox,staging,stage` | Environments **not** treated as production. See [Production safety](#production-safety) |
+| `DATABASE_PATH` | `data/app.db` | SQLite file |
+| `PORT` | `8080` | Web UI port |
+| `REQUEST_TIMEOUT` | `30` | API timeout in seconds (1–300). Raise it if syncs time out |
+| `MAX_CONCURRENCY` | `25` | Concurrent API calls during sync (1–100) |
+| `APP_VERSION` | `latest` | Release image to run (`docker-compose.ghcr.yml`) |
+| `APP_UID` / `APP_GID` | `1000` | Docker: user/group that runs the app and owns `data/`. Set if `id -u` / `id -g` differ |
+| `CONTAINER_HOST` | — | Set by compose so `localhost` URLs reach the host |
+| `NICEGUI_STORAGE_PATH` | `.nicegui` | Theme preference storage. Compose puts it in `data/` |
 
 Default `API_PUBLIC_HOSTS`:
 
@@ -100,61 +86,20 @@ Default `API_PUBLIC_HOSTS`:
 
 ### Production safety
 
-Destructive changes, such as editing a service's permissions, ask for more confirmation in production. **Any environment whose name is not in `NON_PRODUCTION_ENVIRONMENTS` is treated as production.** This includes `localhost` and other tunnelled URLs, because an SSH or `kubectl port-forward` tunnel to production also answers on `localhost`, so the app never guesses from the URL. Names are matched exactly, ignoring case and surrounding spaces, so `development-2` counts as production until you add it to the list.
-
-## First-Run Configuration
-
-When `USE_MOCK_API=false`, the app requires credentials to communicate with the VA Notification API. After starting the app for the first time:
-
-### 1. Set Admin Auth Credentials
-
-Navigate to **Settings** (`/settings`) → **Global Admin Auth**.
-
-For each environment you want to use, enter:
-
-- **Username** — your platform admin **user ID (UUID)** from the Notification API (e.g. `a8d82fd1-a306-4073-8506-dc02f9a2855c`)
-- **Password** — that user's login password
-
-Click **Save Admin Auth**. Credentials are Fernet-encrypted and stored in the local database.
-
-Synced user identity fields (`users.name`, `users.email_address`) are also encrypted at rest in SQLite and decrypted at runtime for UI display, search, and CSV export.
-
-> Each environment (dev, staging, prod, etc.) has its own set of credentials. You only need to configure the environments you plan to use.
-
-These credentials are used for HTTP Basic Auth on all admin API calls (listing services, syncing templates, managing API keys, etc.).
-
-### 2. Sync Data
-
-Once credentials are configured, use the **Sync** buttons on resource pages (Services, Templates, etc.) or **Refresh All Data** in the header to pull data from the API into the local cache. The **View Envs** selector in the header picks which environments the tables show.
-
-### 3. Add API Keys (for Sending Notifications)
-
-To send test notifications, you need a service API key:
-
-1. Go to **API Keys** (`/api-keys`) or **Create API Key** (`/api-key-service`)
-2. Create or select an API key for your target service
-3. The key secret is encrypted and stored locally in the `local_api_keys` table
-
-The key secret is used to sign JWT tokens (HS256) for `POST /v2/notifications/email` and `POST /v2/notifications/sms` requests.
-
-### Mock Mode
-
-When `USE_MOCK_API=true` (default), the app uses a mock API client with sample data. No credentials are needed — useful for exploring the UI or local development.
+Risky changes, like editing service permissions, need extra confirmation in production. **Any environment not named in `NON_PRODUCTION_ENVIRONMENTS` counts as production**, including `localhost`, since a tunnel to production also answers there. Names match exactly (case-insensitive), so add `development-2` yourself if it isn't production.
 
 ## CSV Exports
 
-Each table's **Export CSV** button writes the full database record for every row matching the current filters, in the table's current sort order. Columns are named after the database columns, with resolved names (e.g. `Service Name`, `Created By Email`) alongside raw IDs.
+**Export CSV** writes the full database record for each filtered row, in the table's sort order, with resolved names (e.g. `Service Name`) next to raw IDs.
 
-Format:
+- UTF-8 with BOM, RFC 4180 quoting, one line per record.
+- In text cells: `\` → `\\`, line break → `\n`, tab → `\t`, other Unicode line breaks → `\uXXXX`.
+- Cells starting with `=`, `+`, `-`, or `@` get a leading `'` to block formula injection.
+- JSON columns are compact and key-sorted.
+- Secrets are never exported. Every model column must be classified in `tests/test_main.py::EXPORT_COLUMN_REVIEW`, so new columns fail tests until reviewed.
+- Exports with personal data ask for confirmation. Files are unencrypted; keep them in approved locations and delete them when done.
 
-* UTF-8 with a BOM (Excel-safe), RFC 4180 quoting, exactly one physical line per record.
-* Inside text cells: `\` → `\\`, line break → `\n`, tab → `\t`, other Unicode line breaks (LS, PS, NEL, VT, FF, FS/GS/RS) → `\uXXXX`. CRLF/CR are normalized to LF first.
-* Cells starting with `=`, `+`, `-` or `@` are prefixed with `'` to block spreadsheet formula injection.
-* JSON columns are compact, key-sorted JSON.
-* Secrets are never exported (`key_secret`, `current_session_id`, `auth_parameter`, and any column whose name matches the secret pattern in `app/ui/helpers.py`). `tests/test_main.py::EXPORT_COLUMN_REVIEW` must classify every model column, so a new column fails CI until reviewed.
-* Exports with personal data (users, API keys, templates, provider details) ask for confirmation first. The files are unencrypted. Store them only in approved locations and delete them when done.
-
-To restore the original text when re-importing:
+To restore the original text:
 
 ```python
 import pandas as pd
@@ -162,68 +107,38 @@ from app.ui.helpers import unescape_csv_text
 
 df = pd.read_csv("templates.csv", encoding="utf-8-sig", dtype=str, keep_default_na=False)
 df["Content"] = df["Content"].map(unescape_csv_text)
-# Cells that were formula-escaped: strip the leading "'" if the value starts with '=, '+, '- or '@.
+# Formula-escaped cells: strip the leading "'" before =, +, -, or @.
 ```
 
 ## Development
 
-Ruff and pytest are configured in `pyproject.toml`.
-
-### Testing
-
 ```bash
-# Run all tests (about 15 seconds)
-uv run pytest tests/
-
-# Run with coverage; the suite must stay at 100%
-uv run pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=100
-
-# Run a specific test file
-uv run pytest tests/test_utils.py -v
-```
-
-Add tests with every change. Tests use `asyncio_mode = auto`, so async test functions are collected automatically. Each test gets its own temporary SQLite database and never touches `data/app.db`. See [`tests/README.md`](tests/README.md) for fixtures and conventions.
-
-### Linting
-
-```bash
-uv run ruff check .    # includes import sorting (I) and modern-syntax (UP) rules
+uv run pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=100   # must stay at 100%
+uv run ruff check --fix .
 uv run ruff format .
 ```
 
-`uv run ruff check --fix .` fixes most findings automatically.
+Add tests with every change. Tests use their own temporary database. See [`tests/README.md`](tests/README.md) for fixtures and [`docs/architecture.md`](docs/architecture.md) for the design.
 
 ### Commit messages
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/). The changelog is generated from them, so write each one as a changelog line for the team:
+Use [Conventional Commits](https://www.conventionalcommits.org/). Each one becomes a changelog line:
 
 ```text
-feat(services): show the SMS sender count
-fix(sync): retry on read timeouts
-fix(security): redact bearer tokens from error messages
-feat(config)!: rename API_HOSTS to API_PUBLIC_HOSTS
+feat(services): show the SMS sender count     # minor bump, "Added"
+fix(sync): retry on read timeouts             # patch bump, "Fixed"
+fix(security): redact tokens in errors        # patch bump, "Security"
+feat(config)!: rename API_HOSTS               # major bump; add a BREAKING CHANGE: footer
 ```
 
-`feat` bumps the minor version and `fix` the patch version. `!` marks a breaking change, which bumps the major version; explain the required action in a `BREAKING CHANGE:` footer. `refactor`, `test`, `style`, `ci`, and `chore` are left out of the changelog. The full table is in [`.github/copilot-instructions.md`](.github/copilot-instructions.md#commit-messages-conventional-commits).
+`refactor`, `test`, `style`, `ci`, and `chore` are left out of the changelog. Full table: [`.github/copilot-instructions.md`](.github/copilot-instructions.md#commit-messages-conventional-commits).
 
 ### Releases
 
-Versions follow [Semantic Versioning](https://semver.org/). The version lives only in `pyproject.toml`. To cut a release from an up-to-date, clean `main`:
+From a clean, up-to-date `main`:
 
-```bash
-scripts/release.sh          # or: scripts/release.sh 1.4.0 to pick the version yourself
-```
+1. Run `scripts/release.sh` (or `scripts/release.sh 1.4.0` to choose the version). It bumps the version, adds a `CHANGELOG.md` section, and runs the checks.
+2. Review and edit the new changelog section. It becomes the release notes.
+3. Run the commit, tag, and push commands it prints.
 
-The script works out the next version from the commits since the last tag, updates `pyproject.toml` and `uv.lock`, adds a section to `CHANGELOG.md`, runs lint and tests, and prints the commit, tag, and push commands. It warns about commits that don't follow the convention; add anything important from those to `CHANGELOG.md` by hand. Review and edit the new section (it becomes the release notes), then run the printed commands.
-
-Pushing the `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which:
-
-1. runs lint and the full test suite at 100% coverage, and checks that the tag, `pyproject.toml`, and `CHANGELOG.md` agree,
-2. builds and pushes `ghcr.io/evanparish/notify_api_admin_tool` with tags `X.Y.Z`, `X.Y`, `X`, and `latest`,
-3. creates the GitHub Release, using that version's changelog section as the notes.
-
-If any step fails, nothing after it is published. Fix the problem, delete the tag (`git push --delete origin vX.Y.Z && git tag -d vX.Y.Z`), and tag again.
-
-## Architecture
-
-See [`docs/architecture.md`](docs/architecture.md) for detailed documentation of the module layout, database schema, sync engine, authentication model, and UI structure.
+The tag triggers [`release.yml`](.github/workflows/release.yml): tests, then the image (`X.Y.Z`, `X.Y`, `X`, `latest`), then the GitHub Release. If a step fails, nothing after it publishes; fix it, then delete and re-push the tag (`git push --delete origin vX.Y.Z && git tag -d vX.Y.Z`).
