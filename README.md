@@ -45,7 +45,20 @@ uv run python main.py
 # Open http://localhost:8080
 ```
 
-**Docker:**
+**Docker (published image, no checkout needed):**
+
+Each release publishes an image to GHCR for `linux/amd64` and `linux/arm64` (Apple Silicon). Download the compose file and env template, set `MASTER_KEY` in `.env`, and start it:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/EvanParish/notify_api_admin_tool/main/docker-compose.ghcr.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/EvanParish/notify_api_admin_tool/main/.env.example
+docker compose -f docker-compose.ghcr.yml up -d
+# Open http://localhost:8080
+```
+
+This runs the newest release. To pin one, set `APP_VERSION=1.2.3` in `.env`. To upgrade, run `docker compose -f docker-compose.ghcr.yml pull` and then `up -d` again. Your data stays in `./data`.
+
+**Docker (build from source):**
 
 ```bash
 docker compose up --build
@@ -53,6 +66,10 @@ docker compose up --build
 ```
 
 The SQLite database persists in `data/app.db` (mounted as a volume in Docker). Docker runs the app as your host user (see `APP_UID`/`APP_GID` below), so files under `data/` stay readable from the host.
+
+## Versions and What's New
+
+The running version appears next to the title in the header. Click it, or **What's New** in the sidebar, to see the release notes from [`CHANGELOG.md`](CHANGELOG.md). Every release is also listed on the [GitHub Releases page](https://github.com/EvanParish/notify_api_admin_tool/releases).
 
 ## Environment Variables
 
@@ -175,6 +192,37 @@ uv run ruff format .
 ```
 
 `uv run ruff check --fix .` fixes most findings automatically.
+
+### Commit messages
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/). The changelog is generated from them, so write each one as a changelog line for the team:
+
+```text
+feat(services): show the SMS sender count
+fix(sync): retry on read timeouts
+fix(security): redact bearer tokens from error messages
+feat(config)!: rename API_HOSTS to API_PUBLIC_HOSTS
+```
+
+`feat` bumps the minor version and `fix` the patch version. `!` marks a breaking change, which bumps the major version; explain the required action in a `BREAKING CHANGE:` footer. `refactor`, `test`, `style`, `ci`, and `chore` are left out of the changelog. The full table is in [`.github/copilot-instructions.md`](.github/copilot-instructions.md#commit-messages-conventional-commits).
+
+### Releases
+
+Versions follow [Semantic Versioning](https://semver.org/). The version lives only in `pyproject.toml`. To cut a release from an up-to-date, clean `main`:
+
+```bash
+scripts/release.sh          # or: scripts/release.sh 1.4.0 to pick the version yourself
+```
+
+The script works out the next version from the commits since the last tag, updates `pyproject.toml` and `uv.lock`, adds a section to `CHANGELOG.md`, runs lint and tests, and prints the commit, tag, and push commands. It warns about commits that don't follow the convention; add anything important from those to `CHANGELOG.md` by hand. Review and edit the new section (it becomes the release notes), then run the printed commands.
+
+Pushing the `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which:
+
+1. runs lint and the full test suite at 100% coverage, and checks that the tag, `pyproject.toml`, and `CHANGELOG.md` agree,
+2. builds and pushes `ghcr.io/evanparish/notify_api_admin_tool` with tags `X.Y.Z`, `X.Y`, `X`, and `latest`,
+3. creates the GitHub Release, using that version's changelog section as the notes.
+
+If any step fails, nothing after it is published. Fix the problem, delete the tag (`git push --delete origin vX.Y.Z && git tag -d vX.Y.Z`), and tag again.
 
 ## Architecture
 

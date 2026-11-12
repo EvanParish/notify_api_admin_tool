@@ -1,6 +1,6 @@
 [project]
 name = "notify-api-admin-tool"
-version = "0.1.0"
+version = "1.0.0"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "nicegui>=3.18.0,<4.0",
@@ -19,6 +19,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "git-cliff>=2.14,<3",
     "pytest>=9.0.3,<10.0.0",
     "pytest-asyncio>=1.0.0,<2.0.0",
     "pytest-cov>=7.0.0,<8.0.0",
@@ -28,6 +29,61 @@ dev = [
 [tool.uv]
 # Application, not a library: install dependencies only, never build/install the project.
 package = false
+
+# Changelog generation (`uv run git cliff`). Commits must follow Conventional Commits;
+# anything else is skipped, and scripts/release.sh lists what it skipped.
+# Releases before v1.0.0 predate this and are hand-written in CHANGELOG.md.
+[tool.git-cliff.changelog]
+header = """
+# Changelog
+
+All notable changes to this project are documented here. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+Entries are generated from [Conventional Commits](https://www.conventionalcommits.org/)
+by `scripts/release.sh`. Releases before 1.0.0 were not tracked.
+
+"""
+body = """
+{% if version -%}
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/EvanParish/notify_api_admin_tool/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## [Unreleased]
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope and commit.scope != "security" %}**{{ commit.scope }}:** {% endif %}{% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | split(pat="\n") | first | upper_first | trim }}{% endfor %}
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[tool.git-cliff.git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = true
+filter_commits = false
+tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+"
+sort_commits = "oldest"
+# The HTML comments only control group order; striptags removes them from the output.
+commit_parsers = [
+    { message = "^fix\\(security\\)", group = "<!-- 4 -->Security" },
+    { message = "^feat", group = "<!-- 0 -->Added" },
+    { message = "^fix", group = "<!-- 3 -->Fixed" },
+    { message = "^perf", group = "<!-- 1 -->Changed" },
+    { message = "^revert", group = "<!-- 2 -->Reverted" },
+    { message = "^build", group = "<!-- 1 -->Changed" },
+    { message = "^docs", group = "<!-- 5 -->Documentation" },
+    # Internal-only changes stay out of the team-facing changelog.
+    { message = "^(refactor|style|test|ci|chore)", skip = true },
+]
+
+[tool.git-cliff.bump]
+features_always_bump_minor = true
+breaking_always_bump_major = true
 
 [tool.ruff]
 # target-version is inferred from requires-python above.

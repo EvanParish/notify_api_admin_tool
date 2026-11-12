@@ -1,0 +1,33 @@
+# Run a published release from GHCR. No checkout or build needed; this file and a .env are enough:
+#
+#   curl -fsSLO https://raw.githubusercontent.com/EvanParish/notify_api_admin_tool/main/docker-compose.ghcr.yml
+#   curl -fsSL -o .env https://raw.githubusercontent.com/EvanParish/notify_api_admin_tool/main/.env.example
+#   # edit .env (at minimum MASTER_KEY), then:
+#   docker compose -f docker-compose.ghcr.yml up -d
+#
+# Pin a release with APP_VERSION=1.2.3 (in .env or the shell); the default is the newest
+# release. To upgrade: docker compose -f docker-compose.ghcr.yml pull && ... up -d
+#
+# For development from a checkout, use docker-compose.yml instead: it builds locally and
+# bind-mounts the source.
+services:
+  admin-app:
+    image: ghcr.io/evanparish/notify_api_admin_tool:${APP_VERSION:-latest}
+    container_name: admin-app
+    env_file:
+      - .env
+    # No `user:` here on purpose; see docker-compose.yml. docker-entrypoint.sh starts as root
+    # to chown ./data, then drops to APP_UID:APP_GID.
+    environment:
+      - CONTAINER_HOST=host.docker.internal
+      - APP_UID=${APP_UID:-1000}
+      - APP_GID=${APP_GID:-1000}
+      - NICEGUI_STORAGE_PATH=/app/data/.nicegui
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    restart: unless-stopped
+    volumes:
+      # SQLite cache, encrypted credentials, and send artifacts. Back this up; it is all local state.
+      - ./data:/app/data

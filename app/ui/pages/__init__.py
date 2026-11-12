@@ -3,6 +3,7 @@ from app.ui.pages import (  # noqa: F401
     api_key_service,
     api_keys,
     bulk_send,
+    changelog,
     comm_items,
     dashboard,
     inbound_numbers,

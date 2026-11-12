@@ -2,7 +2,41 @@
 
 ## Git & Version Control
 
-**Do not commit changes.** Only the user can commit. After making changes, present a summary of what was modified so the user can review and commit themselves.
+**Do not commit changes.** Only the user can commit. After making changes, present a summary of what was modified so the user can review and commit themselves, and suggest a commit message in the format below.
+
+### Commit messages: Conventional Commits
+
+Every commit on `main` must follow [Conventional Commits](https://www.conventionalcommits.org/). `CHANGELOG.md` is generated from them (git-cliff, configured under `[tool.git-cliff]` in `pyproject.toml`), and non-conforming commits are left out of it.
+
+```text
+<type>(<optional scope>)<optional !>: <description>
+```
+
+- Write the description as a lowercase, imperative summary for the team: `feat(services): show the SMS sender count`, not `feat: update services.py`. It becomes a changelog bullet.
+- Scope is optional. Use the page or module name (`services`, `api-keys`, `sync`, `export`, `docker`).
+- Choose the type by what users see, because it decides both the changelog section and the version bump:
+
+| Type | Use for | Changelog section | Bump |
+|------|---------|-------------------|------|
+| `feat` | New user-facing capability | Added | minor |
+| `fix` | Bug fix | Fixed | patch |
+| `fix(security)` | Security fix | Security | patch |
+| `perf` | Faster, same behaviour | Changed | patch |
+| `build` | Dependencies, Dockerfile, packaging | Changed | patch |
+| `revert` | Reverting a previous commit | Reverted | patch |
+| `docs` | Documentation only | Documentation | patch |
+| `refactor`, `test`, `style`, `ci`, `chore` | Internal only | *(omitted)* | patch |
+
+- **Breaking changes** (a renamed or removed env var, a schema change that needs a manual step, a removed page) need `!` after the type/scope, e.g. `feat(config)!: rename API_HOSTS to API_PUBLIC_HOSTS`, plus a `BREAKING CHANGE: <what to do>` footer. They bump the major version.
+- Keep one logical change per commit, so each changelog bullet describes one thing.
+- `chore(release): vX.Y.Z` is reserved for release commits.
+
+### Versioning & releases
+
+- Semantic Versioning. The version lives only in `pyproject.toml` (`[project] version`); `app/version.py` reads it at runtime. Never hard-code it elsewhere.
+- Do not edit the version or `CHANGELOG.md` as part of a feature change. `scripts/release.sh` bumps the version and generates the changelog section at release time; the user then reviews it, commits, tags `vX.Y.Z`, and pushes.
+- Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`: lint and tests at 100% coverage, a check that the tag, `pyproject.toml`, and `CHANGELOG.md` agree, a multi-arch image pushed to `ghcr.io/evanparish/notify_api_admin_tool`, then a GitHub Release whose notes are that version's changelog section. There is no other CI, so run the checks locally.
+- `tests/test_version.py` fails if the newest `CHANGELOG.md` section doesn't match the `pyproject.toml` version, or if the Dockerfile stops copying either file.
 
 ## Security
 
@@ -17,8 +51,14 @@ uv sync  # exact versions from uv.lock (add --no-dev to skip test tools)
 # Run the app (NiceGUI web UI on port 8080)
 uv run python main.py
 
-# Run with Docker
+# Run with Docker (builds from source and bind-mounts app/ for development)
 docker compose up --build
+
+# Run a published release image from GHCR (no checkout needed besides this file and .env)
+docker compose -f docker-compose.ghcr.yml up -d
+
+# Prepare a release (see Versioning & releases above)
+scripts/release.sh
 ```
 
 ## Testing
@@ -83,8 +123,9 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
   - `send.py` — Send Notification page (`/send`)
   - `bulk_send.py` — Bulk Send Notification page (`/bulk-send`)
   - `settings_page.py` — Settings page with URL/auth/key forms (`/settings`)
+  - `changelog.py` — What's New page rendering `CHANGELOG.md` release notes (`/changelog`, `shell.CHANGELOG_ROUTE`)
   - `__init__.py` — Imports all page modules to trigger `@ui.page` registration
-- **`app/ui/state.py`** — Application state globals (`config`, `encryption`, `state`), `AppState` dataclass, `build_api_client()`, auth helpers, startup/shutdown handlers. On startup, runs `migrate_plaintext_users_to_encrypted` to ensure any legacy plaintext user identity rows are encrypted before use.
+- **`app/ui/state.py`** — Application state globals (`config`, `encryption`, `state`), `AppState` dataclass, `build_api_client()`, auth helpers, startup/shutdown handlers. On startup, runs `check_required_paths_writable()` (fails fast with a readable message if the database, artifact, or NiceGUI storage directories are not writable) and `migrate_plaintext_users_to_encrypted` to ensure any legacy plaintext user identity rows are encrypted before use. Also broadcasts sync progress to every connected tab (`register_progress_widgets`, `push_progress`) and exposes `is_env_protected()` for production confirmation tiers.
 - **`app/ui/helpers.py`** — Reusable UI utilities: `metric_card`, `make_sortable`, copyable slots, formatting functions, `parse_recipients`, and CSV export. `add_export_button(rows, columns, filename, export_rows=..., table_ref=..., sensitive_notice=...)` exports full DB records (`model_to_export_dict`) lazily, in the table's current sort order (`table_sort_order`), with a confirmation dialog for PII. Secret columns are stripped by `EXPORT_DENYLIST_COLUMNS`/`EXPORT_DENYLIST_PATTERN`; `tests/test_main.py::EXPORT_COLUMN_REVIEW` must classify every model column, so adding a column fails tests until it is reviewed. Cells are single-line escaped (`escape_csv_text`/`unescape_csv_text`) and formula-injection guarded. CSV format details are in `README.md`.
 - **`app/ui/email_helpers.py`** — Email rotation constants and `_build_key_email()` for API key email generation.
 - **`app/ui/callback_helpers.py`** — Pure helpers for service callback validation, payload building, and status-control state. Imports no NiceGUI, so it is directly unit-testable. Mirrors notification-api's callback type, channel, and completed-notification-status constants. Re-exports `extract_error_message`/`format_http_error` from `http_errors.py` for back-compat with existing callers.
@@ -92,10 +133,11 @@ This is an admin dashboard for the [VA Notification API](https://github.com/depa
 - **`app/ui/artifacts.py`** — Timestamped JSON artifact persistence: `write_json_artifact()` and `rewrite_json_artifact()`. Imports no NiceGUI, so it is directly unit-testable and usable from other pure helper modules. `helpers.write_send_results()` delegates here. `rewrite_json_artifact()` replaces a record atomically (temp file in the same directory, then `os.replace`) so audit records written before a risky API call survive a failure mid-rewrite. Both writers produce 0600 files in a 0700 directory — `data/send_response/` holds plaintext recipient addresses and personalisation payloads. The directory is `chmod`ed explicitly because `makedirs(exist_ok=True)` will not tighten a pre-existing 0755 one, and the file is created `O_EXCL` so a same-microsecond collision raises instead of truncating an audit record.
 - **`app/ui/permission_helpers.py`** — Pure helpers for service permission editing: environment risk classification, diffing, confirmation tiers, and audit records. Imports no NiceGUI, so it is directly unit-testable; it uses `artifacts.py` for persistence for the same reason. Everything follows from one fact: `POST /service/{id}` REPLACES a service's entire permission set, so `build_permission_options()` returns the UNION of `KNOWN_PERMISSION_LABELS` and the live read — an unrecognized value renders enabled and flagged rather than hidden, so it can never be silently dropped. `is_protected_environment(env_name, non_production_environments)` treats any environment NOT on the configured non-production allowlist (`AppConfig.non_production_environments`, from `NON_PRODUCTION_ENVIRONMENTS`) as production — including a blank or unknown name — so tunnels and newly added environments fail closed. Production-ness is DECLARED, never inferred from a URL: engineers reach GovCloud production through SSH/`kubectl port-forward`/SSM tunnels, so the production API answers on `localhost` and no hostname check can tell it apart from local dev. Matching is exact after trimming and lowercasing. `normalize_permissions(values, *, strict=False)` raises on a non-string element when `strict=True`; read paths (`build_permission_options`, `permissions_equal`) use it, because a silently filtered value is deleted by the replace-everything POST with no diff entry and no acknowledgement.
 - **`app/utils.py`** — General-purpose utility functions.
-- **`app/ui/shell.py`** — Monkey-patches for NiceGUI edge cases, theme helpers, and `build_shell()` sidebar/header builder.
+- **`app/version.py`** — `get_version()` reads `[project] version` from `pyproject.toml` (the project isn't installed, so `importlib.metadata` can't see it) and `get_release_notes()` returns `CHANGELOG.md` from the first `## ` heading. Both are cached and fall back to `"unknown"` / `""` instead of raising. The Dockerfile copies both files into the image.
+- **`app/ui/shell.py`** — Monkey-patches for NiceGUI edge cases, theme helpers, and `build_shell()` sidebar/header builder. `NAV_SECTIONS` is the single source of truth for sidebar links and browser tab titles (`PAGE_TITLES`); a new page needs an entry there. The header shows the running version, linked to the What's New page.
 - **`app/ui/sync_handlers.py`** — Generic `handle_entity_sync()` and `handle_full_sync()` that consolidate all sync dispatch.
 - **`app/api_client.py`** — `NotificationAPI` base class with `HttpNotificationAPI` (real) and `MockNotificationAPI` (dev/test) implementations. HTTP client uses `httpx`. Notification sending uses JWT auth (HS256, signed with service API secret).
-- **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Accepts an `EncryptionManager` and passes it through to user sync. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment. Delegates all DB writes to `repository.py` upsert functions.
+- **`app/sync.py`** — `SyncManager` pulls data from the remote API into the local SQLite cache. Accepts an `EncryptionManager` and passes it through to user sync. Uses `asyncio.Semaphore` for concurrency control. Syncs per-environment. Delegates all DB writes to `repository.py` upsert functions. `SyncProgress` counts completed work units and pushes throttled updates that drive the header progress bar.
 - **`app/models.py`** — SQLAlchemy ORM models. Most entities use composite keys of `(id, environment)` to store data from multiple environments in one database.
 - **`app/repository.py`** — Async CRUD functions using `get_session()` context manager. Includes bulk `upsert_*` functions for sync and `list_service_ids()`. Archived records (names starting with `_archive`) are filtered out automatically. Entity list functions (templates, API keys, SMS senders, inbound numbers, service callbacks) also exclude rows belonging to archived services via the `_active_service_ids()` subquery. `upsert_users` requires an `EncryptionManager` and stores `name`/`email_address` encrypted at rest; `list_users` decrypts them on read. `migrate_plaintext_users_to_encrypted` backfills any legacy plaintext rows idempotently. `delete_service_callback(callback_id, environment) -> bool` removes a cached callback and reports whether a row existed; `prune_service_callbacks(service_id, environment, keep_ids) -> int` removes cached callbacks the remote API no longer returns and reports the row count. `count_sms_senders_by_service(environment) -> dict[(service_id, environment), int]` backs the Services table "SMS Senders" column; unlike `list_sms_senders`, it excludes senders by the `archived` boolean, not the `_archive` name prefix.
 - **`app/db.py`** — Async SQLAlchemy engine setup with `aiosqlite`. Module-level globals `engine` and `SessionLocal` are initialized via `init_engine()`.
@@ -121,4 +163,5 @@ User identity fields (`users.name`, `users.email_address`) are also Fernet-encry
 - **Environment variables**: Configured via `.env` file (see `.env.example`). `MASTER_KEY` is required. `USE_MOCK_API=true` enables the mock client for development without a live API.
 - **`API_PUBLIC_HOSTS`**: JSON dict mapping environment names to base URLs (e.g., `{"dev": "http://localhost:6011", "staging": "https://staging-api.va.gov/vanotify"}`).
 - **Keep docs in sync**: When adding, removing, or renaming pages, repository functions, or models, update this file's Architecture section to reflect the change.
+- **Release tooling**: `scripts/release.sh` (release prep), `.github/workflows/release.yml` (publish), `docker-compose.ghcr.yml` (run a published image). The release process for humans is in `README.md` under "Releases".
 - **Further docs**: `docs/architecture.md` (system design), `docs/database_migrations.md` (schema migrations), and `tests/README.md` (test fixtures and UI page test helpers).

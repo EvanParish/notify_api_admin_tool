@@ -34,6 +34,9 @@ from app.ui.pages import (
     bulk_send as page_bulk_send,
 )
 from app.ui.pages import (
+    changelog as page_changelog,
+)
+from app.ui.pages import (
     comm_items as page_comm_items,
 )
 from app.ui.pages import (
@@ -537,7 +540,9 @@ def test_build_shell():
         patch("app.ui.shell.ui.label") as mock_label,
         patch("app.ui.shell.ui.button") as mock_button,
         patch("app.ui.shell.ui.dark_mode") as mock_dark_mode,
-        patch("app.ui.shell.ui.link"),
+        patch("app.ui.shell.ui.link") as mock_link,
+        patch("app.ui.shell.ui.tooltip") as mock_tooltip,
+        patch("app.ui.shell.get_version", return_value="9.8.7"),
         patch("app.ui.shell.ui.select") as mock_select,
         patch("app.ui.shell.ui.dropdown_button") as mock_dropdown,
         patch("app.ui.shell.ui.checkbox") as mock_checkbox,
@@ -597,6 +602,16 @@ def test_build_shell():
         # Verify it returns a tuple
         assert isinstance(result, tuple)
         assert len(result) == 5  # status_badge, sync_label, refresh_button, dark_mode, theme_button
+
+        # The header shows the running version, linked to the What's New page.
+        mock_link.assert_any_call("v9.8.7", shell.CHANGELOG_ROUTE)
+        mock_tooltip.assert_called_once_with("What's new in this version")
+
+
+def test_changelog_route_is_in_nav_and_titles():
+    hrefs = [item.href for _, items in shell.NAV_SECTIONS for item in items]
+    assert shell.CHANGELOG_ROUTE in hrefs
+    assert shell.PAGE_TITLES[shell.CHANGELOG_ROUTE] == "What's New"
 
 
 def test_module_level_initialization():
@@ -3139,6 +3154,39 @@ def mock_page_ui(mod_path):
         for p in _ui_patches(mod_path, _make_mock):
             stack.enter_context(p)
         yield mock_obj
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("notes", ["## [1.0.0] - 2026-11-10\n\n- Thing\n", ""])
+async def test_changelog_page(mock_config, notes):
+    original = _st.config
+    original_state = _st.state
+    _st.config = mock_config
+    _st.state = SharedTestState(environment="development")
+    try:
+        with (
+            mock_page_ui("app.ui.pages.changelog"),
+            patch("app.ui.pages.changelog.get_version", return_value="1.0.0"),
+            patch("app.ui.pages.changelog.get_release_notes", return_value=notes),
+            patch("app.ui.pages.changelog.handle_full_sync", new_callable=AsyncMock) as mock_sync,
+        ):
+            await page_changelog.changelog_page()
+            badge_texts = [c.args[0] for c in page_changelog.ui.badge.call_args_list]
+            markdown_calls = page_changelog.ui.markdown.call_args_list
+            label_texts = [c.args[0] for c in page_changelog.ui.label.call_args_list if c.args]
+            refresh_button = page_changelog.build_shell.return_value[2]
+            on_click = refresh_button.on_click.call_args.args[0]
+            await on_click()
+        assert "Running v1.0.0" in badge_texts
+        assert mock_sync.await_count == 1
+        if notes:
+            assert markdown_calls[0].args[0] == notes
+        else:
+            assert not markdown_calls
+            assert "No changelog is available in this build." in label_texts
+    finally:
+        _st.config = original
+        _st.state = original_state
 
 
 @pytest.mark.asyncio

@@ -30,6 +30,8 @@ app/
 ├── models.py                ORM models (10 tables, most with composite environment key)
 ├── repository.py            Async CRUD, upsert functions, DbSaltProvider, user identity encryption helpers
 ├── sync.py                  SyncManager — pulls remote API data into local cache
+├── utils.py                 General-purpose helpers (placeholder extraction, recipient validation)
+├── version.py               App version (from pyproject.toml) and release notes (from CHANGELOG.md)
 └── ui/
     ├── state.py             AppState, module globals (config, encryption), startup/shutdown
     ├── shell.py             build_shell() — sidebar, header, theme toggle
@@ -40,7 +42,7 @@ app/
     ├── http_errors.py       API error normalization (extract_error_message, format_http_error)
     ├── permission_helpers.py Service permission classification, diffing, confirmation tiers, audit records
     ├── artifacts.py         Timestamped JSON artifact write/atomic-rewrite (NiceGUI-free)
-    └── pages/               One file per @ui.page route (13 pages)
+    └── pages/               One file per @ui.page route (15 pages, including the What's New changelog page)
 ```
 
 ## 2. Authentication & Configuration
@@ -128,10 +130,12 @@ All tables are defined in `app/models.py`. Most entities use composite primary k
 * **Sidebar Navigation:**
    * **Overview:** Dashboard (`/`)
    * **Notifications:** Send (`/send`), Bulk Send (`/bulk-send`)
-   * **Resources:** Services (`/services`), Templates (`/templates`), API Keys (`/api-keys`), Create API Key (`/api-key-service`), Users (`/users`), SMS Senders (`/sms-senders`), Inbound Numbers (`/inbound-numbers`), Communication Items (`/communication-items`), Provider Details (`/provider-details`)
+   * **Resources:** Services (`/services`), Templates (`/templates`), API Keys (`/api-keys`), Create API Key (`/api-key-service`), Users (`/users`), SMS Senders (`/sms-senders`), Inbound Numbers (`/inbound-numbers`), Service Callbacks (`/service-callbacks`), Communication Items (`/communication-items`), Provider Details (`/provider-details`)
    * **Configuration:** Settings (`/settings`)
+   * **About:** What's New (`/changelog`) — renders the release sections of `CHANGELOG.md`
 
 * **Status Bar:**
+   * Running version (`vX.Y.Z` from `pyproject.toml`), linked to What's New
    * API health badge (online/offline per environment)
    * Sync status label
    * Multi-environment view selector
@@ -245,16 +249,19 @@ uv run python main.py
 
 ### Docker
 ```bash
-docker compose up --build
+docker compose up --build                            # build from source (development)
+docker compose -f docker-compose.ghcr.yml up -d      # run a published release image
 # Accessible at http://localhost:8080
 ```
 
-* **Dockerfile:** Python 3.13-slim, installs dependencies, exposes port 8080.
+* **Dockerfile:** Python 3.13-slim, installs dependencies, exposes port 8080. Copies `pyproject.toml` and `CHANGELOG.md` so the image can show its version and release notes.
+* **docker-compose.ghcr.yml:** Same runtime settings as `docker-compose.yml`, but pulls `ghcr.io/evanparish/notify_api_admin_tool:${APP_VERSION:-latest}` and mounts only `data/` (no source bind mounts), so it works without a checkout.
+* **Releases:** pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests, publishes the multi-arch image, and creates the GitHub Release from the matching `CHANGELOG.md` section. See "Releases" in `README.md`.
 * **docker-compose.yml:** Loads `.env`, maps `host.docker.internal` for API access from container, persists `data/` volume for SQLite database.
 * **`docker-entrypoint.sh` starts as root, chowns `/app/data` to `APP_UID:APP_GID` (default 1000), then `exec setpriv`s down to it.** The app never runs as root, and everything under the bind mount stays host-readable. This exists because neither naive option works: a root container writes root-owned `0700`/`0600` artifacts that the developer cannot open, while a container pinned to the host uid via compose `user:` cannot write at all when the Docker daemon has created a missing bind-mount source as `root:root`. Starting as root and dropping handles every case — missing `data/`, one created by an earlier root container, a host uid that is not 1000, and subdirectories left by either — with no manual `chown`. `setpriv` ships with `python:3.13-slim`, so no extra package is needed. Do not add a `USER` directive or a compose `user:`; either prevents the chown. If the container user *is* overridden, the entrypoint detects it, skips both steps, and lets the startup check report whatever is unwritable.
 * **Startup writability check.** `state.check_required_paths_writable()` runs before `create_all()` and fails with the offending paths, their owner uid, the process uid, and the remediation. It is the backstop for the cases the entrypoint cannot fix — a read-only mount, an overridden container user, or a wrong `APP_UID`. Without it the same condition surfaces later as a `PermissionError` from SQLite or NiceGUI internals, nowhere near its cause.
 * `write_json_artifact` tightens the artifact directory on a best-effort basis: if `chmod` fails because the directory is owned by another user, it logs a warning and still writes the record. Aborting would lose the rollback artifact, which is worse than a listable directory — the file contents are 0600 either way, so only filenames are exposed.
-* **`NICEGUI_STORAGE_PATH=/app/data/.nicegui`** is set in compose for the same reason. NiceGUI persists `app.storage.user` (used here only for the theme preference, `app/ui/shell.py:107-120`) to a directory it creates relative to the working directory — `/app/.nicegui`. `/app` is built as root, so a container running as the host uid gets `PermissionError` there. Redirecting it into the bind mount also makes the preference survive `up --build`, which the default location does not.
+* **`NICEGUI_STORAGE_PATH=/app/data/.nicegui`** is set in compose for the same reason. NiceGUI persists `app.storage.user` (used here only for the theme preference; see `set_theme_preference` and `ensure_theme_preference` in `app/ui/shell.py`) to a directory it creates relative to the working directory — `/app/.nicegui`. `/app` is built as root, so a container running as the host uid gets `PermissionError` there. Redirecting it into the bind mount also makes the preference survive `up --build`, which the default location does not.
 
 ### Environment Variables (`.env`)
 | Variable | Required | Default | Description |

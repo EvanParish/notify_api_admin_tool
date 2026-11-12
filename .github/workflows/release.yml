@@ -1,0 +1,133 @@
+# Publishes a release when a vX.Y.Z tag is pushed (scripts/release.sh prepares one).
+#
+#   test    -> lint, full test suite at 100% coverage, and tag/version/changelog agreement
+#   image   -> multi-arch Docker image to ghcr.io/<owner>/<repo>
+#   release -> GitHub Release whose notes are the version's CHANGELOG.md section
+#
+# Nothing is published unless every test passes, and the GitHub Release is created last,
+# so a release on the Releases page always has an image behind it.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Check tag matches pyproject.toml and CHANGELOG.md
+        id: version
+        run: |
+          version="$(uv version --short)"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${version}"
+            exit 1
+          fi
+          if ! grep -q "^## \[${version}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for ${version}"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Test
+        env:
+          # load_config() requires it; tests never touch real secrets.
+          MASTER_KEY: ci-only-not-a-secret
+        run: uv run python -m pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=100
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          # metadata-action lowercases this, as GHCR requires.
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          # semver tags also produce `latest` (flavor latest=auto).
+          labels: |
+            org.opencontainers.image.title=VA Notify Admin
+            org.opencontainers.image.description=Admin dashboard for the VA Notification API
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          # arm64 for Apple Silicon laptops.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    needs: [test, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ needs.test.outputs.version }}
+        run: |
+          # Everything under "## [VERSION]" up to the next "## " heading, minus the heading itself.
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${VERSION}"
+          printf '\n---\n\n**Docker image:** `docker pull %s`\n' "$image" >> notes.md
+          cat notes.md
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md

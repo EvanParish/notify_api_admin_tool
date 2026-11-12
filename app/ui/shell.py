@@ -12,10 +12,12 @@ from nicegui import app, context, ui
 from nicegui.client import Client
 
 from app.ui import state as _st
+from app.version import get_version
 
 logger = logging.getLogger(__name__)
 
 APP_TITLE = "VA Notify Admin"
+CHANGELOG_ROUTE = "/changelog"
 
 
 class NavItem(NamedTuple):
@@ -51,6 +53,7 @@ NAV_SECTIONS: list[tuple[str, list[NavItem]]] = [
         ],
     ),
     ("Configuration", [NavItem("settings", "Settings", "/settings")]),
+    ("About", [NavItem("new_releases", "What's New", CHANGELOG_ROUTE)]),
 ]
 
 # Derived from NAV_SECTIONS: maps each page route to its browser tab label.
@@ -171,6 +174,11 @@ def build_shell(on_view_env_change=None) -> tuple:
         with ui.row().classes("items-center gap-3"):
             ui.button(icon="menu", on_click=drawer.toggle).props("flat round dense")
             ui.label("Notification Admin Dashboard").classes("text-xl font-medium text-slate-900 dark:text-white")
+            version_link = ui.link(f"v{get_version()}", CHANGELOG_ROUTE).classes(
+                "text-xs font-mono no-underline text-slate-500 dark:text-slate-400 hover:underline"
+            )
+            with version_link:
+                ui.tooltip("What's new in this version")
         with ui.row().classes("items-center gap-4"):
             status_badge = ui.badge("API Status: Unknown", color="gray")
             sync_progress_bar = ui.linear_progress(value=0, show_value=False).props("rounded size=6px").classes("w-44")

@@ -24,7 +24,7 @@ uv run pytest tests/ --cov=app --cov-report=html         # browse htmlcov/index.
 | `test_crypto.py` | `EncryptionManager` and salt handling |
 | `test_database_isolation.py` | Proves tests never touch `data/app.db` |
 | `test_db.py` | Engine setup, `create_all`, and column migrations |
-| `test_main.py` | UI pages, helpers (including CSV export), state, and app wiring |
+| `test_main.py` | UI pages (including What's New), shell, helpers (including CSV export), state, and app wiring |
 | `test_permission_helpers.py` | Service permission diffing, confirmation tiers, and production detection |
 | `test_progress_widgets.py` | Sync progress bar and label updates |
 | `test_repository.py` | CRUD, upserts, filters, and user field encryption |
@@ -32,6 +32,7 @@ uv run pytest tests/ --cov=app --cov-report=html         # browse htmlcov/index.
 | `test_sync_handlers.py` | `handle_entity_sync` and `handle_full_sync` |
 | `test_sync_progress.py` | `SyncProgress` counting and throttling |
 | `test_utils.py` | Placeholder extraction and recipient validation |
+| `test_version.py` | App version and release notes, and that `CHANGELOG.md`, `pyproject.toml`, and the Dockerfile agree |
 | `testing_data.py` | Sample API payloads used by the sync tests |
 
 ## Fixtures (`conftest.py`)

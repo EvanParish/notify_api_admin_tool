@@ -22,7 +22,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 COPY app ./app
-COPY main.py ./
+# pyproject.toml (copied above) and CHANGELOG.md drive the in-app version and What's New page.
+COPY main.py CHANGELOG.md ./
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p data
 
