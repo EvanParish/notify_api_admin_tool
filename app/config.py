@@ -11,8 +11,9 @@ from pydantic import BaseModel, Field, field_validator
 # port-forwarded production API is reached on localhost and no hostname heuristic can see
 # through the tunnel.
 #
-# Both naming conventions live in this repo: load_config()'s built-in defaults use
-# development/production while .env.example uses dev/prod, so both spellings are listed.
+# Both naming conventions are in use: load_config()'s defaults and .env.example use
+# development/production, while older .env files and custom configs use dev/prod, so
+# both spellings are listed.
 DEFAULT_NON_PRODUCTION_ENVIRONMENTS = frozenset(
     {"dev", "development", "local", "test", "perf", "sandbox", "staging", "stage"}
 )
