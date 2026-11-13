@@ -607,6 +607,30 @@ def test_build_shell():
         mock_link.assert_any_call("v9.8.7", shell.CHANGELOG_ROUTE)
         mock_tooltip.assert_called_once_with("What's new in this version")
 
+        # Sync Settings checkboxes use short environment names, one per configured host.
+        checkbox_labels = [c.args[0] for c in mock_checkbox.call_args_list]
+        assert checkbox_labels == [shell.short_env_label(env) for env in _st.config.api_hosts]
+
+        # View Envs picker keeps environment keys as values but shows short labels.
+        view_env_options = mock_select.call_args.args[0]
+        assert view_env_options == {env: shell.short_env_label(env) for env in _st.config.api_hosts}
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ("development", "dev"),
+        ("production", "prod"),
+        (" Production ", "prod"),
+        ("dev", "dev"),
+        ("perf", "perf"),
+        ("staging", "stag"),
+        ("local", "local"),
+    ],
+)
+def test_short_env_label(env, expected):
+    assert shell.short_env_label(env) == expected
+
 
 def test_changelog_route_is_in_nav_and_titles():
     hrefs = [item.href for _, items in shell.NAV_SECTIONS for item in items]

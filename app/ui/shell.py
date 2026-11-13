@@ -154,6 +154,14 @@ def _nav_section(title: str) -> None:
     )
 
 
+SHORT_ENV_NAMES = {"development": "dev", "staging": "stag", "production": "prod"}
+
+
+def short_env_label(env: str) -> str:
+    """Return the short display name for an environment key (e.g. ``development`` -> ``dev``)."""
+    return SHORT_ENV_NAMES.get(env.strip().lower(), env)
+
+
 def build_shell(on_view_env_change=None) -> tuple:
     """Build sidebar + header chrome.  Returns (status_badge, sync_label, refresh_button, dark_mode, theme_button)."""
     _apply_page_title()
@@ -189,7 +197,8 @@ def build_shell(on_view_env_change=None) -> tuple:
             # tabs read from.
             _st.register_progress_widgets(sync_progress_bar, sync_label)
             # Multi-select for viewing environments
-            env_options = list(_st.config.api_hosts.keys())
+            # Values stay the real environment keys; only the displayed label is shortened.
+            env_options = {env: short_env_label(env) for env in _st.config.api_hosts}
             env_select = (
                 ui.select(
                     env_options,
@@ -218,11 +227,13 @@ def build_shell(on_view_env_change=None) -> tuple:
                 )
 
             with ui.dropdown_button("Sync Settings", auto_close=False).props("flat"):
-                ui.label("Allowed sync environments").classes("text-sm mb-2")
+                sync_menu = ui.column().classes("px-4 py-3 gap-1 items-start")
+            with sync_menu:
+                ui.label("Allowed sync environments").classes("text-sm font-medium mb-1")
                 env_checkboxes: dict[str, ui.checkbox] = {}
                 for env in _st.config.api_hosts:
                     is_enabled = env in _st.state.enabled_sync_environments
-                    checkbox = ui.checkbox(env.title(), value=is_enabled)
+                    checkbox = ui.checkbox(short_env_label(env), value=is_enabled).props("dense")
                     env_checkboxes[env] = checkbox
 
                     def make_handler(environment, cb):  # pragma: no cover
@@ -233,18 +244,18 @@ def build_shell(on_view_env_change=None) -> tuple:
                                 if not is_online:
                                     cb.value = False
                                     ui.notify(
-                                        f"{environment.title()} API is offline/unreachable",
+                                        f"{short_env_label(environment)} API is offline/unreachable",
                                         color="negative",
                                     )
                                     return
                                 _st.state.enabled_sync_environments.add(environment)
                                 ui.notify(
-                                    f"Syncing enabled for {environment}",
+                                    f"Syncing enabled for {short_env_label(environment)}",
                                     color="positive",
                                 )
                             else:
                                 _st.state.enabled_sync_environments.discard(environment)
-                                ui.notify(f"Syncing disabled for {environment}", color="info")
+                                ui.notify(f"Syncing disabled for {short_env_label(environment)}", color="info")
 
                         return handler
 
