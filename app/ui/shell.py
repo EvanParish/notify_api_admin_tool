@@ -162,6 +162,12 @@ def short_env_label(env: str) -> str:
     return SHORT_ENV_NAMES.get(env.strip().lower(), env)
 
 
+MOCK_API_TOOLTIP = (
+    "Mock API is enabled: pages show built-in sample data and no requests reach a real "
+    "notification-api. Set USE_MOCK_API=false in .env and restart to use real environments."
+)
+
+
 def build_shell(on_view_env_change=None) -> tuple:
     """Build sidebar + header chrome.  Returns (status_badge, sync_label, refresh_button, dark_mode, theme_button)."""
     _apply_page_title()
@@ -187,6 +193,12 @@ def build_shell(on_view_env_change=None) -> tuple:
             )
             with version_link:
                 ui.tooltip("What's new in this version")
+            if _st.config.use_mock_api:
+                # Mock mode serves built-in sample data and skips real API calls, which is
+                # confusing if it's on by accident (it's the default when USE_MOCK_API is unset).
+                mock_badge = ui.badge("MOCK API", color="orange").props("outline").classes("font-semibold")
+                with mock_badge:
+                    ui.tooltip(MOCK_API_TOOLTIP)
         with ui.row().classes("items-center gap-4"):
             status_badge = ui.badge("API Status: Unknown", color="gray")
             sync_progress_bar = ui.linear_progress(value=0, show_value=False).props("rounded size=6px").classes("w-44")

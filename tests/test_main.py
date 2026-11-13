@@ -250,18 +250,22 @@ async def test_refresh_status_badge(initialized_db, mock_config):
     try:
         await _st.refresh_status_badge(mock_badge)
 
-        # MockNotificationAPI always returns True for healthcheck
-        assert _st.state.api_status == "online"
-        assert mock_badge.text == "API Status: Online"
-        mock_badge.props.assert_called_once_with("color=green")
+        # Mock mode never reports "Online", so sample data isn't mistaken for a live API.
+        assert _st.state.api_status == "mock"
+        assert mock_badge.text == "API Status: Mock"
+        mock_badge.props.assert_called_once_with("color=orange")
     finally:
         _st.config = original_config
         _st.state = original_state
 
 
 @pytest.mark.asyncio
-async def test_refresh_status_badge_offline(initialized_db, mock_config):
-    """Test refreshing the status badge when API is offline."""
+@pytest.mark.parametrize(
+    ("healthy", "status", "color"),
+    [(True, "online", "green"), (False, "offline", "red")],
+)
+async def test_refresh_status_badge_real_api(initialized_db, mock_config, healthy, status, color):
+    """Test refreshing the status badge against a real (non-mock) API."""
 
     original_config = _st.config
     original_state = _st.state
@@ -288,17 +292,17 @@ async def test_refresh_status_badge_offline(initialized_db, mock_config):
     _st.state = TestState(environment="development")
 
     try:
-        # Mock build_api_client to return an API that fails healthcheck
+        # Mock build_api_client to return an API with the given healthcheck result
         with patch.object(_st, "build_api_client") as mock_build:
             mock_api = AsyncMock()
-            mock_api.healthcheck = AsyncMock(return_value=False)
+            mock_api.healthcheck = AsyncMock(return_value=healthy)
             mock_build.return_value = mock_api
 
             await _st.refresh_status_badge(mock_badge)
 
-            assert _st.state.api_status == "offline"
-            assert mock_badge.text == "API Status: Offline"
-            mock_badge.props.assert_called_once_with("color=red")
+            assert _st.state.api_status == status
+            assert mock_badge.text == f"API Status: {status.title()}"
+            mock_badge.props.assert_called_once_with(f"color={color}")
     finally:
         _st.config = original_config
         _st.state = original_state
@@ -528,8 +532,10 @@ async def test_startup_function(initialized_db, mock_config):
         _st.config = original_config
 
 
-def test_build_shell():
+@pytest.mark.parametrize("use_mock_api", [True, False])
+def test_build_shell(use_mock_api, monkeypatch):
     """Test build_shell creates the UI structure."""
+    monkeypatch.setattr(_st.config, "use_mock_api", use_mock_api)
 
     # Mock all UI components to avoid NiceGUI context issues
     with (
@@ -605,7 +611,17 @@ def test_build_shell():
 
         # The header shows the running version, linked to the What's New page.
         mock_link.assert_any_call("v9.8.7", shell.CHANGELOG_ROUTE)
-        mock_tooltip.assert_called_once_with("What's new in this version")
+        mock_tooltip.assert_any_call("What's new in this version")
+
+        # A mock-API indicator appears in the header only when mock mode is on.
+        mock_badge_texts = [c.args[0] for c in mock_badge.call_args_list if c.args[0] == "MOCK API"]
+        if use_mock_api:
+            assert mock_badge_texts == ["MOCK API"]
+            mock_tooltip.assert_any_call(shell.MOCK_API_TOOLTIP)
+            assert mock_tooltip.call_count == 2
+        else:
+            assert mock_badge_texts == []
+            mock_tooltip.assert_called_once_with("What's new in this version")
 
         # Sync Settings checkboxes use short environment names, one per configured host.
         checkbox_labels = [c.args[0] for c in mock_checkbox.call_args_list]

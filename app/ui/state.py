@@ -272,6 +272,12 @@ async def refresh_status_badge(badge) -> None:
         badge.props("color=gray")
         return
     env = envs[0]
+    if config.use_mock_api:
+        # Sample data, not a real API: "Online" here would hide that nothing is live.
+        state.api_status = "mock"
+        badge.text = "API Status: Mock"
+        badge.props("color=orange")
+        return
     if not await has_admin_auth(env):
         state.api_status = "auth missing"
         badge.text = "API Status: Auth Missing"
