@@ -2,7 +2,7 @@
 
 ## Git & Version Control
 
-**Do not commit changes.** Only the user can commit. After making changes, present a summary of what was modified so the user can review and commit themselves, and suggest a commit message in the format below.
+**Only commit when the user explicitly asks you to.** Otherwise, after making changes, present a summary of what was modified so the user can review and commit themselves, and suggest a commit message in the format below. When asked to commit, use the format below, keep one logical change per commit, and run the tests and linting first. Never push.
 
 ### Commit messages: Conventional Commits
 
