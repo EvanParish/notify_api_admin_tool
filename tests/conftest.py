@@ -2,6 +2,7 @@ import asyncio
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -63,14 +64,24 @@ def no_mock_api_latency(monkeypatch):
     monkeypatch.setattr(MockNotificationAPI, "__init__", fast_init)
 
 
+def _aiosqlite_worker_threads() -> set[threading.Thread]:
+    return {t for t in threading.enumerate() if "_connection_worker_thread" in t.name and t.is_alive()}
+
+
 @pytest.fixture(scope="function", autouse=True)
 async def isolate_database(tmp_path):
     """
     Ensure each test uses a completely isolated temporary database.
     This fixture runs automatically for all tests.
+
+    It also fails a test that leaves an aiosqlite connection open. Such a connection
+    outlives the test's event loop and later raises "Event loop is closed" in its worker
+    thread, which pytest blames on whatever unrelated test is running at the time.
+    A test that calls ``init_engine`` itself must dispose that engine.
     """
     from app import db
 
+    threads_before = _aiosqlite_worker_threads()
     # Save original state
     original_engine = db.engine
     original_session_local = db.SessionLocal
@@ -93,6 +104,16 @@ async def isolate_database(tmp_path):
     # Restore original state (or set to None for tests)
     db.engine = original_engine
     db.SessionLocal = original_session_local
+
+    leaked = _aiosqlite_worker_threads() - threads_before
+    for thread in leaked:
+        thread.join(timeout=1)  # a disposed connection's thread may still be shutting down
+    leaked = {t for t in leaked if t.is_alive()}
+    if leaked:
+        pytest.fail(
+            f"Test left {len(leaked)} aiosqlite connection(s) open; dispose any engine it creates.",
+            pytrace=False,
+        )
 
 
 @pytest.fixture(scope="function")

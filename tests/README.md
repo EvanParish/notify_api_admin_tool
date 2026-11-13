@@ -39,7 +39,7 @@ uv run pytest tests/ --cov=app --cov-report=html         # browse htmlcov/index.
 
 These run automatically for every test:
 
-- **`isolate_database`** points the app at a fresh SQLite file under pytest's `tmp_path` and restores the original engine afterwards.
+- **`isolate_database`** points the app at a fresh SQLite file under pytest's `tmp_path` and restores the original engine afterwards. It also fails any test that leaves an aiosqlite connection open, so a test that calls `init_engine()` itself must dispose that engine.
 - **`no_retry_backoff`** removes tenacity's real 1s/2s waits. Retry tests still check attempt counts and which errors are retried.
 - **`no_mock_api_latency`** zeroes `MockNotificationAPI`'s 0.1s simulated latency.
 - **`reset_mock_permission_store`** and **`reset_user_cache`** clear class-level and module-level caches between tests.

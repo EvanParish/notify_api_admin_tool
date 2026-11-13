@@ -272,6 +272,10 @@ async def test_migration_adds_missing_column(tmp_path):
             col_names = {row[1] for row in cols}
             assert "communication_item_id" in col_names
     finally:
+        # Dispose this test's own engine: isolate_database only disposes the engine it
+        # created, and an undisposed aiosqlite connection outlives this test's event loop,
+        # failing later with an unhandled "Event loop is closed" in its worker thread.
+        await db_mod.engine.dispose()
         db_mod.engine = original_engine
         db_mod.SessionLocal = original_session
 
@@ -317,6 +321,10 @@ async def test_migration_adds_local_api_key_columns(tmp_path):
         # Re-running must be a no-op rather than an error.
         await create_all()
     finally:
+        # Dispose this test's own engine: isolate_database only disposes the engine it
+        # created, and an undisposed aiosqlite connection outlives this test's event loop,
+        # failing later with an unhandled "Event loop is closed" in its worker thread.
+        await db_mod.engine.dispose()
         db_mod.engine = original_engine
         db_mod.SessionLocal = original_session
 
@@ -351,5 +359,9 @@ async def test_create_all_backfills_local_key_api_ids(tmp_path):
             stored = await session.get(LocalApiKey, 1)
             assert stored.api_key_id == "remote-1"
     finally:
+        # Dispose this test's own engine: isolate_database only disposes the engine it
+        # created, and an undisposed aiosqlite connection outlives this test's event loop,
+        # failing later with an unhandled "Event loop is closed" in its worker thread.
+        await db_mod.engine.dispose()
         db_mod.engine = original_engine
         db_mod.SessionLocal = original_session
