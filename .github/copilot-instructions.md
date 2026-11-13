@@ -2,7 +2,7 @@
 
 ## Git & Version Control
 
-**Only commit when the user explicitly asks you to.** Otherwise, after making changes, present a summary of what was modified so the user can review and commit themselves, and suggest a commit message in the format below. When asked to commit, use the format below, keep one logical change per commit, and run the tests and linting first. Never push.
+**Only commit when the user explicitly asks you to.** Otherwise, after making changes, present a summary of what was modified so the user can review and commit themselves, and suggest a commit message in the format below. When asked to commit, use the format below, keep one logical change per commit, and run the tests and linting first. Only push when the user explicitly asks you to.
 
 ### Commit messages: Conventional Commits
 
@@ -161,7 +161,7 @@ User identity fields (`users.name`, `users.email_address`) are also Fernet-encry
 ## Key Conventions
 
 - **Async everywhere**: All database and API operations are async. Tests use `asyncio_mode = auto`.
-- **Database isolation in tests**: The `conftest.py` `isolate_database` fixture automatically gives each test its own temporary SQLite database by swapping the module-level `db.engine` and `db.SessionLocal`. Use the `initialized_db` fixture when tests need tables created. A test that calls `init_engine()` itself must `await db.engine.dispose()` before restoring the original engine; `isolate_database` fails any test that leaves an aiosqlite connection open. A test that calls `init_engine()` itself must `await db.engine.dispose()` before restoring the original engine; `isolate_database` fails any test that leaves an aiosqlite connection open.
+- **Database isolation in tests**: The `conftest.py` `isolate_database` fixture automatically gives each test its own temporary SQLite database by swapping the module-level `db.engine` and `db.SessionLocal`. Use the `initialized_db` fixture when tests need tables created. A test that calls `init_engine()` itself must `await db.engine.dispose()` before restoring the original engine; `isolate_database` fails any test that leaves an aiosqlite connection open.
 - **Environment variables**: Configured via `.env` file (see `.env.example`). `MASTER_KEY` is required. `USE_MOCK_API=true` enables the mock client for development without a live API.
 - **`API_PUBLIC_HOSTS`**: JSON dict mapping environment names to base URLs (e.g., `{"dev": "http://localhost:6011", "staging": "https://staging-api.va.gov/vanotify"}`).
 - **Keep docs in sync**: When adding, removing, or renaming pages, repository functions, or models, update this file's Architecture section to reflect the change.
