@@ -578,7 +578,7 @@ wheels = [
 
 [[package]]
 name = "notify-api-admin-tool"
-version = "1.0.0"
+version = "1.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiosqlite" },

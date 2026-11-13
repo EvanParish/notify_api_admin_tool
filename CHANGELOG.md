@@ -7,6 +7,21 @@ All notable changes to this project are documented here. The format is based on
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org/)
 by `scripts/release.sh`. Releases before 1.0.0 were not tracked.
 
+## [1.1.0](https://github.com/EvanParish/notify_api_admin_tool/releases/tag/v1.1.0) - 2026-11-13
+
+### Added
+
+- **Mock API indicator:** when `USE_MOCK_API` is on, the header shows an orange **MOCK API** badge (hover it for details), and the API status badge reads **Mock** instead of **Online**, so sample data is never mistaken for a live environment.
+
+### Changed
+
+- **Shorter environment names:** the **View Envs** selector, the **Sync Settings** menu, and its notifications use short names (`dev`, `stag`, `prod`). The **Sync Settings** menu also has more padding and a tidier vertical layout.
+
+### Documentation
+
+- The README leads with running the published image and is shorter.
+- `.env.example` is simpler and lists every setting.
+
 ## [1.0.0](https://github.com/EvanParish/notify_api_admin_tool/releases/tag/v1.0.0) - 2026-11-10
 
 First versioned release. It covers everything the team has been using so far.
