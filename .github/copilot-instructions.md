@@ -88,6 +88,8 @@ uv run python -m pytest tests/ --cov=app --cov-report=term-missing --cov-fail-un
 
 pytest is configured in `pyproject.toml` (`[tool.pytest.ini_options]`) with `asyncio_mode = auto` — async test functions are collected automatically without needing `@pytest.mark.asyncio`.
 
+**Warnings are errors.** `filterwarnings = ["error"]` makes any warning fail the run, so the suite must stay warning-free. Fix the cause rather than ignoring it; if a warning truly can't be fixed in this repo (e.g. it comes from a dependency), add a narrowly scoped `ignore::` entry below `error` with a comment explaining why.
+
 ## Linting
 
 Linting is configured with Ruff in `pyproject.toml` (`[tool.ruff]`: line length 120; rules `E4`, `E7`, `E9`, `F`, plus `I` for import sorting and `UP` for modern syntax; target version inferred from `requires-python`). Run the following commands to check for linting errors and automatically fix them:
@@ -159,7 +161,7 @@ User identity fields (`users.name`, `users.email_address`) are also Fernet-encry
 ## Key Conventions
 
 - **Async everywhere**: All database and API operations are async. Tests use `asyncio_mode = auto`.
-- **Database isolation in tests**: The `conftest.py` `isolate_database` fixture automatically gives each test its own temporary SQLite database by swapping the module-level `db.engine` and `db.SessionLocal`. Use the `initialized_db` fixture when tests need tables created. A test that calls `init_engine()` itself must `await db.engine.dispose()` before restoring the original engine; `isolate_database` fails any test that leaves an aiosqlite connection open.
+- **Database isolation in tests**: The `conftest.py` `isolate_database` fixture automatically gives each test its own temporary SQLite database by swapping the module-level `db.engine` and `db.SessionLocal`. Use the `initialized_db` fixture when tests need tables created. A test that calls `init_engine()` itself must `await db.engine.dispose()` before restoring the original engine; `isolate_database` fails any test that leaves an aiosqlite connection open. A test that calls `init_engine()` itself must `await db.engine.dispose()` before restoring the original engine; `isolate_database` fails any test that leaves an aiosqlite connection open.
 - **Environment variables**: Configured via `.env` file (see `.env.example`). `MASTER_KEY` is required. `USE_MOCK_API=true` enables the mock client for development without a live API.
 - **`API_PUBLIC_HOSTS`**: JSON dict mapping environment names to base URLs (e.g., `{"dev": "http://localhost:6011", "staging": "https://staging-api.va.gov/vanotify"}`).
 - **Keep docs in sync**: When adding, removing, or renaming pages, repository functions, or models, update this file's Architecture section to reflect the change.

@@ -94,6 +94,8 @@ select = ["E4", "E7", "E9", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Pin pytest-asyncio's default (a fresh event loop per test) so a future release can't change it.
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["."]
 python_files = ["test_*.py"]
@@ -104,7 +106,11 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "asyncio: mark async tests",
 ]
+# Any warning fails the run, so a new one gets fixed instead of joining a list nobody reads.
+# This includes PytestUnhandledThreadExceptionWarning: an exception in a background thread
+# (e.g. an undisposed aiosqlite connection outliving its test's event loop) is a bug.
+# Later entries take precedence, so add a narrowly scoped `ignore::` below `error` only for a
+# warning that genuinely can't be fixed here, with a comment saying why.
 filterwarnings = [
-    'ignore::PendingDeprecationWarning:starlette(\\..*)?',
-    'ignore::DeprecationWarning:vbuild(\\..*)?',
+    'error',
 ]

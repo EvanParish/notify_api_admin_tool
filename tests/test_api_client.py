@@ -8,6 +8,10 @@ import tenacity
 from app.api_client import HttpNotificationAPI, MockNotificationAPI, NotificationAPI
 from app.ui.callback_helpers import COMPLETED_NOTIFICATION_STATUSES
 
+# HS256 keys under 32 bytes trigger PyJWT's InsecureKeyLengthWarning. Real service API
+# secrets are UUIDs (36 chars), so test secrets match that length.
+TEST_JWT_SECRET = "00000000-0000-4000-8000-000000000000"
+
 
 @pytest.mark.asyncio
 async def test_mock_api_get_services():
@@ -508,7 +512,7 @@ async def test_http_api_send_notification_email():
             template_id="tmpl-1",
             recipient="user@example.com",
             personalisation={"name": "John"},
-            api_key="secret-key",
+            api_key=TEST_JWT_SECRET,
             service_id="svc-1",
             template_type="email",
         )
@@ -536,7 +540,7 @@ async def test_http_api_send_notification_sms():
             template_id="tmpl-2",
             recipient="1234567890",
             personalisation={"code": "1234"},
-            api_key="secret-key",
+            api_key=TEST_JWT_SECRET,
             service_id="svc-1",
             template_type="sms",
         )
@@ -562,7 +566,7 @@ async def test_http_api_send_notification_sms_with_sender():
             template_id="tmpl-2",
             recipient="1234567890",
             personalisation={"code": "1234"},
-            api_key="secret-key",
+            api_key=TEST_JWT_SECRET,
             service_id="svc-1",
             template_type="sms",
             sms_sender_id="sender-123",
@@ -601,7 +605,7 @@ def test_http_api_make_jwt():
     api = HttpNotificationAPI("https://api.example.com")
 
     service_id = "test-service-123"
-    secret = "test-secret-key"
+    secret = TEST_JWT_SECRET
 
     token = api._make_jwt(service_id, secret)
 
@@ -620,12 +624,12 @@ def test_http_api_make_jwt_timing():
     api = HttpNotificationAPI("https://api.example.com")
 
     before = int(time.time())
-    token = api._make_jwt("svc-1", "secret")
+    token = api._make_jwt("svc-1", TEST_JWT_SECRET)
     after = int(time.time())
 
     import jwt
 
-    decoded = jwt.decode(token, "secret", algorithms=["HS256"])
+    decoded = jwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])
 
     assert before <= decoded["iat"] <= after
 
